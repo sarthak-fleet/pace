@@ -85,59 +85,130 @@ final class AppleFoundationModelsPlannerClient: BuddyPlannerClient {
             conversationHistory: conversationHistory
         )
 
-        var accumulatedResponseText = ""
-        var hasLoggedFirstTokenLatency = false
+        // Build the id→(label, x, y) map from the prompt BEFORE the
+        // model call so we can resolve typed element IDs after.
+        let elementCoordinateLookup = Self.parseElementMapFromUserPrompt(userPrompt: userPrompt)
 
-        // `streamResponse(to:generating:)` returns an `AsyncSequence`
-        // of `Snapshot`s. For `Content == String` each `Snapshot
-        // .content` is the cumulative text so far — exactly what our
-        // streaming-TTS pipeline wants (it does its own diff). The
-        // explicit `generating: String.self` is needed because Swift
-        // can't infer the generic Content parameter without context.
-        //
-        // Greedy sampling + temperature 0 = fully deterministic. Without
-        // this FM was emitting hallucinated CLICK coords like (1728, N)
-        // even with the anti-hallucination rule in the prompt — random
-        // sampling was generating noise that bypassed the constraint.
+        // Greedy sampling + temperature 0 = fully deterministic.
         let deterministicGenerationOptions = GenerationOptions(
             sampling: .greedy,
             temperature: 0,
             maximumResponseTokens: 400
         )
-        let responseStream = session.streamResponse(
-            to: userPrompt,
-            generating: String.self,
-            options: deterministicGenerationOptions
-        )
-        for try await snapshot in responseStream {
-            accumulatedResponseText = snapshot.content
-            if !hasLoggedFirstTokenLatency, !accumulatedResponseText.isEmpty {
-                hasLoggedFirstTokenLatency = true
-                let timeToFirstTokenMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
-                print("⚡ FM Planner TTFT: \(timeToFirstTokenMilliseconds)ms (\(conversationHistory.count + 1) msgs)")
-                PaceTelemetryLog.recordPlannerTimeToFirstToken(
-                    milliseconds: timeToFirstTokenMilliseconds,
-                    modelIdentifier: displayName,
-                    messageCount: conversationHistory.count + 1
-                )
-            }
-            onTextChunk(accumulatedResponseText)
+
+        // Typed Generable response: model picks element IDs from a
+        // constrained set, can't emit free-text coordinates. Non-
+        // streaming for now; PartiallyGenerated streaming is harder to
+        // feed into the existing sentence-streamer and we want
+        // correctness before TTS streaming back.
+        let typedResponse: LanguageModelSession.Response<PaceFMTurnResponse>
+        do {
+            typedResponse = try await session.respond(
+                to: userPrompt,
+                generating: PaceFMTurnResponse.self,
+                options: deterministicGenerationOptions
+            )
+        } catch {
+            print("⚠️ FM typed response failed: \(error)")
+            throw error
         }
 
+        let timeToFirstTokenMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
+        print("⚡ FM Planner TTFT: \(timeToFirstTokenMilliseconds)ms (\(conversationHistory.count + 1) msgs)")
+        PaceTelemetryLog.recordPlannerTimeToFirstToken(
+            milliseconds: timeToFirstTokenMilliseconds,
+            modelIdentifier: displayName,
+            messageCount: conversationHistory.count + 1
+        )
+
+        // Serialize the typed response back into the string-tag format
+        // CompanionManager + StreamingSentenceTTSPipeline + PaceAction-
+        // TagParser already consume. Bridges new model surface to old
+        // pipeline without changing every layer.
+        let serialisedText = Self.serializeTypedResponseToStringTags(
+            typedResponse: typedResponse.content,
+            elementCoordinateLookup: elementCoordinateLookup
+        )
+
+        // Feed the full text to the streaming TTS pipeline as one chunk.
+        // Loses incremental sentence-dispatch on this turn; correctness
+        // first, streaming returns when we move to PartiallyGenerated.
+        onTextChunk(serialisedText)
+
         let totalDurationSeconds = Date().timeIntervalSince(startedAt)
-        // One-line dump of the model's raw output (post-think-strip).
-        // Capped at 240 chars so the console stays readable. This is
-        // the single most useful diagnostic when actions don't fire:
-        // we can see what tags the model actually emitted vs what
-        // we expected.
-        let trimmedResponseForLog = accumulatedResponseText
+        let trimmedResponseForLog = serialisedText
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let truncatedForLog = trimmedResponseForLog.count > 240
             ? String(trimmedResponseForLog.prefix(240)) + "…"
             : trimmedResponseForLog
-        print("🪶 FM raw response: \(truncatedForLog)")
-        return (text: accumulatedResponseText, duration: totalDurationSeconds)
+        print("🪶 FM raw response (typed→tags): \(truncatedForLog)")
+        return (text: serialisedText, duration: totalDurationSeconds)
+    }
+
+    // MARK: - Element map parsing + serialization
+
+    /// Pull `[N] role|cx,cy|label|text` lines out of the prompt and
+    /// return a dictionary keyed by element ID. CompanionManager is
+    /// responsible for emitting elements in this format (with the
+    /// numeric ID prefix); this helper just inverts the operation so
+    /// we can resolve IDs the model emits back to pixel coordinates.
+    private static func parseElementMapFromUserPrompt(
+        userPrompt: String
+    ) -> [Int: (label: String, pixelX: Int, pixelY: Int)] {
+        var elementCoordinateLookup: [Int: (label: String, pixelX: Int, pixelY: Int)] = [:]
+        // Pattern: line starts with [<integer>] ROLE|X,Y|LABEL(|TEXT?)
+        let elementLineRegex = try? NSRegularExpression(
+            pattern: #"^\[(\d+)\]\s+\S+\|(\d+),(\d+)\|([^|\n]+)"#,
+            options: [.anchorsMatchLines]
+        )
+        let entireRange = NSRange(userPrompt.startIndex..., in: userPrompt)
+        elementLineRegex?.enumerateMatches(
+            in: userPrompt,
+            options: [],
+            range: entireRange
+        ) { match, _, _ in
+            guard let match,
+                  let idRange = Range(match.range(at: 1), in: userPrompt),
+                  let xRange = Range(match.range(at: 2), in: userPrompt),
+                  let yRange = Range(match.range(at: 3), in: userPrompt),
+                  let labelRange = Range(match.range(at: 4), in: userPrompt),
+                  let elementId = Int(userPrompt[idRange]),
+                  let pixelX = Int(userPrompt[xRange]),
+                  let pixelY = Int(userPrompt[yRange]) else {
+                return
+            }
+            let label = String(userPrompt[labelRange]).trimmingCharacters(in: .whitespaces)
+            elementCoordinateLookup[elementId] = (label: label, pixelX: pixelX, pixelY: pixelY)
+        }
+        return elementCoordinateLookup
+    }
+
+    /// Render a typed `PaceFMTurnResponse` as the string-tag format
+    /// the rest of Pace consumes:
+    ///   <spokenText> [POINT:x,y:label] [CLICK:x,y]
+    /// Skips tags whose IDs are -1 or don't resolve in the element
+    /// lookup (those are the "no action" cases — explicit refusals
+    /// and pure Q&A).
+    private static func serializeTypedResponseToStringTags(
+        typedResponse: PaceFMTurnResponse,
+        elementCoordinateLookup: [Int: (label: String, pixelX: Int, pixelY: Int)]
+    ) -> String {
+        var pieces: [String] = [typedResponse.spokenText]
+
+        if typedResponse.pointAtElementId >= 0,
+           let pointTarget = elementCoordinateLookup[typedResponse.pointAtElementId] {
+            pieces.append("[POINT:\(pointTarget.pixelX),\(pointTarget.pixelY):\(pointTarget.label)]")
+        } else {
+            pieces.append("[POINT:none]")
+        }
+
+        if typedResponse.clickElementId >= 0,
+           let clickTarget = elementCoordinateLookup[typedResponse.clickElementId] {
+            pieces.append("[CLICK:\(clickTarget.pixelX),\(clickTarget.pixelY)]")
+        }
+
+        return pieces.joined(separator: " ")
     }
 
     /// Pick a session whose KV cache is valid for the current call.

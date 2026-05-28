@@ -1,3 +1,3 @@
 USER: what is html
-ELEMENT: button|412,40|search button|Search
-ELEMENT: button|548,40|save button|Save Draft
+ELEMENT: [0] button|412,40|search button|Search
+ELEMENT: [1] button|548,40|save button|Save Draft

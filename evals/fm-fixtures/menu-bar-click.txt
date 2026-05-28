@@ -1,7 +1,7 @@
 USER: click the file menu
-ELEMENT: menu_item|260,12|File|
-ELEMENT: menu_item|300,12|Edit|
-ELEMENT: menu_item|342,12|View|
-ELEMENT: menu_item|385,12|Window|
-ELEMENT: menu_item|437,12|Help|
-ELEMENT: button|548,40|save button|Save Draft
+ELEMENT: [0] menu_item|260,12|File|
+ELEMENT: [1] menu_item|300,12|Edit|
+ELEMENT: [2] menu_item|342,12|View|
+ELEMENT: [3] menu_item|385,12|Window|
+ELEMENT: [4] menu_item|437,12|Help|
+ELEMENT: [5] button|548,40|save button|Save Draft

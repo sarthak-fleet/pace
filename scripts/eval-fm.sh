@@ -49,6 +49,23 @@ cat > "$EVAL_SOURCE_FILE" <<'SWIFT_EOF'
 import Foundation
 import FoundationModels
 
+// Typed schema — mirrors PaceFMTurnResponse in the Pace source. The
+// whole point of this eval is to verify the typed path's behavior;
+// can't reach into the Pace module from a one-shot Swift script so
+// the schema is duplicated here intentionally.
+@available(macOS 26.0, *)
+@Generable
+struct EvalFMTurnResponse {
+    @Guide(description: "What to say to the user, read aloud by text-to-speech. One or two short casual sentences. Lowercase, no markdown.")
+    let spokenText: String
+
+    @Guide(description: "ID of an element from the on-screen list to point the cursor at. Use the integer in brackets from the element list. Use -1 if no element should be pointed at (pure knowledge questions, or target not in list).")
+    let pointAtElementId: Int
+
+    @Guide(description: "ID of an element to click. Use the integer in brackets from the element list. Use -1 if no click is requested or if the target is not in the element list. Only emit a non-negative value when the user explicitly asked to click, tap, or press something.")
+    let clickElementId: Int
+}
+
 // Match the lean system prompt Pace ships today. Kept in sync with
 // CompanionSystemPrompt.swift via the README; drift acceptable since
 // this is a diagnostic tool, not a regression gate.
@@ -143,17 +160,13 @@ let options = GenerationOptions(
 )
 
 let startedAt = Date()
-var accumulatedText = ""
-
+let typedResponse: LanguageModelSession.Response<EvalFMTurnResponse>
 do {
-    let stream = session.streamResponse(
+    typedResponse = try await session.respond(
         to: userPrompt,
-        generating: String.self,
+        generating: EvalFMTurnResponse.self,
         options: options
     )
-    for try await snapshot in stream {
-        accumulatedText = snapshot.content
-    }
 } catch {
     print("❌ FM error: \(error)")
     exit(4)
@@ -168,8 +181,10 @@ for line in elementMap.split(separator: "\n") {
 }
 print("───")
 print("elapsed: \(elapsedMs)ms")
-print("FM raw response:")
-print(accumulatedText)
+print("FM typed response:")
+print("  spokenText      : \(typedResponse.content.spokenText)")
+print("  pointAtElementId: \(typedResponse.content.pointAtElementId)")
+print("  clickElementId  : \(typedResponse.content.clickElementId)")
 print("─── END ───")
 SWIFT_EOF
 
