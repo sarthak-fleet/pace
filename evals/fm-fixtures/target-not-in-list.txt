@@ -1,0 +1,4 @@
+USER: click the elephant button
+ELEMENT: button|412,40|search button|Search
+ELEMENT: button|548,40|save button|Save Draft
+ELEMENT: text_field|240,140|message input|Type a message…

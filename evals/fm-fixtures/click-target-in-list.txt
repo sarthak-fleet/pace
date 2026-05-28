@@ -1,0 +1,5 @@
+USER: click the save button
+ELEMENT: button|412,40|search button|Search
+ELEMENT: button|548,40|save button|Save Draft
+ELEMENT: text_field|240,140|message input|Type a message…
+ELEMENT: button|684,40|close button|Close
