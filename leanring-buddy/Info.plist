@@ -16,6 +16,8 @@
 	<string>ui-venus-1.5-2b</string>
 	<key>AlwaysRunLocalVLMRegardlessOfTranscript</key>
 	<string>false</string>
+	<key>PlannerProvider</key>
+	<string>appleFoundationModels</string>
 	<key>LocalPlannerBaseURL</key>
 	<string>http://localhost:1234/v1</string>
 	<key>LocalPlannerModelIdentifier</key>

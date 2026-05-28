@@ -43,14 +43,39 @@ protocol BuddyPlannerClient: AnyObject {
 }
 
 enum BuddyPlannerClientFactory {
-    /// Resolves the active planner from Info.plist. Today this always
-    /// returns a `LocalPlannerClient`; the factory shape stays so a
-    /// future Ollama / raw llama.cpp / other conformer can plug in
-    /// without touching CompanionManager.
+    private enum PlannerProvider: String {
+        /// macOS 26 built-in 3B model via FoundationModels framework.
+        /// Stateful session, KV cache persists across turns. Default —
+        /// fastest path for short voice answers.
+        case appleFoundationModels = "appleFoundationModels"
+        /// Local OpenAI-compatible endpoint (LM Studio at localhost:1234
+        /// today). Bigger models, slower TTFT. Use when Foundation
+        /// Models' 3B reasoning isn't enough.
+        case local = "local"
+    }
+
+    /// Resolve the active planner from Info.plist key `PlannerProvider`.
+    /// Default is `appleFoundationModels` since macOS 26+ is the
+    /// supported floor and Foundation Models gives sub-second TTFT
+    /// for free. Set to `local` to route through LocalPlannerClient
+    /// (LM Studio) when you need a bigger model.
     @MainActor
     static func makeDefault() -> any BuddyPlannerClient {
-        let resolvedClient = LocalPlannerClient.makeFromInfoPlist()
-        print("🧠 Planner: using \(resolvedClient.displayName)")
-        return resolvedClient
+        let configuredProviderRawValue = AppBundleConfiguration
+            .stringValue(forKey: "PlannerProvider")?
+            .lowercased()
+        let configuredProvider = configuredProviderRawValue
+            .flatMap(PlannerProvider.init(rawValue:))
+
+        switch configuredProvider {
+        case .local:
+            let localPlanner = LocalPlannerClient.makeFromInfoPlist()
+            print("🧠 Planner: using \(localPlanner.displayName)")
+            return localPlanner
+        case .appleFoundationModels, .none:
+            let foundationModelsPlanner = AppleFoundationModelsPlannerClient()
+            print("🧠 Planner: using \(foundationModelsPlanner.displayName)")
+            return foundationModelsPlanner
+        }
     }
 }
