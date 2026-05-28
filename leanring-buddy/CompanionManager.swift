@@ -1175,8 +1175,14 @@ final class CompanionManager: ObservableObject {
         let maxElementsRendered = 15
         let maxTextCharsPerElement = 30
         let elementSummaryLines = analysis.elements.prefix(maxElementsRendered).map { element -> String in
+            // Emit the bbox CENTER, not the top-left corner. The planner
+            // copies these coordinates verbatim into [CLICK:x,y], so
+            // sending the corner means every click lands ~half-element
+            // off-target. For a 40x24 menu bar item that's an 8px miss;
+            // on a small Dock icon it's a full miss. Center math makes
+            // clicks land on the element the planner picked.
             let coordinateText = element.bbox.count == 4
-                ? "\(element.bbox[0]),\(element.bbox[1])"
+                ? "\(element.bbox[0] + element.bbox[2] / 2),\(element.bbox[1] + element.bbox[3] / 2)"
                 : "?,?"
             let textSuffix = element.text.flatMap { text -> String? in
                 let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
