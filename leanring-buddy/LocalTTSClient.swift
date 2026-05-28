@@ -126,7 +126,14 @@ final class LocalTTSClient: NSObject, BuddyTTSClient {
         // .speechVoices() returns voices in registration order which can flip
         // across OS updates — that's how the voice got worse without anyone
         // touching the app. Pinning to a named voice keeps the pick stable.
-        let preferredVoiceNamesInOrder = ["Ava", "Evan", "Zoe", "Nathan", "Joelle", "Noelle"]
+        //
+        // Ava and Evan are the Premium-quality neural voices Apple ships
+        // separately (require a one-time download). Samantha is the
+        // default en-US voice baked into macOS — Enhanced quality is also
+        // downloadable, Premium is not available for Samantha. Including
+        // her in the list lets us pick Samantha-Enhanced as a stopgap
+        // when no premium-tier voice is installed yet.
+        let preferredVoiceNamesInOrder = ["Ava", "Evan", "Samantha", "Zoe", "Nathan", "Joelle", "Noelle"]
         for preferredName in preferredVoiceNamesInOrder {
             if let namedPremiumVoice = englishVoices.first(where: {
                 $0.name == preferredName && $0.quality == .premium
@@ -167,7 +174,11 @@ final class LocalTTSClient: NSObject, BuddyTTSClient {
             print("🔊 Local TTS voice: \(pickedVoice.name) (\(pickedVoice.quality == .premium ? "Premium" : "Enhanced"))")
         default:
             print("🔊 Local TTS voice: \(pickedVoice.name) (Compact — sounds shrill)")
-            print("    → For a much better voice, open System Settings → Accessibility → Spoken Content → System Voice → Manage Voices, download a Premium voice (e.g. \"Ava\"), then restart Pace.")
+            print("    → To fix this, open System Settings → Accessibility → Spoken Content")
+            print("      → System Voice → Manage Voices → English (US) and download EITHER:")
+            print("        - \"Samantha\" at Enhanced quality (~150 MB, quick stopgap), OR")
+            print("        - \"Ava\" at Premium quality (~500 MB, much better neural voice).")
+            print("      Restart Pace after the download finishes.")
         }
         hasPrintedVoiceUpgradeHint = true
     }
