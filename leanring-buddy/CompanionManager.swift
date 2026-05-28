@@ -1072,7 +1072,9 @@ final class CompanionManager: ObservableObject {
         if !capturesToAnalyze.isEmpty {
             let axScreenReaderForLoopBody = self.axScreenReader
             for (captureIndex, capture, pixelHash) in capturesToAnalyze {
-                let axElements = axScreenReaderForLoopBody.readFocusedWindow()
+                let axElements = axScreenReaderForLoopBody.readFocusedWindow(
+                    scalingToScreenshot: capture
+                )
                 if !axElements.isEmpty {
                     let ocrBoxes = (try? await visionOCRClient.recognizeText(
                         in: capture.imageData,
@@ -1307,8 +1309,12 @@ final class CompanionManager: ObservableObject {
                 // than the VLM and covers most AppKit / SwiftUI /
                 // Catalyst apps cleanly. Fires in parallel with OCR
                 // so we still get verbatim text enrichment.
+                // Scaled to the cursor screen's actual screenshot
+                // dimensions so the planner sees coordinates in the
+                // same pixel space the executor uses for clicks
+                // (downsampled to maxDimension=1280, not Retina-native).
                 async let axElementsFuture: [LocalVLMScreenElement] = MainActor.run { [weak self] in
-                    self?.axScreenReader.readFocusedWindow() ?? []
+                    self?.axScreenReader.readFocusedWindow(scalingToScreenshot: cursorScreenCapture) ?? []
                 }
                 async let earlyOCRBoxesFuture = ocrClient.recognizeText(
                     in: cursorScreenCapture.imageData,

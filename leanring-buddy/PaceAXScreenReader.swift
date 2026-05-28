@@ -89,11 +89,11 @@ final class PaceAXScreenReader {
         kAXSliderRole as String: "other"
     ]
 
-    /// Read the focused window of the frontmost app PLUS the Dock and
-    /// menu bar — the three places a voice user is most likely to ask
-    /// about. Returns elements in source-grouped order (window items
-    /// first, then Dock items, then menu-bar items). Returns `[]` if
-    /// AX permission is missing or every source comes back empty.
+    /// Legacy entry point — kept so older call sites compile, but the
+    /// `scalingToScreenshot:` variant is what callers should use.
+    /// Without a screenshot to scale against, this falls back to the
+    /// frontmost-screen's Retina factor, which is wrong whenever the
+    /// real screenshot is downsampled (which it always is in Pace).
     func readFocusedWindow() -> [LocalVLMScreenElement] {
         let walkDeadline = Date(timeIntervalSinceNow: walkDeadlineSeconds)
         var collectedElements: [LocalVLMScreenElement] = []
@@ -103,6 +103,106 @@ final class PaceAXScreenReader {
         readMenuBarItems(deadline: walkDeadline, into: &collectedElements)
 
         return collectedElements
+    }
+
+    /// Preferred entry point. Returns AX elements scaled to the given
+    /// screenshot's pixel space, with elements on OTHER screens
+    /// filtered out (the executor only has geometry for this one
+    /// capture). Fixes the field bug where AX coords were scaled by
+    /// Retina factor (2.0) but the actual screenshot is downsampled
+    /// to 1280-wide — caused every click past the screen midpoint to
+    /// land at the right edge. Repro + math locked in by
+    /// `PaceScreenContextScalerTests`.
+    func readFocusedWindow(scalingToScreenshot screenCapture: CompanionScreenCapture) -> [LocalVLMScreenElement] {
+        let rawAXPointElements = readFocusedWindow()
+        let screenOriginInAXPoints = axOriginForScreenCapture(screenCapture)
+
+        return rawAXPointElements.compactMap { rawElement -> LocalVLMScreenElement? in
+            guard rawElement.bbox.count == 4 else { return nil }
+            // The legacy reader multiplied by Retina scale. Undo that
+            // multiply here before re-scaling with the correct
+            // screenshot:display ratio. Keeps the existing AX walk
+            // intact and isolates the fix to the scale step.
+            let legacyPixelScaleFactor = pixelScaleFactorForScreen(containingPointAt: CGPoint(
+                x: CGFloat(rawElement.bbox[0]) / 2.0,
+                y: CGFloat(rawElement.bbox[1]) / 2.0
+            ))
+            let axPointBoundingBox = [
+                Int(Double(rawElement.bbox[0]) / Double(legacyPixelScaleFactor)),
+                Int(Double(rawElement.bbox[1]) / Double(legacyPixelScaleFactor)),
+                Int(Double(rawElement.bbox[2]) / Double(legacyPixelScaleFactor)),
+                Int(Double(rawElement.bbox[3]) / Double(legacyPixelScaleFactor))
+            ]
+
+            // Filter cross-screen elements — clicks for them would
+            // land on the wrong screen because the executor only has
+            // this capture's geometry.
+            guard PaceScreenContextScaler.axPointFallsWithinScreen(
+                axPointX: axPointBoundingBox[0],
+                axPointY: axPointBoundingBox[1],
+                screenLocalOriginInAXPoints: screenOriginInAXPoints,
+                displayWidthInPoints: screenCapture.displayWidthInPoints,
+                displayHeightInPoints: screenCapture.displayHeightInPoints
+            ) else {
+                return nil
+            }
+
+            guard let scaledBoundingBox = PaceScreenContextScaler.scaleAXBoundingBoxToScreenshotPixels(
+                axPointBoundingBox: axPointBoundingBox,
+                screenLocalOriginInAXPoints: screenOriginInAXPoints,
+                displayWidthInPoints: screenCapture.displayWidthInPoints,
+                displayHeightInPoints: screenCapture.displayHeightInPoints,
+                screenshotWidthInPixels: screenCapture.screenshotWidthInPixels,
+                screenshotHeightInPixels: screenCapture.screenshotHeightInPixels
+            ), scaledBoundingBox[2] > 0, scaledBoundingBox[3] > 0 else {
+                return nil
+            }
+
+            return LocalVLMScreenElement(
+                label: rawElement.label,
+                role: rawElement.role,
+                bbox: scaledBoundingBox,
+                text: rawElement.text
+            )
+        }
+    }
+
+    /// Top-left corner of the given screen capture in AX-global point
+    /// space. AX uses top-left origin spanning all displays;
+    /// `displayFrame` is in AppKit (bottom-left) coords, so we flip Y
+    /// against the primary screen's height.
+    private func axOriginForScreenCapture(_ screenCapture: CompanionScreenCapture) -> CGPoint {
+        guard let primaryScreen = NSScreen.screens.first(where: { $0.frame.origin == .zero }) else {
+            return .zero
+        }
+        return CGPoint(
+            x: screenCapture.displayFrame.origin.x,
+            y: primaryScreen.frame.height
+                - screenCapture.displayFrame.origin.y
+                - screenCapture.displayFrame.height
+        )
+    }
+
+    /// Retina factor of whichever screen contains the given AX-point.
+    /// Used to undo the legacy reader's multiply before re-scaling
+    /// with the correct screenshot ratio.
+    private func pixelScaleFactorForScreen(containingPointAt point: CGPoint) -> CGFloat {
+        guard let primaryScreen = NSScreen.screens.first(where: { $0.frame.origin == .zero }) else {
+            return NSScreen.main?.backingScaleFactor ?? 2.0
+        }
+        let primaryHeight = primaryScreen.frame.height
+        for candidateScreen in NSScreen.screens {
+            let flippedScreenFrame = CGRect(
+                x: candidateScreen.frame.origin.x,
+                y: primaryHeight - candidateScreen.frame.origin.y - candidateScreen.frame.height,
+                width: candidateScreen.frame.width,
+                height: candidateScreen.frame.height
+            )
+            if flippedScreenFrame.contains(point) {
+                return candidateScreen.backingScaleFactor
+            }
+        }
+        return NSScreen.main?.backingScaleFactor ?? 2.0
     }
 
     /// Walk the frontmost app's focused window. Same behavior as the
