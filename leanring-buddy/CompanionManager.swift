@@ -105,6 +105,14 @@ final class CompanionManager: ObservableObject {
     /// bbox overlap. Cheap (~50-200ms), no model load.
     private let visionOCRClient = PaceVisionOCRClient()
 
+    /// Fast-tier screen reader. AX tree of the focused window in 5-50ms,
+    /// vs 800ms-3s for the VLM. If AX returns ≥1 element we use it +
+    /// OCR enrichment and skip the VLM entirely — the common path on
+    /// AppKit / SwiftUI / Catalyst apps. VLM is the fallback only when
+    /// AX returns nothing useful (Electron-without-AX, games, web
+    /// content with broken AX hints).
+    private let axScreenReader = PaceAXScreenReader()
+
     /// Task started at PTT press that captures the screen and runs the
     /// VLM + OCR in parallel. By the time the user finishes speaking
     /// (~2-5s typical), the result is usually ready. The agent loop
@@ -1209,18 +1217,51 @@ final class CompanionManager: ObservableObject {
                     )
                 }
 
-                print("👁️  Prewarm: VLM + OCR running in parallel…")
-                // No transcript yet so userIntent is generic. Slight
-                // quality loss vs query-aware prioritisation, but the
-                // perceived-latency win is large.
-                async let vlmAnalysisFuture = vlmClient.analyzeScreenshot(
-                    screenshotImageData: cursorScreenCapture.imageData,
-                    userIntent: "general screen analysis"
-                )
-                async let ocrBoxesFuture = ocrClient.recognizeText(
+                // Fast tier: try the AX tree of the focused window
+                // before standing up the VLM. AX is 10-100x faster
+                // than the VLM and covers most AppKit / SwiftUI /
+                // Catalyst apps cleanly. Fires in parallel with OCR
+                // so we still get verbatim text enrichment.
+                async let axElementsFuture: [LocalVLMScreenElement] = MainActor.run { [weak self] in
+                    self?.axScreenReader.readFocusedWindow() ?? []
+                }
+                async let earlyOCRBoxesFuture = ocrClient.recognizeText(
                     in: cursorScreenCapture.imageData,
                     screenshotWidthInPixels: cursorScreenCapture.screenshotWidthInPixels,
                     screenshotHeightInPixels: cursorScreenCapture.screenshotHeightInPixels
+                )
+                let axElements = await axElementsFuture
+                if !axElements.isEmpty {
+                    let earlyOCRBoxes = (try? await earlyOCRBoxesFuture) ?? []
+                    let synthesizedAnalysisFromAX = LocalVLMScreenAnalysis(
+                        elements: axElements,
+                        description: ""
+                    )
+                    let enrichedFromAX = PaceScreenContextMerger.enrich(
+                        vlmAnalysis: synthesizedAnalysisFromAX,
+                        with: earlyOCRBoxes
+                    )
+                    print("👁️  Prewarm AX HIT: \(axElements.count) elements + \(earlyOCRBoxes.count) OCR boxes — skipping VLM")
+                    await MainActor.run { [weak self] in
+                        self?.perScreenAnalysisCache[cursorScreenCapture.label] = CachedScreenAnalysis(
+                            pixelHash: pixelHash,
+                            analysis: enrichedFromAX,
+                            capturedAt: Date()
+                        )
+                    }
+                    return PrewarmedScreenContext(
+                        screenCaptures: [cursorScreenCapture],
+                        enrichedAnalysesByScreenLabel: [cursorScreenCapture.label: enrichedFromAX]
+                    )
+                }
+
+                print("👁️  Prewarm AX returned nothing — falling back to VLM + OCR…")
+                // Reuse the OCR future from the AX attempt above —
+                // it's been running concurrently and we don't want to
+                // double-spend on the same screenshot.
+                async let vlmAnalysisFuture = vlmClient.analyzeScreenshot(
+                    screenshotImageData: cursorScreenCapture.imageData,
+                    userIntent: "general screen analysis"
                 )
 
                 let vlmAnalysis: LocalVLMScreenAnalysis
@@ -1229,7 +1270,7 @@ final class CompanionManager: ObservableObject {
                 } catch {
                     print("⚠️ Prewarm VLM failed: \(error.localizedDescription)")
                     // Fall back to OCR-only context
-                    let ocrBoxesFallback = (try? await ocrBoxesFuture) ?? []
+                    let ocrBoxesFallback = (try? await earlyOCRBoxesFuture) ?? []
                     let descriptionFromOCR = ocrBoxesFallback.prefix(8)
                         .map { $0.text }
                         .joined(separator: " · ")
@@ -1248,7 +1289,7 @@ final class CompanionManager: ObservableObject {
                     )
                 }
 
-                let ocrBoxes = (try? await ocrBoxesFuture) ?? []
+                let ocrBoxes = (try? await earlyOCRBoxesFuture) ?? []
                 let enriched = PaceScreenContextMerger.enrich(
                     vlmAnalysis: vlmAnalysis,
                     with: ocrBoxes
