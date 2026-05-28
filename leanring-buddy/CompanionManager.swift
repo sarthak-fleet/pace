@@ -1019,14 +1019,50 @@ final class CompanionManager: ObservableObject {
             }
         }
 
-        // Run VLM in parallel on every cache-missed screen.
+        // Try the AX-tree first on the cursor screen (cheap, ~50ms);
+        // if it returns elements we skip the VLM for this in-loop
+        // re-analysis the same way the PTT-press pre-warm does. The
+        // 2B VLM was failing on every in-loop call last test run,
+        // leaving the planner with no screen context and looping on
+        // useless scrolls — AX fixes that.
+        var capturesStillNeedingVLM: [(captureIndex: Int, capture: CompanionScreenCapture, pixelHash: String)] = []
         var freshAnalysesByCaptureIndex: [Int: LocalVLMScreenAnalysis] = [:]
         if !capturesToAnalyze.isEmpty {
-            print("👁️  Running VLM + OCR on \(capturesToAnalyze.count) screen(s) in parallel…")
+            let axScreenReaderForLoopBody = self.axScreenReader
+            for (captureIndex, capture, pixelHash) in capturesToAnalyze {
+                let axElements = axScreenReaderForLoopBody.readFocusedWindow()
+                if !axElements.isEmpty {
+                    let ocrBoxes = (try? await visionOCRClient.recognizeText(
+                        in: capture.imageData,
+                        screenshotWidthInPixels: capture.screenshotWidthInPixels,
+                        screenshotHeightInPixels: capture.screenshotHeightInPixels
+                    )) ?? []
+                    let axBackedAnalysis = PaceScreenContextMerger.enrich(
+                        vlmAnalysis: LocalVLMScreenAnalysis(elements: axElements, description: ""),
+                        with: ocrBoxes
+                    )
+                    print("👁️  In-loop AX HIT for \(capture.label): \(axElements.count) elements + \(ocrBoxes.count) OCR boxes — skipping VLM")
+                    freshAnalysesByCaptureIndex[captureIndex] = axBackedAnalysis
+                    perScreenAnalysisCache[capture.label] = CachedScreenAnalysis(
+                        pixelHash: pixelHash,
+                        analysis: axBackedAnalysis,
+                        capturedAt: Date()
+                    )
+                } else {
+                    capturesStillNeedingVLM.append((captureIndex, capture, pixelHash))
+                }
+            }
+        }
+
+        // Anything AX couldn't see falls back to the VLM. With the
+        // FM planner this is rarely hit; the LM Studio VLM path
+        // stays around for Electron / games / broken-AX apps.
+        if !capturesStillNeedingVLM.isEmpty {
+            print("👁️  Running VLM + OCR on \(capturesStillNeedingVLM.count) screen(s) (AX missed)…")
             let analyses = await withTaskGroup(
                 of: (Int, String, LocalVLMScreenAnalysis?, String).self
             ) { taskGroup in
-                for (captureIndex, capture, pixelHash) in capturesToAnalyze {
+                for (captureIndex, capture, pixelHash) in capturesStillNeedingVLM {
                     taskGroup.addTask { [localVLMClient, visionOCRClient] in
                         // VLM + OCR concurrent. OCR finishes much faster
                         // (~100-200ms); we wait on the VLM and then merge.

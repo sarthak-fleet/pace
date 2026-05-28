@@ -89,14 +89,31 @@ final class PaceAXScreenReader {
         kAXSliderRole as String: "other"
     ]
 
-    /// Read the focused window of the frontmost app. Returns elements
-    /// in AX-tree iteration order (which is roughly visual order on
-    /// most apps). Returns `[]` if AX permission is missing, the
-    /// frontmost app doesn't expose AX, or the walk deadline trips
-    /// before finding anything.
+    /// Read the focused window of the frontmost app PLUS the Dock and
+    /// menu bar — the three places a voice user is most likely to ask
+    /// about. Returns elements in source-grouped order (window items
+    /// first, then Dock items, then menu-bar items). Returns `[]` if
+    /// AX permission is missing or every source comes back empty.
     func readFocusedWindow() -> [LocalVLMScreenElement] {
+        let walkDeadline = Date(timeIntervalSinceNow: walkDeadlineSeconds)
+        var collectedElements: [LocalVLMScreenElement] = []
+
+        readFocusedWindowElements(deadline: walkDeadline, into: &collectedElements)
+        readDockItems(deadline: walkDeadline, into: &collectedElements)
+        readMenuBarItems(deadline: walkDeadline, into: &collectedElements)
+
+        return collectedElements
+    }
+
+    /// Walk the frontmost app's focused window. Same behavior as the
+    /// original implementation, factored out so global sources (Dock,
+    /// menu bar) can join the result.
+    private func readFocusedWindowElements(
+        deadline: Date,
+        into collectedElements: inout [LocalVLMScreenElement]
+    ) {
         guard let frontmostApplication = NSWorkspace.shared.frontmostApplication else {
-            return []
+            return
         }
         let applicationElement = AXUIElementCreateApplication(frontmostApplication.processIdentifier)
 
@@ -109,24 +126,97 @@ final class PaceAXScreenReader {
         guard focusedWindowResult == .success,
               let focusedWindowObject = focusedWindowValue,
               CFGetTypeID(focusedWindowObject) == AXUIElementGetTypeID() else {
-            return []
+            return
         }
         let focusedWindow = focusedWindowObject as! AXUIElement
 
-        // Pixel scale for the screen the focused window lives on —
-        // AX coordinates are in POINTS, screenshot pixels are in
-        // PIXELS, and the rest of Pace's stack works in pixels.
+        // AX coords are in POINTS; rest of stack works in PIXELS.
         let pixelScaleFactor = pixelScaleFactorForScreen(containing: focusedWindow)
 
-        let walkDeadline = Date(timeIntervalSinceNow: walkDeadlineSeconds)
-        var collectedElements: [LocalVLMScreenElement] = []
         walkSubtree(
             of: focusedWindow,
             collectingInto: &collectedElements,
             pixelScaleFactor: pixelScaleFactor,
-            deadline: walkDeadline
+            deadline: deadline
         )
-        return collectedElements
+    }
+
+    /// Read the Dock's items so "click ChatGPT icon" type commands
+    /// can actually find ChatGPT. The Dock is owned by `com.apple.dock`
+    /// and exposes its items via the AX tree of its single window.
+    /// Each item carries its app name as the AX title.
+    private func readDockItems(
+        deadline: Date,
+        into collectedElements: inout [LocalVLMScreenElement]
+    ) {
+        guard let dockApplication = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.apple.dock"
+        }) else {
+            return
+        }
+        let dockElement = AXUIElementCreateApplication(dockApplication.processIdentifier)
+
+        // Dock items are children of the first AXList in the Dock's
+        // single window. Walking the whole Dock subtree picks them up.
+        let pixelScaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+        walkSubtree(
+            of: dockElement,
+            collectingInto: &collectedElements,
+            pixelScaleFactor: pixelScaleFactor,
+            deadline: deadline
+        )
+    }
+
+    /// Read the frontmost app's menu bar entries (File / Edit / etc.)
+    /// — Pace currently doesn't include them at all, which means
+    /// commands like "open the File menu" have no anchor.
+    private func readMenuBarItems(
+        deadline: Date,
+        into collectedElements: inout [LocalVLMScreenElement]
+    ) {
+        guard let frontmostApplication = NSWorkspace.shared.frontmostApplication else {
+            return
+        }
+        let applicationElement = AXUIElementCreateApplication(frontmostApplication.processIdentifier)
+
+        var menuBarValue: CFTypeRef?
+        let menuBarResult = AXUIElementCopyAttributeValue(
+            applicationElement,
+            kAXMenuBarAttribute as CFString,
+            &menuBarValue
+        )
+        guard menuBarResult == .success,
+              let menuBarObject = menuBarValue,
+              CFGetTypeID(menuBarObject) == AXUIElementGetTypeID() else {
+            return
+        }
+        let menuBar = menuBarObject as! AXUIElement
+
+        let pixelScaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+        // Top-level menu bar items (File, Edit, View, …) — not the
+        // whole expanded menu tree, which would be hundreds of items
+        // and the user can't see them until they open the menu.
+        var menuBarChildrenValue: CFTypeRef?
+        let menuBarChildrenResult = AXUIElementCopyAttributeValue(
+            menuBar,
+            kAXChildrenAttribute as CFString,
+            &menuBarChildrenValue
+        )
+        guard menuBarChildrenResult == .success,
+              let menuBarChildren = menuBarChildrenValue as? [AXUIElement] else {
+            return
+        }
+        for menuBarItem in menuBarChildren {
+            if Date() >= deadline { return }
+            if let role = stringAttribute(kAXRoleAttribute as String, of: menuBarItem),
+               let element = makeScreenElement(
+                   from: menuBarItem,
+                   role: role,
+                   pixelScaleFactor: pixelScaleFactor
+               ) {
+                collectedElements.append(element)
+            }
+        }
     }
 
     // MARK: - Tree walk
