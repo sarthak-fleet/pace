@@ -44,6 +44,10 @@ final class LocalPlannerClient: BuddyPlannerClient {
 
     /// Construct from Info.plist values. Falls back to localhost:1234
     /// (LM Studio default) + a small Qwen reasoner when unset.
+    /// Consults `PacePlannerModelResolver.resolvedIdentifier` first so
+    /// that if the warmup step picked a different model (because the
+    /// configured one wasn't loaded), every subsequent request uses
+    /// the resolved one instead of 404ing.
     @MainActor
     static func makeFromInfoPlist() -> LocalPlannerClient {
         let configuredBaseURL = AppBundleConfiguration
@@ -56,9 +60,12 @@ final class LocalPlannerClient: BuddyPlannerClient {
         let resolvedBaseURL = URL(string: configuredBaseURL)
             ?? URL(string: "http://localhost:1234/v1")!
 
+        let effectiveModelIdentifier = PacePlannerModelResolver.resolvedIdentifier
+            ?? configuredModelIdentifier
+
         return LocalPlannerClient(
             baseURL: resolvedBaseURL,
-            modelIdentifier: configuredModelIdentifier
+            modelIdentifier: effectiveModelIdentifier
         )
     }
 

@@ -46,7 +46,7 @@ enum PaceLMStudioModelLoader {
 
     /// Awaitable version for tests / one-shot scripts.
     static func warmUpConfiguredModels() async {
-        let plannerModelIdentifier = AppBundleConfiguration
+        let configuredPlannerIdentifier = AppBundleConfiguration
             .stringValue(forKey: "LocalPlannerModelIdentifier")
             ?? "qwen3-4b-instruct"
         let useLocalVLM = AppBundleConfiguration
@@ -56,12 +56,23 @@ enum PaceLMStudioModelLoader {
             .stringValue(forKey: "LocalVLMModelIdentifier")
             ?? "ui-venus-1.5-2b"
 
-        print("🔥 LM Studio warmup: starting (planner=\(plannerModelIdentifier), vlm=\(useLocalVLM ? vlmModelIdentifier : "off"))")
+        print("🔥 LM Studio warmup: starting (planner=\(configuredPlannerIdentifier), vlm=\(useLocalVLM ? vlmModelIdentifier : "off"))")
 
         guard await isLMStudioReachable() else {
             print("⚠️  LM Studio warmup: server unreachable at localhost:1234. Start LM Studio and ensure JIT loading is on.")
             return
         }
+
+        // Resolve the planner identifier against what's actually
+        // loaded in LM Studio. If the configured model isn't there,
+        // the resolver picks the smallest available chat model and
+        // caches that for the rest of the session — every subsequent
+        // LocalPlannerClient picks it up via PacePlannerModelResolver
+        // .resolvedIdentifier instead of 404ing.
+        let plannerModelIdentifier = await PacePlannerModelResolver.resolveAndCache(
+            configuredIdentifier: configuredPlannerIdentifier,
+            plannerBaseURL: lmStudioBaseURL.appendingPathComponent("v1")
+        )
 
         // Run planner + VLM warmups concurrently — they're independent
         // and the user wins by getting both ready faster.
