@@ -47,6 +47,13 @@ final class AppleFoundationModelsPlannerClient: BuddyPlannerClient {
     private var currentSession: LanguageModelSession?
     private var currentSessionInstructions: String?
 
+    init() {
+        // Print once at construction so we can see in any user-pasted
+        // log which planner config is actually running — saves the
+        // "did you rebuild?" round-trip during debugging.
+        print("🧬 FM planner config: sampling=greedy, temperature=0, maxResponseTokens=400, resetPerTurn=true")
+    }
+
     /// Reset the session — caller-facing API for "start a new
     /// conversation." Bound to `resetForNewTurn()` so CompanionManager
     /// can wipe stale session-internal transcript between user turns
@@ -118,6 +125,18 @@ final class AppleFoundationModelsPlannerClient: BuddyPlannerClient {
         }
 
         let totalDurationSeconds = Date().timeIntervalSince(startedAt)
+        // One-line dump of the model's raw output (post-think-strip).
+        // Capped at 240 chars so the console stays readable. This is
+        // the single most useful diagnostic when actions don't fire:
+        // we can see what tags the model actually emitted vs what
+        // we expected.
+        let trimmedResponseForLog = accumulatedResponseText
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let truncatedForLog = trimmedResponseForLog.count > 240
+            ? String(trimmedResponseForLog.prefix(240)) + "…"
+            : trimmedResponseForLog
+        print("🪶 FM raw response: \(truncatedForLog)")
         return (text: accumulatedResponseText, duration: totalDurationSeconds)
     }
 

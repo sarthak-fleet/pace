@@ -728,6 +728,16 @@ final class CompanionManager: ObservableObject {
                         screenCaptures: screenCaptures
                     )
 
+                    // Diagnostic: print the first 5 element lines we're
+                    // about to send to the planner. The single most
+                    // useful thing when a click misses is comparing
+                    // "what coordinates the planner saw" against "what
+                    // coordinates the planner emitted."
+                    logFirstElementsOfPromptForDiagnostics(
+                        userPromptForPlanner: userPromptForPlanner,
+                        stepIndex: stepIndex
+                    )
+
                     // 4. Build conversation history (already includes prior steps)
                     let historyForPlanner = conversationHistory.map { entry in
                         (userPlaceholder: entry.userTranscript, assistantResponse: entry.assistantResponse)
@@ -959,6 +969,30 @@ final class CompanionManager: ObservableObject {
     /// enabled in Info.plist, runs the cursor screen through it first and
     /// prepends a structured element map. The cloud planner can then refer
     /// to elements by name without re-doing the perception work itself.
+    /// One-line diagnostic dump of what the planner is about to see.
+    /// Surfaces the FIRST 5 element lines from the prompt so a console
+    /// paste makes it obvious whether the target the user named is
+    /// actually in the element map — separating "model picked wrong"
+    /// from "model never saw the target." Stays terse so it doesn't
+    /// drown the rest of the log.
+    private func logFirstElementsOfPromptForDiagnostics(
+        userPromptForPlanner: String,
+        stepIndex: Int
+    ) {
+        let elementLines = userPromptForPlanner
+            .split(separator: "\n")
+            .filter { $0.contains("|") && !$0.hasPrefix("===") }
+            .prefix(5)
+        guard !elementLines.isEmpty else {
+            print("🔬 Step \(stepIndex) planner sees: <no element-list lines in prompt>")
+            return
+        }
+        print("🔬 Step \(stepIndex) planner sees (top 5 of element map):")
+        for line in elementLines {
+            print("     \(line)")
+        }
+    }
+
     ///
     /// If the VLM is unreachable or errors, returns the raw transcript
     /// unchanged so the cloud-only path keeps working. Errors are logged
