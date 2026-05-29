@@ -162,9 +162,23 @@ class CheckResult:
     name: str
     passed: bool
     detail: str
+    # "fail" — counts toward the exit code; verify.sh will block commits.
+    # "warn" — surface the issue but don't gate. Use for symptoms Pace's
+    #          code already tolerates (e.g. ui-venus dropping description,
+    #          which the parser now handles transparently).
+    severity: str = "fail"
+
+    @property
+    def is_blocking_failure(self) -> bool:
+        return (not self.passed) and self.severity == "fail"
 
     def render(self) -> str:
-        marker = green("PASS") if self.passed else red("FAIL")
+        if self.passed:
+            marker = green("PASS")
+        elif self.severity == "warn":
+            marker = yellow("WARN")
+        else:
+            marker = red("FAIL")
         return f"  [{marker}] {self.name} — {self.detail}"
 
 
@@ -543,12 +557,19 @@ def diagnose_planner_behavior(planner_model: str) -> list[CheckResult]:
         )
         return results
 
+    # --no-load is critical here: diag-pace.py already ensured both models
+    # are resident in the Loading phase. Without --no-load, eval-planners.py
+    # would lms-load the planner a second time, creating a duplicate `:2`
+    # slot that wastes ~18 GB and breaks routing — every fixture then
+    # appears to fail with parse errors. The "0/15 pass" symptom of that
+    # bug used to corrupt the diag-pace summary.
     completed = subprocess.run(
         [
             sys.executable,
             str(eval_script_path),
             "--models",
             planner_model,
+            "--no-load",
         ],
         capture_output=True,
         text=True,
@@ -603,43 +624,81 @@ def diagnose_planner_behavior(planner_model: str) -> list[CheckResult]:
 def diagnose_vlm_json_health(
     base_url: str, vlm_model: str
 ) -> list[CheckResult]:
-    """Sends a single VLM call and checks the response decodes into Pace's
-    expected shape — specifically the `elements` and `description` fields
-    LocalVLMScreenAnalysis requires."""
-    print(bold("\n▶ VLM JSON health check"))
-    elapsed_ms, error, payload = call_vlm(base_url, vlm_model)
+    """Sends two VLM calls (ui-venus-2b is non-deterministic on what
+    fields it includes — single sample is too flaky) and checks the
+    response decodes into Pace's expected shape.
+
+    The `description` field is checked across samples: pass if ANY sample
+    includes it. Pace's decoder now tolerates a missing description (see
+    LocalVLMScreenAnalysisDecoderTests), so a single drop is no longer
+    a hard failure for the app — only a chronic absence indicates a
+    VLM regression worth flagging.
+    """
+    print(bold("\n▶ VLM JSON health check (2 samples)"))
+    samples: list[tuple[int, str | None, dict | None]] = []
+    for sample_index in range(2):
+        sample = call_vlm(base_url, vlm_model)
+        samples.append(sample)
+        elapsed_ms, error, payload = sample
+        if error:
+            print(f"  sample {sample_index + 1}: ERROR after {elapsed_ms}ms — {error}")
+        else:
+            has_desc = isinstance((payload or {}).get("description"), str)
+            print(
+                f"  sample {sample_index + 1}: {elapsed_ms}ms, "
+                f"elements={len((payload or {}).get('elements') or [])}, "
+                f"description={'yes' if has_desc else 'NO'}"
+            )
+
     results: list[CheckResult] = []
 
-    if error or payload is None:
-        results.append(
-            CheckResult("VLM returned JSON-decodable payload", False, str(error))
+    any_decoded = any(payload is not None for _, _, payload in samples)
+    results.append(
+        CheckResult(
+            "VLM returned JSON-decodable payload (>=1 of 2 samples)",
+            any_decoded,
+            "ok" if any_decoded else "all samples errored",
         )
+    )
+    if not any_decoded:
         return results
 
-    results.append(
-        CheckResult("VLM returned JSON-decodable payload", True, f"in {elapsed_ms}ms")
+    any_elements = any(
+        isinstance((payload or {}).get("elements"), list)
+        for _, _, payload in samples
+        if payload is not None
     )
-
-    has_elements = isinstance(payload.get("elements"), list)
     results.append(
         CheckResult(
-            "payload has `elements` array",
-            has_elements,
-            "ok" if has_elements else f"got: {type(payload.get('elements')).__name__}",
+            "payload has `elements` array (>=1 of 2 samples)",
+            any_elements,
+            "ok" if any_elements else "no sample had a list under `elements`",
         )
     )
 
-    has_description = isinstance(payload.get("description"), str)
+    any_description = any(
+        isinstance((payload or {}).get("description"), str)
+        for _, _, payload in samples
+        if payload is not None
+    )
+    # severity="warn" — Pace's decoder defaults missing description to ""
+    # since the LocalVLMScreenAnalysis parser hardening in commit 197993a.
+    # The 2B VLM is known to drop the field on simple test images, so
+    # this isn't a blocking regression — surface it as a heads-up but
+    # don't fail the gate.
     results.append(
         CheckResult(
-            "payload has `description` string (LocalVLMScreenAnalysis requires this)",
-            has_description,
+            "payload has `description` string in >=1 of 2 samples",
+            any_description,
             "ok"
-            if has_description
+            if any_description
             else (
-                "missing/wrong type — this is the parse error Pace logs as "
-                '"Local VLM returned malformed JSON: ...missing.."'
+                "BOTH samples missing description — ui-venus dropped the "
+                "field. Pace's decoder defaults it to '' so this is non-"
+                "blocking, but if it's chronic and the element list also "
+                "looks sparse, consider a larger VLM."
             ),
+            severity="warn",
         )
     )
     return results
@@ -755,12 +814,17 @@ def main(argv: list[str]) -> int:
     for result in all_results:
         print(result.render())
 
-    failed = [result for result in all_results if not result.passed]
-    if failed:
-        print(red(f"\n❌ {len(failed)} check(s) failed"))
+    blocking_failures = [r for r in all_results if r.is_blocking_failure]
+    warnings = [r for r in all_results if not r.passed and r.severity == "warn"]
+
+    if warnings:
+        print(yellow(f"\n⚠ {len(warnings)} non-blocking warning(s) — see WARN lines above"))
+
+    if blocking_failures:
+        print(red(f"\n❌ {len(blocking_failures)} blocking check(s) failed"))
         return 1
 
-    print(green("\n✅ All checks passed."))
+    print(green("\n✅ All blocking checks passed."))
     return 0
 
 

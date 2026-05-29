@@ -447,6 +447,26 @@ def run_all_fixtures_via_foundation_models(
 # ---------------------------------------------------------------------------
 
 
+def lms_ps_loaded_identifiers() -> list[str]:
+    """Returns the identifier column from `lms ps`. Used to detect whether
+    a model is already loaded so we don't ask LM Studio to load a second
+    copy — that creates a `:2` duplicate slot and wastes ~18 GB of RAM
+    on the planner model."""
+    completed = subprocess.run(
+        [LMS_BIN, "ps"], capture_output=True, text=True, check=False
+    )
+    if completed.returncode != 0:
+        return []
+    loaded: list[str] = []
+    for line in completed.stdout.splitlines():
+        if not line.strip() or line.lower().startswith("identifier"):
+            continue
+        parts = re.split(r"\s{2,}", line.strip())
+        if parts:
+            loaded.append(parts[0])
+    return loaded
+
+
 def lms_load(model_identifier: str) -> bool:
     print(f"⬇ loading {model_identifier}…", flush=True)
     completed = subprocess.run(
@@ -482,6 +502,7 @@ def lms_unload(model_identifier: str) -> None:
 def evaluate_model_on_fixtures(
     model_identifier: str,
     fixtures: list[Fixture],
+    skip_load_unload: bool = False,
 ) -> dict[str, tuple[ModelResponse, FixtureScore]]:
     results: dict[str, tuple[ModelResponse, FixtureScore]] = {}
     is_fm = model_identifier.lower() in ("fm", "foundation-models", "foundationmodels")
@@ -503,19 +524,30 @@ def evaluate_model_on_fixtures(
                     print(f"      · {failure_reason}")
         return results
 
-    if not lms_load(model_identifier):
-        for fixture in fixtures:
-            results[fixture.name] = (
-                ModelResponse(
-                    spoken_text="",
-                    point_at_element_id=-99,
-                    click_element_id=-99,
-                    elapsed_ms=0,
-                    error="model failed to load",
-                ),
-                FixtureScore(passed=False, failures=["load failed"]),
-            )
-        return results
+    # Skip load/unload entirely when the caller already manages it (e.g.
+    # diag-pace.py loaded both VLM and planner before delegating to us)
+    # OR when the model is already resident (avoids creating a duplicate
+    # `<name>:2` slot which silently eats ~18 GB and breaks routing).
+    we_loaded_the_model = False
+    if not skip_load_unload:
+        already_loaded_identifiers = lms_ps_loaded_identifiers()
+        if model_identifier in already_loaded_identifiers:
+            print(f"  ✓ {model_identifier} already resident — skipping lms load")
+        elif not lms_load(model_identifier):
+            for fixture in fixtures:
+                results[fixture.name] = (
+                    ModelResponse(
+                        spoken_text="",
+                        point_at_element_id=-99,
+                        click_element_id=-99,
+                        elapsed_ms=0,
+                        error="model failed to load",
+                    ),
+                    FixtureScore(passed=False, failures=["load failed"]),
+                )
+            return results
+        else:
+            we_loaded_the_model = True
 
     try:
         for fixture in fixtures:
@@ -532,7 +564,11 @@ def evaluate_model_on_fixtures(
                 for failure_reason in score.failures:
                     print(f"      · {failure_reason}")
     finally:
-        lms_unload(model_identifier)
+        # Only unload if we were the ones who loaded it. Don't evict a
+        # model some other caller (Pace.app, diag-pace.py, the user) is
+        # actively using.
+        if we_loaded_the_model:
+            lms_unload(model_identifier)
 
     return results
 
@@ -560,6 +596,13 @@ def main(argv: list[str]) -> int:
         default=None,
         help="If set, write the markdown scorecard here in addition to stdout.",
     )
+    parser.add_argument(
+        "--no-load",
+        action="store_true",
+        help="Skip lms load / lms unload — assume the caller has already "
+        "ensured the model is resident. Use this when chaining from "
+        "diag-pace.py so the planner isn't double-loaded into a `:2` slot.",
+    )
     args = parser.parse_args(argv)
 
     fixture_paths = sorted(FIXTURES_DIR.glob("*.txt"))
@@ -585,7 +628,7 @@ def main(argv: list[str]) -> int:
     for model_identifier in args.models:
         print(f"\n══════════════ {model_identifier} ══════════════", flush=True)
         all_results[model_identifier] = evaluate_model_on_fixtures(
-            model_identifier, fixtures
+            model_identifier, fixtures, skip_load_unload=args.no_load
         )
 
     # ---- Markdown scorecard ----
