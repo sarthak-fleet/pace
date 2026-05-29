@@ -2,6 +2,13 @@
 
 **The fastest voice agent for Mac. Zero API cost. Fully on-device.**
 
+<!--
+  Demo GIF — record with Cmd+Shift+5 and convert via
+  bash scripts/make-readme-gif.sh ~/Desktop/your-recording.mov
+  See scripts/make-readme-gif.sh for the exact recipe.
+-->
+<!-- ![Pace demo](docs/assets/pace-demo.gif) -->
+
 A menu-bar voice agent for macOS. You hold a hotkey, talk, and Pace answers — reading the screen you're looking at and (optionally) clicking on your behalf. Every byte stays on your Mac.
 
 - **Every byte stays on your Mac.** No cloud LLM, no API keys, no Cloudflare Worker. Speech, vision, reasoning, and speech-out all run locally. The "airplane mode" badge is the moat — Wispr Flow, Claude Computer Use, and Superhuman literally cannot ship this.
@@ -25,9 +32,9 @@ Architecture and per-file responsibilities: see [`AGENTS.md`](./AGENTS.md).
 
 ## What it runs on
 
-- **Speech-to-text**: Apple `SFSpeechRecognizer` (on-device, instant). Optional WhisperKit (CoreML / Neural Engine) via Info.plist.
+- **Speech-to-text**: Apple `SFSpeechRecognizer` (on-device, instant).
 - **Screen understanding**: a small vision-language model via LM Studio (default: UI-Venus-1.5-2B, the GUI-specialist 2B model) merged with native Apple Vision OCR for text fidelity.
-- **Reasoning / planning**: any OpenAI-compatible reasoner via LM Studio (default: Qwen3-14B). `cache_prompt: true` sent on every request; speculative-decoding recipe in [`SETUP_LOCAL.md`](./SETUP_LOCAL.md) for another 40-60% off generation time.
+- **Reasoning / planning**: any OpenAI-compatible reasoner via LM Studio (default: Qwen3-30B-A3B, MoE — 3B active params, scored 15/15 on Pace's eval at ~925ms mean). `cache_prompt: true` sent on every request.
 - **Text-to-speech**: `AVSpeechSynthesizer`, sentence-streamed so audio starts within ~500ms of the planner's first token.
 - **Click / keystroke synthesis**: `AXUIElement` (semantic press) then `CGEvent` fallback.
 - **Voice input UI**: Whisper Flow-style glassmorphic pill.
