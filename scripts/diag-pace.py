@@ -531,6 +531,146 @@ def diagnose_thrash(
     return results
 
 
+def diagnose_full_turn_simulation(
+    base_url: str, vlm_model: str, planner_model: str
+) -> list[CheckResult]:
+    """Simulate one full Pace turn: VLM call → assemble element map →
+    planner call. Reports per-stage latency and total. Catches problems
+    that show up only when the two models are used together, and
+    surfaces the realistic end-to-end TTFT estimate for a "what's on
+    screen" question.
+
+    What this doesn't cover: screenshot capture from ScreenCaptureKit,
+    OCR via Vision framework, AX-tree walk, TTS, action execution.
+    Those add another ~500-2000ms in real Pace; subtract this number
+    from the user's observed TTFSW to estimate that overhead.
+    """
+    print(bold("\n▶ Synthetic full turn (VLM → planner chain)"))
+
+    started_vlm_at = time.monotonic()
+    vlm_elapsed_ms, vlm_error, vlm_payload = call_vlm(base_url, vlm_model)
+    print(f"  stage 1  VLM       {vlm_elapsed_ms:>5}ms")
+    if vlm_error or vlm_payload is None:
+        return [
+            CheckResult(
+                "synthetic turn — VLM stage succeeded",
+                False,
+                f"VLM error: {vlm_error}",
+            )
+        ]
+
+    # Build an element map line in the same shape CompanionManager
+    # sends to the planner. Use the VLM's actual output so we exercise
+    # the realistic VLM→planner handoff.
+    element_lines: list[str] = []
+    for element_index, element in enumerate((vlm_payload.get("elements") or [])[:30]):
+        role = str(element.get("role", "other")).split("|")[0]
+        bbox = element.get("bbox") or [0, 0, 0, 0]
+        if isinstance(bbox, list) and len(bbox) >= 2:
+            x_centre = int(bbox[0]) + (int(bbox[2]) // 2 if len(bbox) >= 3 else 0)
+            y_centre = int(bbox[1]) + (int(bbox[3]) // 2 if len(bbox) >= 4 else 0)
+        else:
+            x_centre, y_centre = 0, 0
+        label = str(element.get("label", "")).replace("|", "/")
+        text = str(element.get("text") or "").replace("|", "/")
+        element_lines.append(
+            f"[{element_index}] {role}|{x_centre},{y_centre}|{label}|{text}"
+        )
+    element_map = "\n".join(element_lines) if element_lines else "(no elements detected)"
+    synthetic_transcript = "what's on the screen"
+
+    # Inline planner call — diag-pace.py is self-contained and doesn't
+    # share state with eval-planners.py at runtime.
+    planner_started_at = time.monotonic()
+    chat_url = f"{base_url.rstrip('/')}/chat/completions"
+    planner_body = {
+        "model": planner_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are pace, a voice companion. Respond with strict JSON: "
+                    '{"spokenText":"<short reply>","pointAtElementId":-1,'
+                    '"clickElementId":-1}. Use -1 for no target.'
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "On-device screen analysis (auto-extracted):\n\n"
+                    "=== primary focus ===\n"
+                    f"{element_map}\n\n"
+                    f"User said: {synthetic_transcript}"
+                ),
+            },
+        ],
+        "temperature": 0,
+        "max_tokens": 300,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "PaceTurn",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "spokenText": {"type": "string"},
+                        "pointAtElementId": {"type": "integer"},
+                        "clickElementId": {"type": "integer"},
+                    },
+                    "required": [
+                        "spokenText",
+                        "pointAtElementId",
+                        "clickElementId",
+                    ],
+                },
+            },
+        },
+    }
+    planner_request = urllib.request.Request(
+        chat_url,
+        data=json.dumps(planner_body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer lm-studio",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(planner_request, timeout=300) as response_stream:
+            _ = response_stream.read()
+        planner_elapsed_ms = int((time.monotonic() - planner_started_at) * 1000)
+    except (urllib.error.URLError, TimeoutError) as transport_error:
+        return [
+            CheckResult(
+                "synthetic turn — planner stage succeeded",
+                False,
+                f"planner error: {transport_error}",
+            )
+        ]
+
+    total_elapsed_ms = int((time.monotonic() - started_vlm_at) * 1000)
+    print(f"  stage 2  planner   {planner_elapsed_ms:>5}ms")
+    print(f"  total              {total_elapsed_ms:>5}ms")
+
+    return [
+        CheckResult(
+            "synthetic turn — both stages succeeded",
+            True,
+            f"VLM {vlm_elapsed_ms}ms + planner {planner_elapsed_ms}ms = {total_elapsed_ms}ms total",
+        ),
+        # Real Pace TTFT target is 2500ms. Our synthetic ignores
+        # screenshot capture, OCR, and AX-tree walk, so a sub-3500ms
+        # synthetic turn is the bar for "good enough to ship".
+        CheckResult(
+            "synthetic full turn under 3500ms",
+            total_elapsed_ms < 3500,
+            f"{total_elapsed_ms}ms",
+        ),
+    ]
+
+
 def diagnose_planner_behavior(planner_model: str) -> list[CheckResult]:
     """Delegate to eval-planners.py for the configured planner and parse
     its summary line so a single diag-pace.py call asserts behavior
@@ -800,6 +940,11 @@ def main(argv: list[str]) -> int:
     # VLM JSON health check (one extra call against the VLM)
     vlm_health_results = diagnose_vlm_json_health(base_url, vlm_model)
 
+    # Synthetic full turn — VLM → planner chained, end-to-end latency.
+    full_turn_results = diagnose_full_turn_simulation(
+        base_url, vlm_model, planner_model
+    )
+
     # Optional planner behavior eval — slower but catches behavior
     # regressions thrash + VLM-health alone won't see (e.g. the planner
     # starts hallucinating element IDs after a prompt change).
@@ -807,7 +952,7 @@ def main(argv: list[str]) -> int:
     if args.eval:
         behavior_results = diagnose_planner_behavior(planner_model)
 
-    all_results = thrash_results + vlm_health_results + behavior_results
+    all_results = thrash_results + vlm_health_results + full_turn_results + behavior_results
 
     # Summary
     print(bold("\n▶ Summary"))
