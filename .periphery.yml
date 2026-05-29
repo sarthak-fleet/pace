@@ -1,0 +1,24 @@
+# Periphery configuration for Pace
+# Run: bash scripts/find-dead-code.sh
+#
+# Why these settings:
+# - project: the Xcode project file
+# - schemes: which scheme to index
+# - skip-build: reuse the index store from test-pace.sh's isolated
+#   DerivedData. Don't trigger a real xcodebuild (that would invalidate
+#   TCC per AGENTS.md).
+# - retain-public: SwiftUI views and other publicly-exposed types are
+#   often referenced via @ViewBuilder closures that periphery can't
+#   trace — retaining public symbols avoids false positives on
+#   single-app projects where there's no external consumer anyway.
+# - retain-assign-only-properties: tons of Pace's delegate retention
+#   uses the "assign once, never read" pattern (AVSpeechSynthesizer
+#   delegate, Sparkle updater controller). Don't flag those.
+
+project: leanring-buddy.xcodeproj
+schemes:
+  - leanring-buddy
+skip_build: true
+index_store_path: /tmp/pace-test-derived-data/Index.noindex/DataStore
+retain_public: false
+retain_assign_only_properties: true
