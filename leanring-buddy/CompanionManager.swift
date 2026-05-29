@@ -78,6 +78,17 @@ final class CompanionManager: ObservableObject {
         return StreamingSentenceTTSPipeline(ttsClient: ttsClient)
     }()
 
+    /// Classifies the user's transcript into pureKnowledge /
+    /// screenDescription / screenAction / chitchat so the pipeline
+    /// can skip work the turn doesn't need. Today only the chitchat
+    /// fast-path is wired (canned response, no VLM, no planner call) —
+    /// other intents still flow through the full pipeline. The
+    /// rule-based backend ships now; the Core ML backend takes over
+    /// once the .mlmodel is bundled (see #113 follow-up).
+    private lazy var intentClassifier: PaceIntentClassifier = {
+        return PaceIntentClassifier()
+    }()
+
     // The reasoning/planning model. Today this is always a
     // LocalPlannerClient pointing at LM Studio; the protocol shape stays
     // so an alternate local runtime (Ollama, raw llama.cpp, MLX-server)
@@ -683,6 +694,68 @@ final class CompanionManager: ObservableObject {
 
     // MARK: - AI Response Pipeline (plan-act-observe loop)
 
+    /// Picks a canned reply for chitchat turns the intent classifier
+    /// confidently identified. Hardcoded responses are intentionally
+    /// short and varied so back-to-back greetings don't feel scripted.
+    /// Returns a single utterance string ready for TTS — no further
+    /// processing needed.
+    private func cannedChitchatResponse(for transcript: String) -> String {
+        let lowercased = transcript.lowercased()
+        if lowercased.contains("thank") || lowercased.contains("appreciate") {
+            return ["you got it", "anytime", "happy to help", "no problem"].randomElement() ?? "you got it"
+        }
+        if lowercased.contains("bye") || lowercased.contains("later") || lowercased.contains("see you") {
+            return ["catch you later", "see you", "talk soon"].randomElement() ?? "see you"
+        }
+        if lowercased.contains("how are you") || lowercased.contains("how's it going") || lowercased.contains("what's up") {
+            return ["doing great, what's up?", "all good — what can I do?", "i'm good, you?"].randomElement() ?? "doing great"
+        }
+        if lowercased.contains("good morning") {
+            return "morning! what's the plan?"
+        }
+        if lowercased.contains("good evening") {
+            return "evening! what's up?"
+        }
+        if lowercased.contains("hi") || lowercased.contains("hello") || lowercased.contains("hey") {
+            return ["hey", "hey there", "hi! what's on your mind?"].randomElement() ?? "hey"
+        }
+        // Generic acknowledgement for "ok cool", "got it", "perfect", "nice", etc.
+        return ["got it", "okay", "sounds good"].randomElement() ?? "okay"
+    }
+
+    /// Short-circuit turn handler for the chitchat intent. Skips VLM,
+    /// planner, and the agent loop entirely. Dispatches a canned
+    /// response straight to TTS and the overlay bubble. Used by the
+    /// intent-classifier fast-path in `sendTranscriptToPlannerWithScreenshot`.
+    private func handleChitchatFastPath(transcript: String) {
+        let cannedReply = cannedChitchatResponse(for: transcript)
+
+        // Append to conversation history so multi-turn context still sees
+        // the exchange — important so a follow-up question after a
+        // greeting still reads naturally to the planner.
+        conversationHistory.append(
+            (userTranscript: transcript, assistantResponse: cannedReply)
+        )
+
+        responseOverlayManager.showOverlayAndBeginStreaming()
+        responseOverlayManager.updateStreamingText(cannedReply)
+
+        currentResponseTask = Task {
+            voiceState = .responding
+            await streamingSentenceTTSPipeline.flushFinal(finalSpokenText: cannedReply)
+            // Wait for TTS to drain before returning to idle so the
+            // walking avatar's mouth animation matches.
+            while ttsClient.isPlaying {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
+            responseOverlayManager.finishStreaming()
+            voiceState = .idle
+            if isWalkingAvatarEnabled {
+                avatarOverlayManager?.show()
+            }
+        }
+    }
+
     /// Multi-step agent loop: capture screens → optional local VLM →
     /// planner → execute actions → re-screenshot → repeat. Each step is
     /// at most one planner round-trip and one action sequence. The loop
@@ -704,6 +777,19 @@ final class CompanionManager: ObservableObject {
         // and bust the 4K context window. Stateless conformers (LocalPlanner)
         // no-op.
         plannerClient.resetForNewTurn()
+
+        // Fast-path chitchat ("hi pace", "thanks") with a canned response
+        // — skips VLM + planner + agent loop entirely. ~2200ms → ~50ms.
+        // Conservative: only fires when the classifier is confident
+        // enough to return .chitchat (not .unknown). Anything ambiguous
+        // falls through to the full pipeline.
+        let intentPrediction = intentClassifier.classify(transcript)
+        if intentPrediction.intent == .chitchat {
+            print("🎯 Intent: chitchat (confidence \(String(format: "%.2f", intentPrediction.confidence))) — fast-path")
+            handleChitchatFastPath(transcript: transcript)
+            return
+        }
+        print("🎯 Intent: \(intentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", intentPrediction.confidence))) — full pipeline")
 
         currentResponseTask = Task {
             voiceState = .processing
