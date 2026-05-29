@@ -38,7 +38,32 @@ struct LocalVLMScreenAnalysis: Codable {
     let elements: [LocalVLMScreenElement]
     /// One-paragraph natural-language description of what's on screen.
     /// Useful as conversational context for the downstream planner LLM.
+    ///
+    /// Why this defaults to empty rather than being required: ui-venus
+    /// (and likely other 2B-class VLMs) sometimes drops the description
+    /// field entirely on dense screens like Xcode, returning just
+    /// `{"elements":[…]}`. Hard-failing the whole analysis in that case
+    /// forced Pace to fall back to OCR-only, even though the element
+    /// list itself was useful. Treat the absence as a soft loss.
     let description: String
+
+    init(elements: [LocalVLMScreenElement], description: String) {
+        self.elements = elements
+        self.description = description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.elements = try container.decode([LocalVLMScreenElement].self, forKey: .elements)
+        // If description is missing/null, default to empty rather than
+        // throwing — see field doc-comment above.
+        self.description = (try? container.decodeIfPresent(String.self, forKey: .description)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case elements
+        case description
+    }
 }
 
 struct LocalVLMClientError: LocalizedError {
