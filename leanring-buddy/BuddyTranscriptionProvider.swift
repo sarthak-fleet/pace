@@ -31,10 +31,8 @@ protocol BuddyTranscriptionProvider {
     /// Optional: pre-load any heavy models so the first push-to-talk
     /// doesn't pay the cold-load cost. `onReady` is invoked on the
     /// MainActor exactly once when the model is fully loaded and the
-    /// next session start won't block. Default no-op; WhisperKit
-    /// overrides to kick off its CoreML compile / weight load. Apple
-    /// Speech etc. fire `onReady` synchronously since they have nothing
-    /// to warm up.
+    /// next session start won't block. Default no-op for backends with
+    /// nothing to warm (e.g. Apple Speech).
     func warmUpModelInBackground(onReady: @escaping @Sendable @MainActor () -> Void)
 }
 
@@ -47,31 +45,13 @@ extension BuddyTranscriptionProvider {
 }
 
 enum BuddyTranscriptionProviderFactory {
-    private enum PreferredProvider: String {
-        case appleSpeech = "apple"
-        case whisperKit = "whisperkit"
-    }
-
+    /// Apple Speech (`SFSpeechRecognizer`, on-device) is the only
+    /// shipped provider. The protocol stays generic so a future
+    /// alternate backend (e.g. WhisperKit, MLX-Whisper) can drop in
+    /// as a sibling conformer.
     static func makeDefaultProvider() -> any BuddyTranscriptionProvider {
-        let provider = resolveProvider()
+        let provider = AppleSpeechTranscriptionProvider()
         print("🎙️ Transcription: using \(provider.displayName)")
         return provider
-    }
-
-    private static func resolveProvider() -> any BuddyTranscriptionProvider {
-        let preferredProviderRawValue = AppBundleConfiguration
-            .stringValue(forKey: "VoiceTranscriptionProvider")?
-            .lowercased()
-        let preferredProvider = preferredProviderRawValue.flatMap(PreferredProvider.init(rawValue:))
-
-        if preferredProvider == .whisperKit {
-            let whisperKitProvider = WhisperKitTranscriptionProvider()
-            if whisperKitProvider.isConfigured {
-                return whisperKitProvider
-            }
-            print("⚠️ Transcription: WhisperKit preferred but not configured, falling back to Apple Speech")
-        }
-
-        return AppleSpeechTranscriptionProvider()
     }
 }

@@ -4,10 +4,6 @@
 <dict>
 	<key>LSUIElement</key>
 	<true/>
-	<key>VoiceTranscriptionProvider</key>
-	<string>apple</string>
-	<key>WhisperKitModel</key>
-	<string>openai_whisper-large-v3-v20240930_turbo</string>
 	<key>UseLocalVLMForScreenContext</key>
 	<string>true</string>
 	<key>LocalVLMBaseURL</key>

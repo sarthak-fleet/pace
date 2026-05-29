@@ -13,15 +13,13 @@ For first-time setup, run the provisioning script — it installs LM Studio via 
 
 After the script finishes, just **Cmd+R in Xcode** to build and run. Do NOT use `xcodebuild` from the terminal — it invalidates TCC permissions per `AGENTS.md`. When the app prompts on first launch, grant Microphone, Accessibility, Screen Recording, and Speech Recognition.
 
-WhisperKit is an OPTIONAL alternative STT backend; Apple Speech is the default and needs no SPM dependency. Skip the WhisperKit section below unless you specifically want to swap.
-
 The detailed manual steps below explain what the script does and what to tweak.
 
 ## What runs where
 
 | Component | Implementation |
 |---|---|
-| Speech-to-text | **Apple Speech** (`SFSpeechRecognizer`, on-device) by default. WhisperKit is an optional `whisperkit` backend gated on the SPM dep. |
+| Speech-to-text | **Apple Speech** (`SFSpeechRecognizer`, on-device). |
 | Text-to-speech | **AVSpeechSynthesizer** (Apple built-in) — the only TTS path; no cloud option. |
 | Screen analysis (VLM) | **LM Studio** at `localhost:1234`, default model `ui-venus-ground-7b` (GUI-specialist, ScreenSpot-v2 ~94). Only invoked when `UseLocalVLMForScreenContext=true`. |
 | Reasoning / planning | **LM Studio** at `localhost:1234`, default model `qwen3-30b-a3b-thinking-2507`. `LocalPlannerClient` is the only conformer to `BuddyPlannerClient` today. |
@@ -32,21 +30,7 @@ The detailed manual steps below explain what the script does and what to tweak.
 | Cursor | **Codex-style arrow** — sharp pointer with linear gradient + highlight stroke. |
 | Walking avatar | **`PaceAvatarOverlay`** — small character that walks along the bottom of the cursor screen. Click to open the menu-bar panel. Toggleable. |
 
-## 1. (Optional) Add the WhisperKit Swift Package
-
-**Skip this section if you're using the default Apple Speech provider.** WhisperKit is only needed if you want CoreML/ANE Whisper instead of Apple's built-in SFSpeechRecognizer.
-
-Open the Xcode project, then:
-
-1. **File → Add Package Dependencies…**
-2. Paste: `https://github.com/argmaxinc/WhisperKit`
-3. Choose **Up to Next Major** from the latest tagged release.
-4. Add the `WhisperKit` library product to the **leanring-buddy** target.
-5. Set `VoiceTranscriptionProvider=whisperkit` in `leanring-buddy/Info.plist`.
-
-The provider source file is gated by `#if canImport(WhisperKit)`, so the build will succeed even if you skip this step. Apple Speech remains active.
-
-## 2. Install LM Studio and load both a VLM and a reasoner
+## 1. Install LM Studio and load both a VLM and a reasoner
 
 1. Download LM Studio from <https://lmstudio.ai>.
 2. In the search tab, download:
@@ -60,14 +44,12 @@ Verify the server is up and both models are listed:
 curl -s http://localhost:1234/v1/models | grep -E "qwen3-vl|qwen3-30b|qwen3-4b"
 ```
 
-## 3. Flip the Info.plist switches
+## 2. Flip the Info.plist switches
 
 `leanring-buddy/Info.plist` now has these knobs:
 
 | Key | Default | Set to | Effect |
 |---|---|---|---|
-| `VoiceTranscriptionProvider` | `apple` | `whisperkit` | Apple Speech (`SFSpeechRecognizer`) is the default — instant, on-device, no model download. Set to `whisperkit` to use a downloaded Whisper variant via CoreML/ANE. |
-| `WhisperKitModel` | `openai_whisper-large-v3-v20240930_turbo` | same | Which Whisper variant WhisperKit downloads on first push-to-talk (only used when `VoiceTranscriptionProvider=whisperkit`). |
 | `UseLocalVLMForScreenContext` | `true` | `false` | Default-on; flip off to skip the VLM call and send the raw transcript straight to the planner. |
 | `LocalVLMBaseURL` | `http://localhost:1234/v1` | same | LM Studio OpenAI-compatible root for the VLM |
 | `LocalVLMModelIdentifier` | `ui-venus-1.5-8b` | same | Must match the VLM model loaded in LM Studio. Default is UI-Venus-1.5-8B (GUI specialist built on Qwen3-VL, mlx-community 4-bit). |
@@ -85,15 +67,13 @@ The Info.plist already ships with Apple Speech + on-device TTS as the defaults. 
 <string>true</string>
 ```
 
-## 4. Build and run
+## 3. Build and run
 
 ```bash
 open leanring-buddy.xcodeproj
 ```
 
 Then Cmd+R in Xcode. **Do not use `xcodebuild` from the terminal** — it invalidates TCC permissions and you'll have to re-grant accessibility, screen recording, etc.
-
-First WhisperKit run will download the model (~1.5 GB for large-v3-turbo) into the app's Documents container. Subsequent launches load from the CoreML cache.
 
 First LM Studio call will be slow (~2-5s cold load). Once the model is hot, expect <2s screenshot-to-element-map on Apple Silicon for the 8B model.
 
@@ -198,8 +178,6 @@ If acceptance rate falls below ~0.5 (LM Studio logs it as `acc_rate=…`), specu
 | Smaller VLM (`ui-venus-1.5-2b` default) | Info.plist `LocalVLMModelIdentifier` | Already on the smallest viable; OCR layer fills text fidelity. |
 
 ## Troubleshooting
-
-**WhisperKit can't find a model:** ensure the `WhisperKitModel` identifier in Info.plist matches one of the available variants at <https://huggingface.co/argmaxinc/whisperkit-coreml>.
 
 **LM Studio returns 404 on `/v1/chat/completions`:** ensure a model is *loaded* in LM Studio (not just downloaded), the server is started, and `LocalVLMModelIdentifier` matches the loaded model name exactly.
 
