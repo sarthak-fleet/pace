@@ -280,6 +280,11 @@ final class CompanionManager: ObservableObject {
         responseOverlayManager.setAnnotationsEnabled(enabled)
     }
 
+    func smokeSetCursorAnnotationsEnabled(_ enabled: Bool) -> Bool {
+        setCursorAnnotationsEnabled(enabled)
+        return areCursorAnnotationsEnabled
+    }
+
     /// User preference for whether Pace asks before executing local tools.
     /// Defaults on because action mode can click, type, open apps/URLs,
     /// and modify local system state.
@@ -355,6 +360,13 @@ final class CompanionManager: ObservableObject {
             request: approvalRequest,
             decision: approvalDecision
         )
+    }
+
+    func smokeRequestApprovalForSyntheticActionPlan() -> Bool {
+        let syntheticActionPlan = PaceActionExecutionPlan.serial(actions: [
+            .openURL("https://example.com")
+        ])
+        return requestUserApprovalForActionPlan(syntheticActionPlan)
     }
 
     /// Pace skips the upstream first-run flow entirely — no welcome video,

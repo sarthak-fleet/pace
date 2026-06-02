@@ -5,7 +5,7 @@ ship MCP integrations.
 
 ## Priority 1: Approval And Safety
 
-Status: implemented; Xcode suite passing, LM Studio/manual runtime verification still needed.
+Status: implemented and runtime-smoked.
 
 - Ask before executing local tool calls.
 - Keep approval default-on.
@@ -13,8 +13,8 @@ Status: implemented; Xcode suite passing, LM Studio/manual runtime verification 
   input injection, and destructive.
 - Keep `EnableActions` as the hard kill switch.
 - Approval popup copy and allow/cancel policy are covered by pure unit tests;
-  a full popup smoke still requires a planner-emitted tool call in the running
-  app.
+  `scripts/smoke-runtime-hooks.sh` verifies the real popup cancellation path in
+  a running app launched with gated smoke hooks.
 
 ## Priority 2: Typed Tool Registry
 
@@ -66,7 +66,7 @@ Status: implemented as a rule-based scaffold.
 
 ## Priority 6: Tests
 
-Status: implemented for unit/build coverage; manual runtime smoke coverage still needed.
+Status: implemented for unit/build and runtime-smoke coverage.
 
 - Keep parser and image-diff tests current.
 - Parser tests cover registry aliases and Apple app tool parsing.
@@ -81,5 +81,5 @@ Status: implemented for unit/build coverage; manual runtime smoke coverage still
 - Runtime diagnostic passed with both LM Studio models resident, no model
   thrash, VLM JSON health ok, synthetic VLM->planner turn under 3.5s, and
   planner eval 19/19.
-- Still needed: physical smoke tests for approval prompts and action cancellation
-  with LM Studio running.
+- Runtime smoke hooks passed for panel show/hide, cursor annotation off/on
+  state, and approval-popup cancellation.

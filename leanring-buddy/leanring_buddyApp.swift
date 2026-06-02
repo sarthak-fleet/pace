@@ -30,6 +30,7 @@ struct leanring_buddyApp: App {
 final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarPanelManager: MenuBarPanelManager?
     private var menuBarOverlayManager: PaceMenuBarOverlayManager?
+    private var runtimeSmokeTestHooks: PaceRuntimeSmokeTestHooks?
     private let companionManager = CompanionManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -65,6 +66,13 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         )
         menuBarOverlayManager?.show()
         companionManager.start()
+        if PaceRuntimeSmokeTestHooks.isEnabled {
+            runtimeSmokeTestHooks = PaceRuntimeSmokeTestHooks(
+                menuBarPanelManager: menuBarPanelManager,
+                companionManager: companionManager
+            )
+            print("🧪 Pace: runtime smoke-test hooks enabled")
+        }
         // Auto-open the panel if the user still needs to do something:
         // either they haven't onboarded yet, or permissions were revoked.
         if !companionManager.hasCompletedOnboarding || !companionManager.allPermissionsGranted {

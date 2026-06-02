@@ -81,6 +81,14 @@ final class MenuBarPanelManager: NSObject {
         togglePanel()
     }
 
+    func showPanelForSmokeTest() {
+        showPanel()
+    }
+
+    func hidePanelForSmokeTest() {
+        hidePanel()
+    }
+
     // MARK: - Panel Lifecycle
 
     private func showPanel() {

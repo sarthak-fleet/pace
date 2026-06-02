@@ -35,6 +35,8 @@ The latest local `main` includes:
   and cancellation.
 - Dry-run executor tests for URL, Music, Calendar, Reminders, Finder, Notes,
   Mail, Things, Shortcuts, and Messages observations.
+- Gated runtime smoke hooks for panel show/hide, cursor annotation off/on, and
+  real approval-popup cancellation.
 - Screen image diffing plus explicit watch-mode controller and panel toggle for
   meaningful change events.
 - Explicit watch-mode voice commands for "watch my screen" and "stop watching".
@@ -59,27 +61,16 @@ The latest local `main` includes:
 - `python3 scripts/diag-pace.py --quick --no-load --eval` passed after starting
   the LM Studio server: both models resident, no model thrash, VLM JSON healthy,
   synthetic VLM-to-planner turn under 3.5s, planner eval 19/19.
-
-## Still Needs Manual Verification
-
-- Test the `Cursor Annotations` toggle in the app.
-- Start LM Studio with the configured VLM and planner, then smoke-test:
-  - screen-aware Q&A
-  - open app
-  - open URL
-  - volume and brightness controls
-  - Music controls
-  - Calendar reads
-  - Reminder creation
-  - Finder/Notes/Mail/Things/Shortcuts/Messages tools
-- Treat `EnableActions` carefully because enabled action mode can post real
-  local input and system actions.
-- Keep `Approve Actions` on unless actively testing automation speed.
+- `scripts/smoke-runtime-hooks.sh` passed: app launched with
+  `PACE_ENABLE_SMOKE_HOOKS=1`, panel show/hide succeeded, cursor annotations
+  toggled off/on, and the real approval popup returned cancel after Escape.
 
 ## Latest Runtime Notes
 
 - The notch capsule opened the companion panel successfully via a direct
   click smoke test.
-- Coordinate-based toggle clicking was too brittle because it can hit the
-  underlying terminal if the panel dismisses; use unit/state coverage or a safer
-  UI harness for cursor-annotation toggle verification.
+- Coordinate-based toggle clicking was too brittle, so app-level verification
+  now uses gated runtime smoke hooks instead of fragile screen coordinates.
+- Treat `EnableActions` carefully because enabled action mode can post real
+  local input and system actions. Keep `Approve Actions` on unless actively
+  testing automation speed.
