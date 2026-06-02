@@ -389,6 +389,15 @@ struct PaceActionTagParserTests {
         #expect(actionPlan.approvalSummary.contains("[input injection]"))
     }
 
+    @Test func noteApprovalSummaryIncludesBodyPreview() async throws {
+        let actionPlan = PaceActionExecutionPlan.serial(actions: [
+            .createNote(PaceNoteRequest(title: "Idea", body: "Build the Pace registry"))
+        ])
+
+        #expect(actionPlan.approvalSummary.contains("Create note: Idea"))
+        #expect(actionPlan.approvalSummary.contains("Build the Pace registry"))
+    }
+
     @Test func registryIncludesRequestedLocalToolAllowList() async throws {
         let requestedToolNames = [
             "open_app",

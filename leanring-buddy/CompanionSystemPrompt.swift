@@ -122,6 +122,10 @@ enum CompanionSystemPrompt {
     available tools:
     \(PaceToolRegistry.plannerToolListText)
 
+    tool choice rules:
+    - if the user asks to create, make, add, or save a note, use {"tool":"notes","title":"...","body":"..."} with the user's requested text in body. do not use open_app Notes for note creation.
+    - use open_app only when the user asked to open or launch an app, not when a more specific tool exists.
+
     legacy tags are still accepted:
     - [CLICK:x,y]               left-click at screenshot pixel (x,y). add :screenN for non-cursor screens.
     - [DOUBLE_CLICK:x,y]        double-click, same coord space.

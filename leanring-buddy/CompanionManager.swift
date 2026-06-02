@@ -1046,6 +1046,7 @@ final class CompanionManager: ObservableObject {
             let maxAgentStepCount = PaceTagParsers.readMaxAgentStepCount()
             var stepIndex = 0
             var currentTurnUserPrompt = transcript
+            var pendingPostActionFeedbackText: String?
 
             do {
                 agentStepLoop: while stepIndex < maxAgentStepCount {
@@ -1167,6 +1168,11 @@ final class CompanionManager: ObservableObject {
                         return pointingParseResultRaw
                     }()
                     let spokenText = parseResult.spokenText
+                    let plannerProvidedFinalFeedback = actionParseResult.actions.isEmpty
+                        && !spokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    if plannerProvidedFinalFeedback {
+                        pendingPostActionFeedbackText = nil
+                    }
                     // Replace the raw-with-tags streaming view with the
                     // cleaned spoken text now that tags are stripped.
                     responseOverlayManager.updateStreamingText(
@@ -1263,6 +1269,8 @@ final class CompanionManager: ObservableObject {
                                 )
                                 if !toolObservations.isEmpty {
                                     print("🧰 Tool observations:\n\(PaceActionExecutionObservation.formatForPlanner(toolObservations))")
+                                    pendingPostActionFeedbackText = PaceActionExecutionObservation
+                                        .formatForUserFeedback(toolObservations)
                                 }
                             } else {
                                 userDeniedActionApproval = true
@@ -1311,6 +1319,14 @@ final class CompanionManager: ObservableObject {
 
                 if stepIndex >= maxAgentStepCount {
                     print("⚠️ Agent loop: hit max steps (\(maxAgentStepCount)) without [DONE] — stopping")
+                }
+
+                if let pendingPostActionFeedbackText,
+                   !pendingPostActionFeedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !Task.isCancelled {
+                    responseOverlayManager.updateStreamingText(pendingPostActionFeedbackText)
+                    await streamingSentenceTTSPipeline.flushFinal(finalSpokenText: pendingPostActionFeedbackText)
+                    voiceState = .responding
                 }
             } catch is CancellationError {
                 // User spoke again — response was interrupted. Hide the

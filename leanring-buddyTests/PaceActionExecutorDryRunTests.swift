@@ -13,6 +13,7 @@ struct PaceActionExecutorDryRunTests {
         #expect(executor.actionsAreEnabled == false)
 
         let actionPlan = PaceActionExecutionPlan.serial(actions: [
+            .openApplication("Notes"),
             .openURL("example.com"),
             .controlMusic(.playPause),
             .listCalendarEvents(PaceCalendarQuery(range: .today)),
@@ -35,6 +36,7 @@ struct PaceActionExecutorDryRunTests {
         )
         let formattedObservations = PaceActionExecutionObservation.formatForPlanner(observations)
 
+        #expect(formattedObservations.contains("Would open app: Notes"))
         #expect(formattedObservations.contains("Would open URL: https://example.com"))
         #expect(formattedObservations.contains("Would run Music command: playPause"))
         #expect(formattedObservations.contains("Would list calendar events for today."))
@@ -45,5 +47,20 @@ struct PaceActionExecutorDryRunTests {
         #expect(formattedObservations.contains("Would create Things to-do: Dry run task"))
         #expect(formattedObservations.contains("Would run shortcut: Dry Run Shortcut"))
         #expect(formattedObservations.contains("Would open Messages"))
+    }
+
+    @Test func userFeedbackSummarizesToolResults() async throws {
+        let feedback = PaceActionExecutionObservation.formatForUserFeedback([
+            PaceActionExecutionObservation(toolName: "notes", summary: "Created note: Idea")
+        ])
+
+        #expect(feedback == "Created note: Idea")
+
+        let multiActionFeedback = PaceActionExecutionObservation.formatForUserFeedback([
+            PaceActionExecutionObservation(toolName: "open_app", summary: "Opened app: Notes"),
+            PaceActionExecutionObservation(toolName: "notes", summary: "Created note: Idea")
+        ])
+
+        #expect(multiActionFeedback == "Opened app: Notes, plus 1 more action result.")
     }
 }

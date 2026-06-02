@@ -129,7 +129,7 @@ final class PaceActionExecutor {
         case .scroll(let direction, let amount):
             await scroll(direction: direction, amountInLines: amount)
         case .openApplication(let applicationName):
-            await openApplication(named: applicationName)
+            return await openApplication(named: applicationName)
         case .openURL(let urlString):
             return await openURL(urlString)
         case .controlMusic(let musicCommand):
@@ -253,27 +253,53 @@ final class PaceActionExecutor {
 
     // MARK: - System tools
 
-    private func openApplication(named applicationName: String) async {
+    @discardableResult
+    private func openApplication(named applicationName: String) async -> PaceActionExecutionObservation {
         let trimmedApplicationName = applicationName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedApplicationName.isEmpty else { return }
+        guard !trimmedApplicationName.isEmpty else {
+            return PaceActionExecutionObservation(
+                toolName: "open_app",
+                summary: "No application name was provided."
+            )
+        }
 
         print("🧰 Open app \"\(trimmedApplicationName)\" (enabled: \(actionsAreEnabled))")
-        guard actionsAreEnabled else { return }
+        guard actionsAreEnabled else {
+            return PaceActionExecutionObservation(
+                toolName: "open_app",
+                summary: "Would open app: \(trimmedApplicationName)"
+            )
+        }
 
         guard let applicationURL = Self.findApplicationURL(named: trimmedApplicationName) else {
             print("⚠️ PaceActionExecutor: could not find app named \(trimmedApplicationName)")
-            return
+            return PaceActionExecutionObservation(
+                toolName: "open_app",
+                summary: "Could not find app: \(trimmedApplicationName)"
+            )
         }
 
-        await withCheckedContinuation { continuation in
+        let openErrorDescription: String? = await withCheckedContinuation { continuation in
             let configuration = NSWorkspace.OpenConfiguration()
             NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, error in
                 if let error {
                     print("⚠️ PaceActionExecutor: failed to open \(trimmedApplicationName): \(error.localizedDescription)")
                 }
-                continuation.resume()
+                continuation.resume(returning: error?.localizedDescription)
             }
         }
+
+        if let openErrorDescription {
+            return PaceActionExecutionObservation(
+                toolName: "open_app",
+                summary: "Failed to open app \(trimmedApplicationName): \(openErrorDescription)"
+            )
+        }
+
+        return PaceActionExecutionObservation(
+            toolName: "open_app",
+            summary: "Opened app: \(trimmedApplicationName)"
+        )
     }
 
     private func openURL(_ rawURLString: String) async -> PaceActionExecutionObservation {
@@ -979,6 +1005,23 @@ struct PaceActionExecutionObservation {
             }
             .joined(separator: "\n")
     }
+
+    static func formatForUserFeedback(_ observations: [PaceActionExecutionObservation]) -> String? {
+        let userVisibleSummaries = observations
+            .map(\.summary)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let firstSummary = userVisibleSummaries.first else {
+            return nil
+        }
+
+        if userVisibleSummaries.count == 1 {
+            return firstSummary
+        }
+
+        return "\(firstSummary), plus \(userVisibleSummaries.count - 1) more action result\(userVisibleSummaries.count == 2 ? "" : "s")."
+    }
 }
 
 struct PaceActionExecutionPlan {
@@ -1069,7 +1112,11 @@ enum PaceParsedAction {
         case .finder(let finderRequest):
             return "Finder \(finderRequest.action.rawValue): \(finderRequest.path)"
         case .createNote(let noteRequest):
-            return "Create note: \(noteRequest.title)"
+            let trimmedBody = noteRequest.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedBody.isEmpty else {
+                return "Create note: \(noteRequest.title)"
+            }
+            return "Create note: \(noteRequest.title) — \(Self.truncatedForApproval(trimmedBody))"
         case .composeMail(let mailDraft):
             return "Compose mail draft: \(mailDraft.subject)"
         case .createThingsToDo(let thingsToDoRequest):
@@ -1082,6 +1129,15 @@ enum PaceParsedAction {
             }
             return "Open Messages"
         }
+    }
+
+    private static func truncatedForApproval(_ text: String) -> String {
+        let maximumApprovalCharacters = 80
+        guard text.count > maximumApprovalCharacters else {
+            return text
+        }
+        let prefix = text.prefix(maximumApprovalCharacters)
+        return "\(prefix)…"
     }
 }
 
