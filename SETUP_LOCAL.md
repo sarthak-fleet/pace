@@ -25,7 +25,7 @@ The detailed manual steps below explain what the script does and what to tweak.
 | Reasoning / planning | **LM Studio** at `localhost:1234`, default model `qwen3-30b-a3b-thinking-2507`. `LocalPlannerClient` is the only conformer to `BuddyPlannerClient` today. |
 | Click targeting | **AX-tree hybrid** — `PaceAXTargeter` tries `AXUIElementPerformAction` on pressable elements first; falls back to CGEvent when AX can't resolve. |
 | Agent loop | **Plan-act-observe** — `CompanionManager` re-screenshots between actions and re-invokes the planner until it emits `[DONE]` or actions stop. Capped at `AgentMaxSteps` (default 8). |
-| Real clicks / keystrokes | **PaceActionExecutor** — CGEvent mouse + keyboard with AX-tree pre-pass, gated by Info.plist `EnableActions`. |
+| Real clicks / keystrokes | **PaceActionExecutor** — CGEvent mouse + keyboard with AX-tree pre-pass, gated by Info.plist `EnableActions` and the user-facing `Approve Actions` preference. |
 | Voice input UI | **Whisper Flow-style pill** — glassmorphic capsule with gradient-bordered bars. |
 | Cursor | **Codex-style arrow** — sharp pointer with linear gradient + highlight stroke. |
 | Walking avatar | **`PaceAvatarOverlay`** — small character that walks along the bottom of the cursor screen. Click to open the menu-bar panel. Toggleable. |
@@ -56,7 +56,7 @@ curl -s http://localhost:1234/v1/models | grep -E "qwen3-vl|qwen3-30b|qwen3-4b"
 | `AlwaysRunLocalVLMRegardlessOfTranscript` | `false` | `true` | Forces the VLM to run on every turn even when the transcript looks like pure Q&A. Default off — the VLM-skip heuristic saves perception cost on "what is HTML" style queries. |
 | `LocalPlannerBaseURL` | `http://localhost:1234/v1` | same | OpenAI-compatible root for the local reasoner. Often the same LM Studio server as the VLM. |
 | `LocalPlannerModelIdentifier` | `qwen/qwen3-14b` | same | Dense 14B is the default — leaner RAM than the 30B MoE despite being "smaller". Swap up (`qwen/qwen3-30b-a3b`, `gpt-oss-20b`) when you want stronger multi-step reasoning, down (`qwen3-4b-instruct`) on tighter hardware. Load with `--num-parallel 1` for the lowest KV-cache footprint. |
-| `EnableActions` | `false` | `true` | Allows pace to actually click, type, scroll, and press keys. **Off by default for safety** — only turn on once you've tested without it. |
+| `EnableActions` | `true` | `false` | Allows Pace to actually click, type, scroll, and press keys. Set to `false` for dry-runs. Keep `Approve Actions` on when this is true. |
 | `AgentMaxSteps` | `8` | `1`-`30` | Per-task ceiling for the plan-act-observe loop. With this at `1` the loop degrades to the old single-turn behavior. |
 | `PushToTalkShortcut` | `controlOption` | one of `controlOption`, `shiftFunction`, `shiftControl`, `controlOptionSpace`, `shiftControlSpace` | Which hold-to-record shortcut Pace listens for. Change this if another dictation tool (Wispr Flow, system Dictation) is on the same key. |
 
@@ -81,6 +81,8 @@ First LM Studio call will be slow (~2-5s cold load). Once the model is hot, expe
 
 Once `EnableActions=true`, the local planner can emit one or more action tags inline in its response. Tags are parsed out before TTS and executed in order, after the spoken response begins. The cursor flies to the first click target via the same bezier animation that already powers `[POINT:...]`.
 
+When `Approve Actions` is on, Pace shows a popup summarizing the planned tools before anything runs. Leave it on unless you are intentionally testing fast automation.
+
 | Tag | What it does |
 |---|---|
 | `[CLICK:x,y]` or `[CLICK:x,y:screen2]` | Single left-click at screenshot pixel (x,y) |
@@ -92,7 +94,8 @@ Once `EnableActions=true`, the local planner can emit one or more action tags in
 Multiple tags chain in a single response — for example `[CLICK:400,300][TYPE:hello][KEY:Return]`.
 
 Safety:
-- **Default off.** `EnableActions=false` parses tags but never executes — useful for dry-runs so you can read the Xcode console and see what *would* have happened.
+- **Dry-run switch.** `EnableActions=false` parses tags but never executes — useful when you want to read the Xcode console and see what *would* have happened.
+- **Approval default on.** `Approve Actions` asks before real local tools run.
 - **Speech happens first.** TTS playback starts before the synthetic events fire, giving you ~350ms to release-press the hotkey and interrupt if the planner misjudged.
 - **Plan-act-observe loop on by default** (since `AgentMaxSteps=8`). Each step gets a fresh screenshot so the planner course-corrects. Press the hotkey again to cancel the in-flight loop.
 - **AX-tree targeting** runs before CGEvent for single-clicks. When the planner aims at a real button/link/menu-item, the click happens via `AXUIElementPerformAction` — more semantically correct and immune to small layout shifts. CGEvent is the fallback when AX can't resolve.

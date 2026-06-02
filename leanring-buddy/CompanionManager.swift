@@ -8,6 +8,7 @@
 //
 
 import AVFoundation
+import AppKit
 import Combine
 import CryptoKit
 import Foundation
@@ -274,6 +275,40 @@ final class CompanionManager: ObservableObject {
         areCursorAnnotationsEnabled = enabled
         PaceUserPreferencesStore.setBool(enabled, for: .areCursorAnnotationsEnabled)
         responseOverlayManager.setAnnotationsEnabled(enabled)
+    }
+
+    /// User preference for whether Pace asks before executing local tools.
+    /// Defaults on because action mode can click, type, open apps/URLs,
+    /// and modify local system state.
+    @Published var requiresActionApproval: Bool = PaceUserPreferencesStore
+        .bool(.requiresActionApproval, default: true)
+
+    func setRequiresActionApproval(_ enabled: Bool) {
+        requiresActionApproval = enabled
+        PaceUserPreferencesStore.setBool(enabled, for: .requiresActionApproval)
+    }
+
+    private func requestUserApprovalForActionPlan(_ actionExecutionPlan: PaceActionExecutionPlan) -> Bool {
+        guard requiresActionApproval else { return true }
+
+        let approvalSummary = actionExecutionPlan.approvalSummary
+        guard !approvalSummary.isEmpty else { return true }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Approve Pace actions?"
+        alert.informativeText = """
+        Pace wants to control your Mac:
+
+        \(approvalSummary)
+
+        Only approve this if it matches what you asked for.
+        """
+        alert.addButton(withTitle: "Allow Once")
+        alert.addButton(withTitle: "Cancel")
+
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Pace skips the upstream first-run flow entirely — no welcome video,
@@ -902,7 +937,7 @@ final class CompanionManager: ObservableObject {
 
                     // System prompt is built per-turn from blocks so we
                     // can omit the ~700-token agent-mode block when
-                    // EnableActions is off (the default). That's pure
+                    // EnableActions is off. That's pure
                     // prefill savings every turn.
                     let isAgentModeEnabled = AppBundleConfiguration
                         .stringValue(forKey: "EnableActions")?
@@ -1041,18 +1076,24 @@ final class CompanionManager: ObservableObject {
 
                     // 10. Execute tool calls/action tags if any.
                     var toolObservations: [PaceActionExecutionObservation] = []
+                    var userDeniedActionApproval = false
                     if !actionParseResult.actions.isEmpty {
                         if actionExecutor.actionsAreEnabled {
-                            // Brief settle so the cursor flight visibly arrives
-                            // before the synthetic click fires.
-                            try? await Task.sleep(nanoseconds: 350_000_000)
-                            guard !Task.isCancelled else { return }
-                            toolObservations = await actionExecutor.executeActionPlan(
-                                actionParseResult.executionPlan,
-                                screenCaptures: screenCaptures
-                            )
-                            if !toolObservations.isEmpty {
-                                print("🧰 Tool observations:\n\(PaceActionExecutionObservation.formatForPlanner(toolObservations))")
+                            if requestUserApprovalForActionPlan(actionParseResult.executionPlan) {
+                                // Brief settle so the cursor flight visibly arrives
+                                // before the synthetic click fires.
+                                try? await Task.sleep(nanoseconds: 350_000_000)
+                                guard !Task.isCancelled else { return }
+                                toolObservations = await actionExecutor.executeActionPlan(
+                                    actionParseResult.executionPlan,
+                                    screenCaptures: screenCaptures
+                                )
+                                if !toolObservations.isEmpty {
+                                    print("🧰 Tool observations:\n\(PaceActionExecutionObservation.formatForPlanner(toolObservations))")
+                                }
+                            } else {
+                                userDeniedActionApproval = true
+                                print("🛑 Pace action approval denied — stopping agent loop")
                             }
                         } else {
                             print("🤖 \(actionParseResult.actions.count) action(s) parsed but EnableActions is false — exiting loop after this step")
@@ -1066,6 +1107,7 @@ final class CompanionManager: ObservableObject {
                     let exitLoop = plannerSignaledDone
                         || actionParseResult.actions.isEmpty
                         || !actionExecutor.actionsAreEnabled
+                        || userDeniedActionApproval
                     if exitLoop {
                         if plannerSignaledDone {
                             print("✅ Agent loop: planner signaled [DONE] at step \(stepIndex)")

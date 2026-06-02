@@ -778,6 +778,21 @@ struct PaceActionExecutionPlan {
     var flattenedActions: [PaceParsedAction] {
         steps.flatMap(\.actions)
     }
+
+    var approvalSummary: String {
+        steps
+            .enumerated()
+            .flatMap { stepIndex, step in
+                step.actions.enumerated().map { actionIndex, action in
+                    let stepLabel = "Step \(stepIndex + 1)"
+                    if step.actions.count == 1 {
+                        return "\(stepLabel): \(action.approvalDescription)"
+                    }
+                    return "\(stepLabel).\(actionIndex + 1): \(action.approvalDescription)"
+                }
+            }
+            .joined(separator: "\n")
+    }
 }
 
 struct PaceActionExecutionStep {
@@ -799,6 +814,45 @@ enum PaceParsedAction {
     case adjustBrightness(PaceSystemAdjustment)
     case listCalendarEvents(PaceCalendarQuery)
     case createReminder(PaceReminderRequest)
+
+    var approvalDescription: String {
+        switch self {
+        case .click(let location):
+            return "Click at \(location.approvalDescription)"
+        case .doubleClick(let location):
+            return "Double-click at \(location.approvalDescription)"
+        case .type(let text):
+            return "Type \(text.count) characters"
+        case .pressKey(let keyName, let modifiers):
+            let modifierPrefix = modifiers.isEmpty
+                ? ""
+                : modifiers.map(\.rawValue).joined(separator: "+") + "+"
+            return "Press \(modifierPrefix)\(keyName)"
+        case .scroll(let direction, let amountInLines):
+            return "Scroll \(direction.rawValue) \(amountInLines) lines"
+        case .openApplication(let applicationName):
+            return "Open app: \(applicationName)"
+        case .openURL(let urlString):
+            return "Open URL: \(urlString)"
+        case .controlMusic(let musicCommand):
+            return "Control Music: \(musicCommand.rawValue)"
+        case .adjustVolume(let adjustment):
+            return "Adjust volume: \(adjustment.description)"
+        case .adjustBrightness(let adjustment):
+            return "Adjust brightness: \(adjustment.description)"
+        case .listCalendarEvents(let calendarQuery):
+            return "Read Calendar: \(calendarQuery.range.displayName)"
+        case .createReminder(let reminderRequest):
+            return "Create reminder: \(reminderRequest.title)"
+        }
+    }
+}
+
+private extension ScreenshotPixelLocation {
+    var approvalDescription: String {
+        let screenSuffix = screenNumber.map { ", screen \($0)" } ?? ""
+        return "\(xInScreenshotPixels), \(yInScreenshotPixels)\(screenSuffix)"
+    }
 }
 
 enum PaceKeyboardModifier: String {

@@ -39,6 +39,9 @@ struct CompanionPanelView: View {
 
                 cursorAnnotationsToggleRow
                     .padding(.horizontal, 16)
+
+                actionApprovalToggleRow
+                    .padding(.horizontal, 16)
             }
 
             if !companionManager.allPermissionsGranted {
@@ -476,6 +479,39 @@ struct CompanionPanelView: View {
             Toggle("", isOn: Binding(
                 get: { companionManager.areCursorAnnotationsEnabled },
                 set: { companionManager.setCursorAnnotationsEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .tint(DS.Colors.accent)
+            .scaleEffect(0.8)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var actionApprovalToggleRow: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Approve Actions")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textSecondary)
+
+                    Text("Ask before Pace controls your Mac")
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { companionManager.requiresActionApproval },
+                set: { companionManager.setRequiresActionApproval($0) }
             ))
             .toggleStyle(.switch)
             .labelsHidden()

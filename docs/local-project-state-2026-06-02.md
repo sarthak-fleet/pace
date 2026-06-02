@@ -26,6 +26,7 @@ The latest local `main` includes:
   arrays are parallel.
 - Local action tools for apps, URLs, Music, volume, brightness, Calendar, and
   Reminders.
+- Action approval toggle and popup before local tools control the Mac.
 - Screen image diffing primitive for watch-mode capture gating.
 - Parser, TTS-stripping, and image-diff tests.
 - Updated `AGENTS.md` architecture notes.
@@ -55,3 +56,4 @@ The latest local `main` includes:
   - Reminder creation
 - Treat `EnableActions` carefully because enabled action mode can post real
   local input and system actions.
+- Keep `Approve Actions` on unless actively testing automation speed.
