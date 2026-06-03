@@ -41,6 +41,12 @@ diagnostics or live app automation were run.
   `open_url` execution behavior.
 - Added TTS voice resolver so Premium/Enhanced Apple voices override compact
   fallback config, plus a panel voice-quality row.
+- Added first MCP bridge: stdio JSON-RPC client, parsed `mcp` actions, missing
+  server preflight, planner context for configured server names, and
+  `mcp-servers.example.json`.
+- Added a normal macOS settings window for full management of preferences,
+  MCP config, permissions, voice, memory, and recent action history. The panel
+  now has a gear button that opens it.
 
 ## Low-Memory Validation Performed
 
@@ -54,6 +60,38 @@ diagnostics or live app automation were run.
 - `swiftc -parse -parse-as-library leanring-buddy/DesignSystem.swift
   leanring-buddy/WindowPositionManager.swift leanring-buddy/CompanionPanelView.swift`
   passed.
+- `swiftc -parse -parse-as-library leanring-buddy/AppBundleConfiguration.swift
+  leanring-buddy/PaceMCPClient.swift leanring-buddy/PaceToolRegistry.swift
+  leanring-buddy/PaceToolPreflight.swift leanring-buddy/PaceActionExecutor.swift`
+  passed.
+- `swiftc -parse -parse-as-library leanring-buddy/AppBundleConfiguration.swift
+  leanring-buddy/PaceUserPreferencesStore.swift leanring-buddy/PaceLocalMemoryStore.swift
+  leanring-buddy/PaceMCPClient.swift leanring-buddy/PaceToolRegistry.swift
+  leanring-buddy/PaceToolPreflight.swift leanring-buddy/PaceActionResultCenter.swift
+  leanring-buddy/PaceActionExecutor.swift leanring-buddy/CompanionManager.swift`
+  passed.
+- `swiftc -parse -parse-as-library leanring-buddy/DesignSystem.swift
+  leanring-buddy/WindowPositionManager.swift leanring-buddy/AppBundleConfiguration.swift
+  leanring-buddy/PaceUserPreferencesStore.swift leanring-buddy/PaceLocalMemoryStore.swift
+  leanring-buddy/PaceMCPClient.swift leanring-buddy/PaceToolRegistry.swift
+  leanring-buddy/PaceToolPreflight.swift leanring-buddy/PaceActionResultCenter.swift
+  leanring-buddy/PaceActionExecutor.swift leanring-buddy/CompanionManager.swift
+  leanring-buddy/PaceSettingsWindow.swift leanring-buddy/CompanionPanelView.swift`
+  passed.
+- Xcode Product > Test passed 132 tests with 0 failures:
+  `Test-leanring-buddy-2026.06.03_20-22-28-+0530.xcresult`.
+- Live debug-app verification:
+  - Launched `Debug/Pace.app` with `PACE_ENABLE_SMOKE_HOOKS=1`.
+  - Opened the menu-bar panel via smoke hook and visually confirmed the gear
+    settings entry.
+  - Opened `Pace Settings` via smoke hook and verified the General tab renders.
+  - Selected the MCP tab via Accessibility and verified it shows the config
+    path plus empty-server guidance.
+  - Clicked Create/Open on the MCP tab and verified
+    `~/.config/pace/mcp-servers.json` is created as valid JSON with an empty
+    `mcpServers` object.
+  - Stopped the debug Pace app and confirmed no Pace/LM Studio/model/test
+    polling processes remained.
 - `git diff --check` passed.
 
 Additional lightweight checks after the feature batch:

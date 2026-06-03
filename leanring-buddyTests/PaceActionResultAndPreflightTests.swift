@@ -21,7 +21,8 @@ struct PaceActionResultAndPreflightTests {
                 actionsAreEnabled: true,
                 hasAccessibilityPermission: false,
                 hasCalendarPermission: false,
-                hasRemindersPermission: false
+                hasRemindersPermission: false,
+                configuredMCPServerNames: []
             )
         )
 
@@ -29,6 +30,25 @@ struct PaceActionResultAndPreflightTests {
         #expect(issues.contains { $0.title == "Calendar permission missing" })
         #expect(issues.contains { $0.title == "Reminders permission missing" })
         #expect(issues.contains { $0.title == "Automation may prompt" && $0.severity == .warning })
+    }
+
+    @Test func preflightReportsMissingMCPServer() async throws {
+        let actionPlan = PaceActionExecutionPlan.serial(actions: [
+            .mcp(PaceMCPToolCall(serverName: "altic", toolName: "notes_create", arguments: [:]))
+        ])
+
+        let issues = PaceToolPreflight.evaluate(
+            actionExecutionPlan: actionPlan,
+            environment: PaceToolPreflightEnvironment(
+                actionsAreEnabled: true,
+                hasAccessibilityPermission: true,
+                hasCalendarPermission: true,
+                hasRemindersPermission: true,
+                configuredMCPServerNames: ["apple"]
+            )
+        )
+
+        #expect(issues.contains { $0.title == "MCP server not configured: altic" && $0.severity == .blocking })
     }
 
     @Test func actionResultDetectsFailedObservation() async throws {

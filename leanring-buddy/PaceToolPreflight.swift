@@ -53,12 +53,14 @@ struct PaceToolPreflightEnvironment {
     let hasAccessibilityPermission: Bool
     let hasCalendarPermission: Bool
     let hasRemindersPermission: Bool
+    let configuredMCPServerNames: Set<String>
 
     static let fullyGranted = PaceToolPreflightEnvironment(
         actionsAreEnabled: true,
         hasAccessibilityPermission: true,
         hasCalendarPermission: true,
-        hasRemindersPermission: true
+        hasRemindersPermission: true,
+        configuredMCPServerNames: []
     )
 }
 
@@ -113,6 +115,18 @@ enum PaceToolPreflight {
             ))
         }
 
+        let missingMCPServerNames = missingMCPServers(
+            in: actions,
+            configuredServerNames: environment.configuredMCPServerNames
+        )
+        for serverName in missingMCPServerNames {
+            issues.append(PaceToolPreflightIssue(
+                severity: .blocking,
+                title: "MCP server not configured: \(serverName)",
+                repairHint: "Add it to ~/.config/pace/mcp-servers.json."
+            ))
+        }
+
         return issues
     }
 
@@ -122,7 +136,7 @@ enum PaceToolPreflight {
             return true
         case .openApplication, .openURL, .controlMusic, .adjustVolume, .adjustBrightness,
              .listCalendarEvents, .createReminder, .finder, .createNote, .appendNote,
-             .searchNotes, .composeMail, .createThingsToDo, .runShortcut, .openMessages:
+             .searchNotes, .composeMail, .createThingsToDo, .runShortcut, .openMessages, .mcp:
             return false
         }
     }
@@ -144,11 +158,25 @@ enum PaceToolPreflight {
     private static func mayRequireAutomationPermission(_ action: PaceParsedAction) -> Bool {
         switch action {
         case .controlMusic, .createNote, .appendNote, .searchNotes, .composeMail,
-             .createThingsToDo, .runShortcut, .openMessages:
+             .createThingsToDo, .runShortcut, .openMessages, .mcp:
             return true
         case .click, .doubleClick, .type, .pressKey, .scroll, .openApplication, .openURL,
              .adjustVolume, .adjustBrightness, .listCalendarEvents, .createReminder, .finder:
             return false
         }
+    }
+
+    private static func missingMCPServers(
+        in actions: [PaceParsedAction],
+        configuredServerNames: Set<String>
+    ) -> [String] {
+        let requiredServerNames = Set(actions.compactMap { action -> String? in
+            guard case .mcp(let mcpToolCall) = action else { return nil }
+            return mcpToolCall.serverName
+        })
+
+        return requiredServerNames
+            .subtracting(configuredServerNames)
+            .sorted()
     }
 }

@@ -126,3 +126,22 @@ Status: implemented for Apple voice quality preflight.
   fallback configuration.
 - The panel shows the active voice and whether an upgrade is recommended.
 - A true non-Apple local neural TTS runtime remains a future optional backend.
+
+## Priority 11: MCP Integration Substrate
+
+Status: first bridge implemented, pending live server install.
+
+- Added a generic stdio MCP client for `initialize` + `tools/call`.
+- Added `mcp` parsed actions so the planner can call configured OSS servers
+  without Pace hand-building each integration.
+- Added config discovery from `~/.config/pace/mcp-servers.json` or
+  `~/.pace/mcp-servers.json`, accepting either `mcpServers` or `servers`.
+- Added preflight for missing MCP server names before the approval popup.
+- Added `mcp-servers.example.json` for Altic/AirMCP-style setup.
+- Added a normal macOS settings window because MCP/config/permissions no longer
+  fit cleanly in the notch panel. The notch panel remains the quick surface.
+
+Next live step: install one OSS server, preferably Altic MCP first because it
+covers Notes, Reminders, Calendar, Finder/files, clipboard, browsers, screen
+capture, app opening, volume, and brightness with a narrower surface than the
+largest Apple-ecosystem servers.

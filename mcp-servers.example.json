@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "altic": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/altic-mcp",
+        "run",
+        "python",
+        "-m",
+        "altic_mcp"
+      ]
+    },
+    "airmcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "airmcp"
+      ]
+    }
+  }
+}

@@ -430,8 +430,29 @@ final class CompanionManager: ObservableObject {
             actionsAreEnabled: actionExecutor.actionsAreEnabled,
             hasAccessibilityPermission: hasAccessibilityPermission,
             hasCalendarPermission: hasCalendarPermission,
-            hasRemindersPermission: hasRemindersPermission
+            hasRemindersPermission: hasRemindersPermission,
+            configuredMCPServerNames: Set(PaceMCPServerRegistry.loadConfiguredServers().keys)
         )
+    }
+
+    private func appendConfiguredMCPContext(to userPrompt: String) -> String {
+        let configuredServerNames = PaceMCPServerRegistry
+            .loadConfiguredServers()
+            .keys
+            .sorted()
+
+        guard !configuredServerNames.isEmpty else {
+            return userPrompt
+        }
+
+        return """
+        \(userPrompt)
+
+        Configured MCP servers:
+        \(configuredServerNames.map { "- \($0)" }.joined(separator: "\n"))
+
+        Use MCP only when a task is better handled by one of these configured external servers.
+        """
     }
 
     /// Pace skips the upstream first-run flow entirely — no welcome video,
@@ -1235,9 +1256,11 @@ final class CompanionManager: ObservableObject {
                     //    structured element map — cuts perception cost on the
                     //    planner side and is essential when the planner is text-only.
                     let screenContextStartedAt = Date()
-                    let userPromptForPlanner = await buildUserPromptWithLocalVLMContextIfEnabled(
-                        transcript: currentTurnUserPrompt,
-                        screenCaptures: screenCaptures
+                    let userPromptForPlanner = appendConfiguredMCPContext(
+                        to: await buildUserPromptWithLocalVLMContextIfEnabled(
+                            transcript: currentTurnUserPrompt,
+                            screenCaptures: screenCaptures
+                        )
                     )
                     let screenContextElapsedMs = Int(
                         Date().timeIntervalSince(screenContextStartedAt) * 1000

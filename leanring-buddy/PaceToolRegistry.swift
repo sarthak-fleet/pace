@@ -15,6 +15,7 @@ enum PaceToolRiskLevel: String {
     case appOrSystemMutation
     case inputInjection
     case destructive
+    case externalIntegration
 
     var displayName: String {
         switch self {
@@ -26,6 +27,8 @@ enum PaceToolRiskLevel: String {
             return "input injection"
         case .destructive:
             return "destructive"
+        case .externalIntegration:
+            return "external tool"
         }
     }
 }
@@ -272,7 +275,10 @@ enum PaceToolRegistry {
     }
 
     static func riskDisplayName(for action: PaceParsedAction) -> String {
-        definition(for: action)?.riskLevel.displayName ?? "unknown"
+        if case .mcp = action {
+            return PaceToolRiskLevel.externalIntegration.displayName
+        }
+        return definition(for: action)?.riskLevel.displayName ?? "unknown"
     }
 
     static func definition(for action: PaceParsedAction) -> PaceLocalToolDefinition? {
@@ -313,6 +319,8 @@ enum PaceToolRegistry {
             return definition(forToolName: "shortcuts")
         case .openMessages:
             return definition(forToolName: "messages")
+        case .mcp:
+            return nil
         }
     }
 

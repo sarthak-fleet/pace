@@ -30,6 +30,11 @@ struct PaceActionExecutorDryRunTests {
             .createThingsToDo(PaceThingsToDoRequest(title: "Dry run task", notes: nil)),
             .runShortcut("Dry Run Shortcut"),
             .openMessages(PaceMessageRequest(recipient: "Alex", text: "Dry run message")),
+            .mcp(PaceMCPToolCall(
+                serverName: "altic",
+                toolName: "notes_create",
+                arguments: ["title": .string("Dry run MCP note")]
+            )),
         ])
 
         let observations = await executor.executeActionPlan(
@@ -51,6 +56,7 @@ struct PaceActionExecutorDryRunTests {
         #expect(formattedObservations.contains("Would create Things to-do: Dry run task"))
         #expect(formattedObservations.contains("Would run shortcut: Dry Run Shortcut"))
         #expect(formattedObservations.contains("Would open Messages"))
+        #expect(formattedObservations.contains("Would call MCP tool: altic.notes_create"))
     }
 
     @Test func userFeedbackSummarizesToolResults() async throws {

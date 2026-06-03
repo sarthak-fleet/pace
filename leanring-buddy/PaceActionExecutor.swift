@@ -47,8 +47,13 @@ final class PaceActionExecutor {
     /// a built-in "double-press" action.
     private let axTargeter = PaceAXTargeter()
     private let eventStore = EKEventStore()
+    private let mcpClient: PaceMCPStdioClient
 
-    init(actionsAreEnabledOverride: Bool? = nil) {
+    init(
+        actionsAreEnabledOverride: Bool? = nil,
+        mcpClient: PaceMCPStdioClient = PaceMCPStdioClient()
+    ) {
+        self.mcpClient = mcpClient
         if let actionsAreEnabledOverride {
             self.actionsAreEnabled = actionsAreEnabledOverride
         } else {
@@ -158,6 +163,8 @@ final class PaceActionExecutor {
             return await runShortcut(named: shortcutName)
         case .openMessages(let messageRequest):
             return await openMessages(messageRequest)
+        case .mcp(let mcpToolCall):
+            return await callMCPTool(mcpToolCall)
         }
 
         return nil
@@ -1108,6 +1115,30 @@ final class PaceActionExecutor {
 
         return globalCGPoint
     }
+
+    private func callMCPTool(_ mcpToolCall: PaceMCPToolCall) async -> PaceActionExecutionObservation {
+        let toolObservationName = "mcp.\(mcpToolCall.serverName).\(mcpToolCall.toolName)"
+
+        guard actionsAreEnabled else {
+            return PaceActionExecutionObservation(
+                toolName: toolObservationName,
+                summary: "Would call MCP tool: \(mcpToolCall.approvalDescription)"
+            )
+        }
+
+        do {
+            let resultSummary = try await mcpClient.callTool(mcpToolCall)
+            return PaceActionExecutionObservation(
+                toolName: toolObservationName,
+                summary: resultSummary.isEmpty ? "MCP tool completed: \(mcpToolCall.approvalDescription)" : resultSummary
+            )
+        } catch {
+            return PaceActionExecutionObservation(
+                toolName: toolObservationName,
+                summary: "Failed MCP tool \(mcpToolCall.approvalDescription): \(error)"
+            )
+        }
+    }
 }
 
 // MARK: - Parsed action types
@@ -1200,6 +1231,7 @@ enum PaceParsedAction {
     case createThingsToDo(PaceThingsToDoRequest)
     case runShortcut(String)
     case openMessages(PaceMessageRequest)
+    case mcp(PaceMCPToolCall)
 
     var approvalDescription: String {
         switch self {
@@ -1253,6 +1285,8 @@ enum PaceParsedAction {
                 return "Open Messages for: \(recipient)"
             }
             return "Open Messages"
+        case .mcp(let mcpToolCall):
+            return "Call MCP tool: \(mcpToolCall.approvalDescription)"
         }
     }
 
@@ -1414,18 +1448,24 @@ enum PaceActionTagParser {
         let to: String?
         let subject: String?
         let recipient: String?
+        let server: String?
+        let toolName: String?
+        let mcpTool: String?
+        let arguments: [String: PaceMCPJSONValue]
+        let extraArguments: [String: PaceMCPJSONValue]
         let steps: Int?
         let amount: Int?
         let x: Int?
         let y: Int?
         let screen: Int?
 
-        enum CodingKeys: String, CodingKey {
-            case tool, app, name, url, command, direction, title, query, text, body, notes, range, key, path, action, to, subject, recipient, steps, amount, x, y, screen
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case tool, app, name, url, command, direction, title, query, text, body, notes, range, key, path, action, to, subject, recipient, server, toolName, mcpTool, arguments, steps, amount, x, y, screen
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            let rawContainer = try decoder.container(keyedBy: PaceMCPDynamicCodingKey.self)
             self.tool = try container.decode(String.self, forKey: .tool)
             self.app = Self.decodeStringIfPresent(from: container, forKey: .app)
             self.name = Self.decodeStringIfPresent(from: container, forKey: .name)
@@ -1444,11 +1484,16 @@ enum PaceActionTagParser {
             self.to = Self.decodeStringIfPresent(from: container, forKey: .to)
             self.subject = Self.decodeStringIfPresent(from: container, forKey: .subject)
             self.recipient = Self.decodeStringIfPresent(from: container, forKey: .recipient)
+            self.server = Self.decodeStringIfPresent(from: container, forKey: .server)
+            self.toolName = Self.decodeStringIfPresent(from: container, forKey: .toolName)
+            self.mcpTool = Self.decodeStringIfPresent(from: container, forKey: .mcpTool)
+            self.arguments = (try? container.decodeIfPresent([String: PaceMCPJSONValue].self, forKey: .arguments)) ?? [:]
             self.steps = Self.decodeIntIfPresent(from: container, forKey: .steps)
             self.amount = Self.decodeIntIfPresent(from: container, forKey: .amount)
             self.x = Self.decodeIntIfPresent(from: container, forKey: .x)
             self.y = Self.decodeIntIfPresent(from: container, forKey: .y)
             self.screen = Self.decodeIntIfPresent(from: container, forKey: .screen)
+            self.extraArguments = Self.decodeExtraArguments(from: rawContainer)
         }
 
         private static func decodeStringIfPresent(
@@ -1475,6 +1520,36 @@ enum PaceActionTagParser {
                 return Int(stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
             }
             return nil
+        }
+
+        private static func decodeExtraArguments(
+            from container: KeyedDecodingContainer<PaceMCPDynamicCodingKey>
+        ) -> [String: PaceMCPJSONValue] {
+            let knownKeys = Set(CodingKeys.allCases.map(\.stringValue))
+            var extraArguments: [String: PaceMCPJSONValue] = [:]
+
+            for key in container.allKeys where !knownKeys.contains(key.stringValue) {
+                if let value = try? container.decode(PaceMCPJSONValue.self, forKey: key) {
+                    extraArguments[key.stringValue] = value
+                }
+            }
+
+            return extraArguments
+        }
+    }
+
+    private struct PaceMCPDynamicCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int?
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+            self.intValue = nil
+        }
+
+        init?(intValue: Int) {
+            self.stringValue = String(intValue)
+            self.intValue = intValue
         }
     }
 
@@ -1643,6 +1718,10 @@ enum PaceActionTagParser {
     }
 
     private static func parseToolCall(_ toolCall: ToolCallDTO) -> PaceParsedAction? {
+        if let mcpToolCall = parseMCPToolCall(toolCall) {
+            return .mcp(mcpToolCall)
+        }
+
         guard let toolKind = PaceToolRegistry.kind(forToolName: toolCall.tool) else {
             return nil
         }
@@ -1707,6 +1786,82 @@ enum PaceActionTagParser {
         case .messages:
             return parseMessagesToolCall(toolCall)
         }
+    }
+
+    private static func parseMCPToolCall(_ toolCall: ToolCallDTO) -> PaceMCPToolCall? {
+        let normalizedToolName = toolCall.tool
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let serverName = toolCall.server?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if normalizedToolName == "mcp" {
+            guard let serverName, !serverName.isEmpty else { return nil }
+            let mcpToolName = [
+                toolCall.toolName,
+                toolCall.mcpTool,
+                toolCall.name,
+                toolCall.command,
+                toolCall.action
+            ]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+
+            guard let mcpToolName else { return nil }
+            return PaceMCPToolCall(
+                serverName: serverName,
+                toolName: mcpToolName,
+                arguments: mergeMCPArguments(from: toolCall)
+            )
+        }
+
+        if let serverName, !serverName.isEmpty, PaceToolRegistry.kind(forToolName: toolCall.tool) == nil {
+            return PaceMCPToolCall(
+                serverName: serverName,
+                toolName: toolCall.tool,
+                arguments: mergeMCPArguments(from: toolCall)
+            )
+        }
+
+        return nil
+    }
+
+    private static func mergeMCPArguments(from toolCall: ToolCallDTO) -> [String: PaceMCPJSONValue] {
+        var arguments = toolCall.arguments
+
+        let knownPayloadArguments: [(String, PaceMCPJSONValue?)] = [
+            ("app", toolCall.app.map { .string($0) }),
+            ("url", toolCall.url.map { .string($0) }),
+            ("command", toolCall.command.map { .string($0) }),
+            ("direction", toolCall.direction.map { .string($0) }),
+            ("title", toolCall.title.map { .string($0) }),
+            ("query", toolCall.query.map { .string($0) }),
+            ("text", toolCall.text.map { .string($0) }),
+            ("body", toolCall.body.map { .string($0) }),
+            ("notes", toolCall.notes.map { .string($0) }),
+            ("range", toolCall.range.map { .string($0) }),
+            ("key", toolCall.key.map { .string($0) }),
+            ("path", toolCall.path.map { .string($0) }),
+            ("to", toolCall.to.map { .string($0) }),
+            ("subject", toolCall.subject.map { .string($0) }),
+            ("recipient", toolCall.recipient.map { .string($0) }),
+            ("steps", toolCall.steps.map { .number(Double($0)) }),
+            ("amount", toolCall.amount.map { .number(Double($0)) }),
+            ("x", toolCall.x.map { .number(Double($0)) }),
+            ("y", toolCall.y.map { .number(Double($0)) }),
+            ("screen", toolCall.screen.map { .number(Double($0)) })
+        ]
+
+        for (key, value) in knownPayloadArguments {
+            guard let value else { continue }
+            arguments[key] = value
+        }
+
+        for (key, value) in toolCall.extraArguments {
+            arguments[key] = value
+        }
+        return arguments
     }
 
     private static func parseToolCallLocation(_ toolCall: ToolCallDTO) -> ScreenshotPixelLocation? {

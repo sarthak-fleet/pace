@@ -445,4 +445,60 @@ struct PaceActionTagParserTests {
             #expect(PaceToolRegistry.plannerToolListText.contains(#""tool":"\#(toolName)""#))
         }
     }
+
+    @Test func mcpToolCallsParseWithWrapperShape() async throws {
+        let parseResult = PaceActionTagParser.parseActions(from: """
+        calling the external tool.
+        <tool_calls>
+        [
+          [
+            {
+              "tool":"mcp",
+              "server":"altic",
+              "name":"notes_create",
+              "arguments":{"title":"Idea","body":"from MCP"}
+            }
+          ]
+        ]
+        </tool_calls>
+        """)
+
+        #expect(parseResult.actions.count == 1)
+
+        guard case .mcp(let mcpToolCall) = parseResult.actions[0] else {
+            Issue.record("Expected MCP action")
+            return
+        }
+
+        #expect(mcpToolCall.serverName == "altic")
+        #expect(mcpToolCall.toolName == "notes_create")
+        #expect(mcpToolCall.arguments["title"] == .string("Idea"))
+        #expect(mcpToolCall.arguments["body"] == .string("from MCP"))
+        #expect(parseResult.spokenText == "calling the external tool.")
+    }
+
+    @Test func mcpToolCallsParseWithServerQualifiedNativeToolShape() async throws {
+        let parseResult = PaceActionTagParser.parseActions(from: """
+        searching notes.
+        <tool_calls>
+        [
+          [
+            {"tool":"notes_search","server":"altic","query":"roadmap","limit":5}
+          ]
+        ]
+        </tool_calls>
+        """)
+
+        #expect(parseResult.actions.count == 1)
+
+        guard case .mcp(let mcpToolCall) = parseResult.actions[0] else {
+            Issue.record("Expected MCP action")
+            return
+        }
+
+        #expect(mcpToolCall.serverName == "altic")
+        #expect(mcpToolCall.toolName == "notes_search")
+        #expect(mcpToolCall.arguments["query"] == .string("roadmap"))
+        #expect(mcpToolCall.arguments["limit"] == .number(5))
+    }
 }

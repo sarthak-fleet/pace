@@ -12,6 +12,7 @@ import Foundation
 extension Notification.Name {
     static let paceSmokeShowPanel = Notification.Name("com.pace.smoke.showPanel")
     static let paceSmokeHidePanel = Notification.Name("com.pace.smoke.hidePanel")
+    static let paceSmokeShowSettings = Notification.Name("com.pace.smoke.showSettings")
     static let paceSmokeCursorAnnotationsOn = Notification.Name("com.pace.smoke.cursorAnnotationsOn")
     static let paceSmokeCursorAnnotationsOff = Notification.Name("com.pace.smoke.cursorAnnotationsOff")
     static let paceSmokeRequestApproval = Notification.Name("com.pace.smoke.requestApproval")
@@ -26,6 +27,7 @@ final class PaceRuntimeSmokeTestHooks {
     private enum DefaultsKey {
         static let ready = "PaceSmoke.ready"
         static let lastPanelCommand = "PaceSmoke.lastPanelCommand"
+        static let lastSettingsCommand = "PaceSmoke.lastSettingsCommand"
         static let lastCursorAnnotationsEnabled = "PaceSmoke.lastCursorAnnotationsEnabled"
         static let lastApprovalAllowed = "PaceSmoke.lastApprovalAllowed"
     }
@@ -57,6 +59,13 @@ final class PaceRuntimeSmokeTestHooks {
         observe(.paceSmokeHidePanel) { [weak self] in
             self?.menuBarPanelManager.hidePanelForSmokeTest()
             UserDefaults.standard.set("hide", forKey: DefaultsKey.lastPanelCommand)
+        }
+
+        observe(.paceSmokeShowSettings) { [weak self] in
+            guard let self else { return }
+            menuBarPanelManager.hidePanelForSmokeTest()
+            PaceSettingsWindowManager.shared.show(companionManager: companionManager)
+            UserDefaults.standard.set("show", forKey: DefaultsKey.lastSettingsCommand)
         }
 
         observe(.paceSmokeCursorAnnotationsOn) { [weak self] in

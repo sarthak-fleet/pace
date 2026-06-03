@@ -125,6 +125,22 @@ struct CompanionPanelView: View {
                 .foregroundColor(DS.Colors.textTertiary)
 
             Button(action: {
+                PaceSettingsWindowManager.shared.show(companionManager: companionManager)
+            }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .frame(width: 20, height: 20)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Open settings")
+            .pointerCursor()
+
+            Button(action: {
                 NotificationCenter.default.post(name: .paceDismissPanel, object: nil)
             }) {
                 Image(systemName: "xmark")

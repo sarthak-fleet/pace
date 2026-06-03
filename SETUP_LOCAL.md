@@ -26,6 +26,7 @@ The detailed manual steps below explain what the script does and what to tweak.
 | Click targeting | **AX-tree hybrid** — `PaceAXTargeter` tries `AXUIElementPerformAction` on pressable elements first; falls back to CGEvent when AX can't resolve. |
 | Agent loop | **Plan-act-observe** — `CompanionManager` re-screenshots between actions and re-invokes the planner until it emits `[DONE]` or actions stop. Capped at `AgentMaxSteps` (default 8). |
 | Real clicks / keystrokes | **PaceActionExecutor** — CGEvent mouse + keyboard with AX-tree pre-pass, gated by Info.plist `EnableActions` and the user-facing `Approve Actions` preference. |
+| External integrations | **MCP stdio bridge** — optional configured servers in `~/.config/pace/mcp-servers.json`; Pace keeps approval/result UI, the OSS server owns the integration. |
 | Voice input UI | **Whisper Flow-style pill** — glassmorphic capsule with gradient-bordered bars. |
 | Cursor | **Codex-style arrow** — sharp pointer with linear gradient + highlight stroke. |
 | Walking avatar | **`PaceAvatarOverlay`** — small character that walks along the bottom of the cursor screen. Click to open the menu-bar panel. Toggleable. |
@@ -98,6 +99,61 @@ When `Approve Actions` is on, Pace shows a popup summarizing the planned tools b
 | `[SCROLL:up:3]` / `[SCROLL:down:5]` | Scroll vertical by N lines |
 
 Multiple tags chain in a single response — for example `[CLICK:400,300][TYPE:hello][KEY:Return]`.
+
+## MCP integrations
+
+Pace can call local Model Context Protocol servers over stdio. This is the
+preferred path for broad integrations such as Altic MCP, AirMCP, Apple MCP, or
+other OSS servers. Pace stays responsible for voice, screen context, approval,
+and action results; the MCP server owns the app-specific integration.
+
+Live config is intentionally outside the repo. The Settings window can create
+an empty config for you, or you can seed it from the checked-in example:
+
+```bash
+mkdir -p ~/.config/pace
+cp mcp-servers.example.json ~/.config/pace/mcp-servers.json
+```
+
+Edit `~/.config/pace/mcp-servers.json` so each server points at the real local
+install path. Pace accepts either a top-level `mcpServers` object or `servers`
+object:
+
+```json
+{
+  "mcpServers": {
+    "altic": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/altic-mcp",
+        "run",
+        "python",
+        "-m",
+        "altic_mcp"
+      ]
+    }
+  }
+}
+```
+
+Planner tool-call shapes:
+
+```json
+{"tool":"mcp","server":"altic","name":"notes_create","arguments":{"title":"Idea","body":"note text"}}
+{"tool":"notes_search","server":"altic","query":"roadmap"}
+```
+
+Safety:
+- MCP calls still go through Pace's action approval popup.
+- Preflight blocks missing configured server names before execution.
+- Use stdio servers for local Mac automation; avoid exposing local MCP servers
+  over HTTP unless they bind only to localhost and have proper auth.
+
+The notch panel has a gear button that opens the full Pace Settings window.
+Use that window to create/reveal the MCP config file, inspect configured server
+names, manage permissions, tune quick preferences, check voice quality, and
+review recent actions.
 
 Safety:
 - **Dry-run switch.** `EnableActions=false` parses tags but never executes — useful when you want to read the Xcode console and see what *would* have happened.

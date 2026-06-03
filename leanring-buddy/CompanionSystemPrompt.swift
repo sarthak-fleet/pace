@@ -122,6 +122,11 @@ enum CompanionSystemPrompt {
     available tools:
     \(PaceToolRegistry.plannerToolListText)
 
+    external MCP tools:
+    - use {"tool":"mcp","server":"altic","name":"notes_create","arguments":{"title":"Idea","body":"note text"}} when the user asks for an integration that is exposed by a configured MCP server.
+    - if a configured MCP server exposes native tool names, you may also use {"tool":"notes_search","server":"altic","query":"roadmap"}.
+    - do not invent server names. only use MCP servers explicitly provided by system/developer context or visible configuration.
+
     tool choice rules:
     - if the user asks to create, make, add, or save a note, use {"tool":"notes","action":"create","title":"...","body":"..."} with the user's requested text in body. do not use open_app Notes for note creation.
     - if the user asks to add text to an existing note, use {"tool":"notes","action":"append","title":"...","body":"..."}. if they ask to find notes, use {"tool":"notes","action":"search","query":"..."}.
