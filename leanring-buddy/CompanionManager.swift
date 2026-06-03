@@ -11,9 +11,11 @@ import AVFoundation
 import AppKit
 import Combine
 import CryptoKit
+import EventKit
 import Foundation
 import PostHog
 import ScreenCaptureKit
+import Speech
 import SwiftUI
 
 /// Per-screen VLM analysis cached by the pixel hash of the screenshot.
@@ -41,7 +43,12 @@ final class CompanionManager: ObservableObject {
     @Published private(set) var hasAccessibilityPermission = false
     @Published private(set) var hasScreenRecordingPermission = false
     @Published private(set) var hasMicrophonePermission = false
+    @Published private(set) var hasSpeechRecognitionPermission = false
     @Published private(set) var hasScreenContentPermission = false
+    @Published private(set) var hasCalendarPermission = false
+    @Published private(set) var hasRemindersPermission = false
+    @Published private(set) var shouldRequestCalendarPermission = false
+    @Published private(set) var shouldRequestRemindersPermission = false
 
     /// True when the configured LM Studio (or compatible) HTTP server
     /// responds within a short timeout. Polled periodically so the panel
@@ -124,6 +131,7 @@ final class CompanionManager: ObservableObject {
     /// identifies elements; OCR delivers verbatim text — merged by
     /// bbox overlap. Cheap (~50-200ms), no model load.
     private let visionOCRClient = PaceVisionOCRClient()
+    private let permissionEventStore = EKEventStore()
     private lazy var screenWatchModeController: PaceScreenWatchModeController = {
         PaceScreenWatchModeController()
     }()
@@ -233,10 +241,16 @@ final class CompanionManager: ObservableObject {
     /// callback ask for the avatar's current frame.
     weak var avatarOverlayManager: PaceAvatarOverlayManager?
 
-    /// True when all three required permissions (accessibility, screen recording,
-    /// microphone) are granted. Used by the panel to show a single "all good" state.
+    /// True when the core voice/screen permissions are granted. App-control
+    /// permissions like Calendar, Reminders, and Automation are surfaced
+    /// separately because they are only needed when the user asks for those
+    /// local tools.
     var allPermissionsGranted: Bool {
-        hasAccessibilityPermission && hasScreenRecordingPermission && hasMicrophonePermission && hasScreenContentPermission
+        hasAccessibilityPermission
+            && hasScreenRecordingPermission
+            && hasMicrophonePermission
+            && hasSpeechRecognitionPermission
+            && hasScreenContentPermission
     }
 
     /// Whether the blue cursor overlay is currently visible on screen.
@@ -463,6 +477,7 @@ final class CompanionManager: ObservableObject {
         let previouslyHadAccessibility = hasAccessibilityPermission
         let previouslyHadScreenRecording = hasScreenRecordingPermission
         let previouslyHadMicrophone = hasMicrophonePermission
+        let previouslyHadSpeechRecognition = hasSpeechRecognitionPermission
         let previouslyHadAll = allPermissionsGranted
 
         let currentlyHasAccessibility = WindowPositionManager.hasAccessibilityPermission()
@@ -478,12 +493,21 @@ final class CompanionManager: ObservableObject {
 
         let micAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         hasMicrophonePermission = micAuthStatus == .authorized
+        hasSpeechRecognitionPermission = SFSpeechRecognizer.authorizationStatus() == .authorized
+
+        let calendarAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        let reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
+        hasCalendarPermission = Self.isEventKitPermissionGranted(calendarAuthorizationStatus)
+        hasRemindersPermission = Self.isEventKitPermissionGranted(reminderAuthorizationStatus)
+        shouldRequestCalendarPermission = calendarAuthorizationStatus == .notDetermined
+        shouldRequestRemindersPermission = reminderAuthorizationStatus == .notDetermined
 
         // Debug: log permission state on changes
         if previouslyHadAccessibility != hasAccessibilityPermission
             || previouslyHadScreenRecording != hasScreenRecordingPermission
-            || previouslyHadMicrophone != hasMicrophonePermission {
-            print("🔑 Permissions — accessibility: \(hasAccessibilityPermission), screen: \(hasScreenRecordingPermission), mic: \(hasMicrophonePermission), screenContent: \(hasScreenContentPermission)")
+            || previouslyHadMicrophone != hasMicrophonePermission
+            || previouslyHadSpeechRecognition != hasSpeechRecognitionPermission {
+            print("🔑 Permissions — accessibility: \(hasAccessibilityPermission), screen: \(hasScreenRecordingPermission), mic: \(hasMicrophonePermission), speech: \(hasSpeechRecognitionPermission), screenContent: \(hasScreenContentPermission)")
         }
 
         // Track individual permission grants as they happen
@@ -496,6 +520,9 @@ final class CompanionManager: ObservableObject {
         if !previouslyHadMicrophone && hasMicrophonePermission {
             PaceAnalytics.trackPermissionGranted(permission: "microphone")
         }
+        if !previouslyHadSpeechRecognition && hasSpeechRecognitionPermission {
+            PaceAnalytics.trackPermissionGranted(permission: "speech_recognition")
+        }
         // Screen content permission is persisted — once the user has approved the
         // SCShareableContent picker, we don't need to re-check it.
         if !hasScreenContentPermission {
@@ -504,6 +531,78 @@ final class CompanionManager: ObservableObject {
 
         if !previouslyHadAll && allPermissionsGranted {
             PaceAnalytics.trackAllPermissionsGranted()
+        }
+    }
+
+    func requestSpeechRecognitionPermission() {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            refreshAllPermissions()
+        case .notDetermined:
+            SFSpeechRecognizer.requestAuthorization { [weak self] _ in
+                Task { @MainActor in
+                    self?.refreshAllPermissions()
+                }
+            }
+        case .denied, .restricted:
+            WindowPositionManager.openSpeechRecognitionSettings()
+        @unknown default:
+            WindowPositionManager.openSpeechRecognitionSettings()
+        }
+    }
+
+    func requestCalendarPermission() {
+        let currentStatus = EKEventStore.authorizationStatus(for: .event)
+        guard currentStatus == .notDetermined else {
+            WindowPositionManager.openCalendarSettings()
+            return
+        }
+
+        if #available(macOS 14.0, *) {
+            permissionEventStore.requestFullAccessToEvents { [weak self] _, _ in
+                Task { @MainActor in
+                    self?.refreshAllPermissions()
+                }
+            }
+        } else {
+            permissionEventStore.requestAccess(to: .event) { [weak self] _, _ in
+                Task { @MainActor in
+                    self?.refreshAllPermissions()
+                }
+            }
+        }
+    }
+
+    func requestRemindersPermission() {
+        let currentStatus = EKEventStore.authorizationStatus(for: .reminder)
+        guard currentStatus == .notDetermined else {
+            WindowPositionManager.openRemindersSettings()
+            return
+        }
+
+        if #available(macOS 14.0, *) {
+            permissionEventStore.requestFullAccessToReminders { [weak self] _, _ in
+                Task { @MainActor in
+                    self?.refreshAllPermissions()
+                }
+            }
+        } else {
+            permissionEventStore.requestAccess(to: .reminder) { [weak self] _, _ in
+                Task { @MainActor in
+                    self?.refreshAllPermissions()
+                }
+            }
+        }
+    }
+
+    private static func isEventKitPermissionGranted(_ authorizationStatus: EKAuthorizationStatus) -> Bool {
+        switch authorizationStatus {
+        case .authorized, .fullAccess:
+            return true
+        case .notDetermined, .restricted, .denied, .writeOnly:
+            return false
+        @unknown default:
+            return false
         }
     }
 

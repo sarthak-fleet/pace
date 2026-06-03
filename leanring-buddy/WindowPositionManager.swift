@@ -101,6 +101,26 @@ class WindowPositionManager {
         NSWorkspace.shared.open(url)
     }
 
+    static func openSpeechRecognitionSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    static func openCalendarSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    static func openRemindersSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    static func openAutomationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     static func permissionRequestPresentationDestination(
         hasPermissionNow: Bool,
         hasAttemptedSystemPrompt: Bool

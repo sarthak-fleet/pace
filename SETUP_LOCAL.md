@@ -11,7 +11,7 @@ For first-time setup, run the provisioning script — it installs LM Studio via 
 ./scripts/setup-local.sh status    # just print state of the world
 ```
 
-After the script finishes, just **Cmd+R in Xcode** to build and run. Do NOT use `xcodebuild` from the terminal — it invalidates TCC permissions per `AGENTS.md`. When the app prompts on first launch, grant Microphone, Accessibility, Screen Recording, and Speech Recognition.
+After the script finishes, just **Cmd+R in Xcode** to build and run. Do NOT use `xcodebuild` from the terminal — it invalidates TCC permissions per `AGENTS.md`. When the app prompts on first launch, grant Microphone, Speech Recognition, Accessibility, Screen Recording, and Screen Content. The Pace panel also shows local-tool preflight rows for Automation, Calendar, and Reminders.
 
 The detailed manual steps below explain what the script does and what to tweak.
 

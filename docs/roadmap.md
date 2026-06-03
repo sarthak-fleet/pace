@@ -77,9 +77,21 @@ Status: implemented for unit/build and runtime-smoke coverage.
   action execution.
 - Dry-run executor tests cover local tool observations without changing local
   apps or system state.
-- Latest Xcode test run passed 118 tests after local test-target signing cleanup.
+- Latest Xcode test run passed 122 tests after local test-target signing cleanup
+  and local action-result coverage.
 - Runtime diagnostic passed with both LM Studio models resident, no model
   thrash, VLM JSON health ok, synthetic VLM->planner turn under 3.5s, and
   planner eval 19/19.
 - Runtime smoke hooks passed for panel show/hide, cursor annotation off/on
   state, and approval-popup cancellation.
+
+## Priority 7: Permission Preflight
+
+Status: implemented, pending live panel review.
+
+- Core setup now includes Microphone, Speech Recognition, Accessibility,
+  Screen Recording, and Screen Content.
+- The panel shows local-tool preflight rows for Automation, Calendar, and
+  Reminders so app-control failures are visible before tool execution.
+- Automation stays per-target in macOS; Pace opens the Automation settings
+  pane and still relies on the native first-use prompt for Notes/Music/etc.

@@ -45,6 +45,10 @@ struct CompanionPanelView: View {
 
                 watchModeToggleRow
                     .padding(.horizontal, 16)
+
+                toolPermissionsSection
+                    .padding(.top, 10)
+                    .padding(.horizontal, 16)
             }
 
             if !companionManager.allPermissionsGranted {
@@ -144,7 +148,7 @@ struct CompanionPanelView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(DS.Colors.textSecondary)
 
-                Text("Some permissions were revoked. Grant all four below to keep using Pace.")
+                Text("Some permissions were revoked. Grant the core items below to keep using Pace.")
                     .font(.system(size: 11))
                     .foregroundColor(DS.Colors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +165,7 @@ struct CompanionPanelView: View {
                     .foregroundColor(DS.Colors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("Nothing runs in the background. Pace will only take a screenshot when you press the hot key. So, you can give that permission in peace. If you are still sus, eh, I can't do much there champ.")
+                Text("Pace only captures the screen when you press the hotkey or turn on Watch Mode. Local app control asks for macOS permission the first time you use each tool.")
                     .font(.system(size: 11))
                     .foregroundColor(Color(red: 0.9, green: 0.4, blue: 0.4))
                     .fixedSize(horizontal: false, vertical: true)
@@ -195,6 +199,8 @@ struct CompanionPanelView: View {
                 .padding(.bottom, 6)
 
             microphonePermissionRow
+
+            speechRecognitionPermissionRow
 
             accessibilityPermissionRow
 
@@ -411,7 +417,11 @@ struct CompanionPanelView: View {
                     // first attempt. If already denied, opens System Settings.
                     let status = AVCaptureDevice.authorizationStatus(for: .audio)
                     if status == .notDetermined {
-                        AVCaptureDevice.requestAccess(for: .audio) { _ in }
+                        AVCaptureDevice.requestAccess(for: .audio) { _ in
+                            Task { @MainActor in
+                                companionManager.refreshAllPermissions()
+                            }
+                        }
                     } else {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
                             NSWorkspace.shared.open(url)
@@ -433,6 +443,197 @@ struct CompanionPanelView: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var speechRecognitionPermissionRow: some View {
+        let isGranted = companionManager.hasSpeechRecognitionPermission
+        return HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(isGranted ? DS.Colors.textTertiary : DS.Colors.warning)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Speech Recognition")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textSecondary)
+
+                    Text("Needed for on-device transcription")
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+            }
+
+            Spacer()
+
+            if isGranted {
+                grantedBadge
+            } else {
+                Button(action: {
+                    companionManager.requestSpeechRecognitionPermission()
+                }) {
+                    grantButtonLabel
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var toolPermissionsSection: some View {
+        VStack(spacing: 2) {
+            Text("LOCAL TOOLS")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(DS.Colors.textTertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 6)
+
+            automationPermissionRow
+            calendarPermissionRow
+            remindersPermissionRow
+        }
+    }
+
+    private var automationPermissionRow: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape.2")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Automation")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textSecondary)
+
+                    Text("Notes, Music, Mail, Things, Shortcuts")
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+
+            Spacer()
+
+            Button(action: {
+                WindowPositionManager.openAutomationSettings()
+            }) {
+                outlineButtonLabel("Open")
+            }
+            .buttonStyle(.plain)
+            .pointerCursor()
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var calendarPermissionRow: some View {
+        localToolPermissionRow(
+            systemImageName: "calendar",
+            title: "Calendar",
+            subtitle: "Read your schedule on request",
+            isGranted: companionManager.hasCalendarPermission,
+            shouldRequestPermission: companionManager.shouldRequestCalendarPermission,
+            action: {
+                companionManager.requestCalendarPermission()
+            }
+        )
+    }
+
+    private var remindersPermissionRow: some View {
+        localToolPermissionRow(
+            systemImageName: "checklist",
+            title: "Reminders",
+            subtitle: "Create reminders on request",
+            isGranted: companionManager.hasRemindersPermission,
+            shouldRequestPermission: companionManager.shouldRequestRemindersPermission,
+            action: {
+                companionManager.requestRemindersPermission()
+            }
+        )
+    }
+
+    private func localToolPermissionRow(
+        systemImageName: String,
+        title: String,
+        subtitle: String,
+        isGranted: Bool,
+        shouldRequestPermission: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: systemImageName)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(isGranted ? DS.Colors.textTertiary : DS.Colors.warning)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textSecondary)
+
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+            }
+
+            Spacer()
+
+            if isGranted {
+                grantedBadge
+            } else {
+                Button(action: action) {
+                    if shouldRequestPermission {
+                        grantButtonLabel
+                    } else {
+                        outlineButtonLabel("Open")
+                    }
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var grantedBadge: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(DS.Colors.success)
+                .frame(width: 6, height: 6)
+            Text("Granted")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(DS.Colors.success)
+        }
+    }
+
+    private var grantButtonLabel: some View {
+        Text("Grant")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(DS.Colors.textOnAccent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(DS.Colors.accent)
+            )
+    }
+
+    private func outlineButtonLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(DS.Colors.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .stroke(DS.Colors.borderSubtle, lineWidth: 0.8)
+            )
     }
 
     // MARK: - Read Screen Toggle
