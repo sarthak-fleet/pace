@@ -19,6 +19,7 @@ enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
     case paceHistory
     case screenWatchHistory
     case appUsageHistory
+    case screenTime
     case localPreference
 
     var displayName: String {
@@ -43,6 +44,8 @@ enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
             return "Screen watch journal"
         case .appUsageHistory:
             return "App usage journal"
+        case .screenTime:
+            return "Screen Time (system)"
         case .localPreference:
             return "Preference"
         }
@@ -1091,7 +1094,10 @@ final class PaceLocalRetriever: PaceRetriever {
         print("🔎 Local retrieval: \(matches.count) match(es) in \(retrievalDurationMilliseconds)ms")
         guard !matches.isEmpty else { return nil }
 
-        var lines = ["LOCAL CONTEXT"]
+        // The date anchor lets the model relate day-stamped journal/calendar
+        // documents to "today"/"yesterday" questions instead of hedging.
+        let todayKey = PaceAppUsageJournal.dayFormatter.string(from: Date())
+        var lines = ["LOCAL CONTEXT (today is \(todayKey))"]
         var characterCount = lines[0].count
 
         for (index, match) in matches.enumerated() {

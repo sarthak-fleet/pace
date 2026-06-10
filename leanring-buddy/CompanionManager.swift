@@ -157,6 +157,8 @@ final class CompanionManager: ObservableObject {
         return retriever
     }()
 
+    private lazy var screenTimeRetrievalConnector = PaceScreenTimeRetrievalConnector()
+
     private lazy var postureMonitor: PacePostureMonitor = {
         let monitor = PacePostureMonitor()
         monitor.onPostureEvent = { [weak self] postureEvent in
@@ -339,10 +341,17 @@ final class CompanionManager: ObservableObject {
     /// separately because they are only needed when the user asks for those
     /// local tools.
     var allPermissionsGranted: Bool {
-        hasAccessibilityPermission
+        // Apple Speech permission only gates readiness when the ACTIVE
+        // transcription provider uses the Speech framework. WhisperKit
+        // transcribes without it, and requiring it anyway made the panel
+        // nag for a permission the app never requests.
+        let speechPermissionSatisfied = !buddyDictationManager
+            .transcriptionProvider.requiresSpeechRecognitionPermission
+            || hasSpeechRecognitionPermission
+        return hasAccessibilityPermission
             && hasScreenRecordingPermission
             && hasMicrophonePermission
-            && hasSpeechRecognitionPermission
+            && speechPermissionSatisfied
             && hasScreenContentPermission
     }
 
@@ -807,6 +816,53 @@ final class CompanionManager: ObservableObject {
             break
         case .appUsageHistory:
             appUsageTracker?.start()
+        case .screenTime:
+            refreshScreenTimeRetrievalDocumentsIfAllowed(force: true)
+        }
+    }
+
+    /// Reads macOS's own Screen Time database into the retrieval index.
+    /// No prompt is ever shown: without Full Disk Access the read fails and
+    /// the source row shows the repair hint instead.
+    private func refreshScreenTimeRetrievalDocumentsIfAllowed(force: Bool = false) {
+        guard localRetriever.isSourceEnabled(.screenTime) else {
+            refreshLocalRetrievalPublishedState()
+            return
+        }
+        let connector = screenTimeRetrievalConnector
+        Task.detached(priority: .utility) { [weak self] in
+            let outcome: Result<[PaceRetrievalDocument], Error> = Result {
+                try connector.loadScreenTimeDocuments()
+            }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                switch outcome {
+                case .success(let documents):
+                    self.localRetriever.replaceDocuments(
+                        documents,
+                        forSource: .screenTime,
+                        status: .enabled(
+                            source: .screenTime,
+                            displayName: PaceRetrievalSource.screenTime.displayName,
+                            documentCount: documents.count
+                        )
+                    )
+                    print("🔎 Screen Time retrieval: \(documents.count) day(s) indexed")
+                case .failure(let error):
+                    self.localRetriever.replaceDocuments(
+                        [],
+                        forSource: .screenTime,
+                        status: .skipped(
+                            source: .screenTime,
+                            displayName: PaceRetrievalSource.screenTime.displayName,
+                            reason: (error as? LocalizedError)?.errorDescription
+                                ?? error.localizedDescription
+                        )
+                    )
+                    print("🔎 Screen Time retrieval skipped: \(error.localizedDescription)")
+                }
+                self.refreshLocalRetrievalPublishedState()
+            }
         }
     }
 
@@ -1250,6 +1306,10 @@ final class CompanionManager: ObservableObject {
             latestPostureStatus = "Calibrating — sit how you'd like to sit"
             postureMonitor.start()
         }
+
+        // Screen Time indexes at launch — the read either works (Full Disk
+        // Access granted) or reports a skipped status; never a prompt.
+        refreshScreenTimeRetrievalDocumentsIfAllowed()
     }
 
     func clearDetectedElementLocation() {
