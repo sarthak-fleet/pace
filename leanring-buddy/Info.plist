@@ -30,7 +30,7 @@
 	<key>LocalPlannerBaseURL</key>
 	<string>http://localhost:1234/v1</string>
 	<key>LocalPlannerModelIdentifier</key>
-	<string>qwen/qwen3-30b-a3b</string>
+	<string>qwen3-4b-instruct-2507</string>
 	<key>TTSProvider</key>
 	<string>localServer</string>
 	<key>LocalTTSServerBaseURL</key>
