@@ -82,19 +82,43 @@ final class LMStudioEmbeddingClient: PaceTextEmbedding {
             EmbeddingsRequest(model: modelIdentifier, input: texts)
         )
 
-        let (data, response) = try await urlSession.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw PaceEmbeddingClientError(
-                message: "embeddings endpoint returned non-2xx for model \(modelIdentifier)"
+        let requestStartedAt = Date()
+        let inputCharacterCount = texts.reduce(0) { $0 + $1.count }
+        func auditEmbedCall(outcome: String, detail: String? = nil) {
+            PaceAPIAuditLog.shared.record(
+                subsystem: "embeddings",
+                operation: "embeddings",
+                target: modelIdentifier,
+                durationMilliseconds: Int(Date().timeIntervalSince(requestStartedAt) * 1000),
+                outcome: outcome,
+                inputCharacterCount: inputCharacterCount,
+                detail: detail ?? "\(texts.count) inputs"
             )
         }
-        let decoded = try JSONDecoder().decode(EmbeddingsResponse.self, from: data)
-        guard decoded.data.count == texts.count else {
-            throw PaceEmbeddingClientError(
-                message: "embeddings endpoint returned \(decoded.data.count) vectors for \(texts.count) inputs"
-            )
+
+        do {
+            let (data, response) = try await urlSession.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                auditEmbedCall(outcome: "non_2xx")
+                throw PaceEmbeddingClientError(
+                    message: "embeddings endpoint returned non-2xx for model \(modelIdentifier)"
+                )
+            }
+            let decoded = try JSONDecoder().decode(EmbeddingsResponse.self, from: data)
+            guard decoded.data.count == texts.count else {
+                auditEmbedCall(outcome: "count_mismatch")
+                throw PaceEmbeddingClientError(
+                    message: "embeddings endpoint returned \(decoded.data.count) vectors for \(texts.count) inputs"
+                )
+            }
+            auditEmbedCall(outcome: "ok")
+            return decoded.data.sorted { $0.index < $1.index }.map(\.embedding)
+        } catch let error as PaceEmbeddingClientError {
+            throw error
+        } catch {
+            auditEmbedCall(outcome: "transport_error", detail: String(error.localizedDescription.prefix(160)))
+            throw error
         }
-        return decoded.data.sorted { $0.index < $1.index }.map(\.embedding)
     }
 }
 

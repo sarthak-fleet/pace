@@ -47,6 +47,28 @@ struct PaceIntentClassifierTests {
         }
     }
 
+    @Test func wakePhraseGreetingsHitTheChitchatFastPath() async throws {
+        let classifier = PaceIntentClassifier()
+        for greeting in [
+            "Hey Pace, how is it going?",
+            "hey pace how's it going",
+            "Hi Pace, how are you?",
+            "how is it going?",
+            "how are things",
+        ] {
+            let prediction = classifier.classify(greeting)
+            #expect(prediction.intent == .chitchat, "expected chitchat for \(greeting), got \(prediction.intent)")
+        }
+    }
+
+    @Test func wakePhrasePrefixDoesNotChangeNonChitchatRouting() async throws {
+        let classifier = PaceIntentClassifier()
+        #expect(classifier.classify("hey pace, what is html").intent == .pureKnowledge)
+        #expect(classifier.classify("ok pace, what apps did i use today").intent == .pureKnowledge)
+        #expect(classifier.classify("hey pace, click the save button").intent == .screenAction)
+        #expect(classifier.classify("hey pace, what's on the screen").intent == .screenDescription)
+    }
+
     @Test func journalRecallQuestionsRouteTextOnly() async throws {
         let classifier = PaceIntentClassifier()
         for question in [

@@ -132,6 +132,18 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
         // Synthesis starts immediately so later sentences render while
         // earlier ones play; nil result means "use the fallback voice".
         let synthesisTask = Task<Data?, Never> { [urlSession, configuration] in
+            let synthesisStartedAt = Date()
+            func auditSynthesis(outcome: String, outputByteCount: Int? = nil) {
+                PaceAPIAuditLog.shared.record(
+                    subsystem: "tts",
+                    operation: "audio.speech",
+                    target: "\(configuration.modelIdentifier)/\(configuration.voiceIdentifier)",
+                    durationMilliseconds: Int(Date().timeIntervalSince(synthesisStartedAt) * 1000),
+                    outcome: outcome,
+                    inputCharacterCount: trimmedText.count,
+                    outputCharacterCount: outputByteCount
+                )
+            }
             do {
                 let (audioData, response) = try await urlSession.data(
                     for: configuration.speechRequest(for: trimmedText)
@@ -139,10 +151,13 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200..<300).contains(httpResponse.statusCode),
                       !audioData.isEmpty else {
+                    auditSynthesis(outcome: "bad_response")
                     return nil
                 }
+                auditSynthesis(outcome: "ok", outputByteCount: audioData.count)
                 return audioData
             } catch {
+                auditSynthesis(outcome: "transport_error")
                 return nil
             }
         }

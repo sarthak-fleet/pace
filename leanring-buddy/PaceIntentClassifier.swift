@@ -101,6 +101,24 @@ final class PaceIntentClassifier {
         print("🧠 PaceIntentClassifier: rule-based backend")
     }
 
+    /// Drops a leading wake phrase plus its trailing comma/space so every
+    /// rule below sees the bare intent. Only the FIRST matching prefix is
+    /// stripped; "hi pace" alone stays intact (it is itself chitchat).
+    private static func strippedOfWakePhrase(_ lowercaseTranscript: String) -> String {
+        for wakePhrasePrefix in wakePhrasePrefixes {
+            guard lowercaseTranscript.hasPrefix(wakePhrasePrefix + " ")
+                || lowercaseTranscript.hasPrefix(wakePhrasePrefix + ",") else {
+                continue
+            }
+            let remainder = lowercaseTranscript
+                .dropFirst(wakePhrasePrefix.count)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " ,"))
+            // A bare wake phrase ("hey pace ?") classifies as itself.
+            return remainder.isEmpty ? lowercaseTranscript : remainder
+        }
+        return lowercaseTranscript
+    }
+
     /// Classify a transcript. Returns `.unknown` when the underlying
     /// rules' confidence is below `minimumConfidence`. Callers should
     /// treat `.unknown` as "run the full pipeline."
@@ -124,9 +142,21 @@ final class PaceIntentClassifier {
     // are biased toward the more expensive class so we don't accidentally
     // skip the VLM on an ambiguous turn.
 
+    /// Leading wake phrases users naturally prepend ("hey pace, …"). They
+    /// carry no intent, so they are stripped before any rule matching —
+    /// otherwise "Hey Pace, how is it going?" misses every chitchat
+    /// pattern and pays the full screenshot+VLM+planner pipeline for a
+    /// greeting.
+    private static let wakePhrasePrefixes: [String] = [
+        "hey pace", "hi pace", "hello pace", "ok pace", "okay pace",
+        "yo pace",
+    ]
+
     private static let chitchatStarters: [String] = [
         "hi pace", "hello pace", "hey there", "hi there", "good morning",
-        "good evening", "what's up", "how are you", "how's it going",
+        "good evening", "good afternoon", "what's up", "how are you",
+        "how's it going", "how is it going", "how are things",
+        "how's everything", "how's your day",
         "thanks", "thank you", "appreciate it", "you're great",
         "you're awesome", "good job", "nice work", "bye for now",
         "talk later", "catch you later", "later pace", "see you",
@@ -211,14 +241,17 @@ final class PaceIntentClassifier {
     ]
 
     private func ruleBasedClassify(_ transcript: String) -> PaceIntentPrediction {
-        let lowercaseTranscript = transcript.lowercased()
+        let lowercaseTranscript = Self.strippedOfWakePhrase(transcript.lowercased())
 
         // Chitchat: very high confidence when the whole transcript
         // matches a known phrase (often a single short utterance).
+        // Trailing punctuation is ignored for the whole-utterance check —
+        // dictation regularly appends "?" or "!" to greetings.
+        let punctuationTrimmedTranscript = lowercaseTranscript
+            .trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
         for chitchatPhrase in Self.chitchatStarters {
-            if lowercaseTranscript == chitchatPhrase
-                || lowercaseTranscript.hasPrefix(chitchatPhrase + " ")
-                || lowercaseTranscript == chitchatPhrase + "." {
+            if punctuationTrimmedTranscript == chitchatPhrase
+                || lowercaseTranscript.hasPrefix(chitchatPhrase + " ") {
                 return PaceIntentPrediction(intent: .chitchat, confidence: 0.95)
             }
         }

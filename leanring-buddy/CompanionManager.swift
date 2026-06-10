@@ -1757,7 +1757,10 @@ final class CompanionManager: ObservableObject {
         if lowercased.contains("bye") || lowercased.contains("later") || lowercased.contains("see you") {
             return ["catch you later", "see you", "talk soon"].randomElement() ?? "see you"
         }
-        if lowercased.contains("how are you") || lowercased.contains("how's it going") || lowercased.contains("what's up") {
+        if lowercased.contains("how are you") || lowercased.contains("how's it going")
+            || lowercased.contains("how is it going") || lowercased.contains("how are things")
+            || lowercased.contains("how's everything") || lowercased.contains("how's your day")
+            || lowercased.contains("what's up") {
             return ["doing great, what's up?", "all good — what can I do?", "i'm good, you?"].randomElement() ?? "doing great"
         }
         if lowercased.contains("good morning") {

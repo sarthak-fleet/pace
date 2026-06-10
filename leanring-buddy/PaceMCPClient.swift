@@ -250,16 +250,33 @@ struct PaceMCPStdioClient {
             throw PaceMCPClientError.serverNotConfigured(toolCall.serverName)
         }
 
+        let callStartedAt = Date()
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
+                func auditMCPCall(outcome: String, outputCharacterCount: Int? = nil, detail: String? = nil) {
+                    PaceAPIAuditLog.shared.record(
+                        subsystem: "mcp",
+                        operation: "tools/call",
+                        target: "\(toolCall.serverName).\(toolCall.toolName)",
+                        durationMilliseconds: Int(Date().timeIntervalSince(callStartedAt) * 1000),
+                        outcome: outcome,
+                        outputCharacterCount: outputCharacterCount,
+                        detail: detail
+                    )
+                }
                 do {
                     let result = try runSynchronousToolCall(
                         toolCall,
                         serverConfiguration: serverConfiguration,
                         timeoutInSeconds: requestTimeoutInSeconds
                     )
+                    auditMCPCall(outcome: "ok", outputCharacterCount: result.count)
                     continuation.resume(returning: result)
                 } catch {
+                    auditMCPCall(
+                        outcome: "error",
+                        detail: String(String(describing: error).prefix(160))
+                    )
                     continuation.resume(throwing: error)
                 }
             }
