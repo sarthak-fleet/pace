@@ -246,6 +246,33 @@ struct PaceLocalRetrievalTests {
         #expect(disabledContextBlock == nil)
     }
 
+    @Test func builtInCompetitiveResearchIncludesDayflowAndVoiceAssistantCategory() async throws {
+        let retriever = PaceLocalRetriever(
+            store: PaceInMemoryRetrievalStore(),
+            appliesPersistedSourcePreferences: false
+        )
+
+        let dayflowContextBlock = retriever.localContextBlock(
+            for: PaceRetrievalQuery(
+                text: "how does Pace differ from Dayflow work journal timeline LM Studio",
+                maximumResultCount: 2,
+                maximumSnippetCharacters: 260
+            )
+        )
+        #expect(dayflowContextBlock?.contains("Dayflow") == true)
+        #expect(dayflowContextBlock?.contains("work journal") == true)
+
+        let voiceAssistantContextBlock = retriever.localContextBlock(
+            for: PaceRetrievalQuery(
+                text: "Dottie OpenFelix private voice assistant menu bar push to talk",
+                maximumResultCount: 2,
+                maximumSnippetCharacters: 260
+            )
+        )
+        #expect(voiceAssistantContextBlock?.contains("Dottie") == true)
+        #expect(voiceAssistantContextBlock?.contains("push-to-talk") == true)
+    }
+
     @Test func retrievalContextPolicySkipsGenericAndScreenOnlyTurns() async throws {
         #expect(!PaceRetrievalContextPolicy.shouldQueryLocalContext(
             forTranscript: "explain transformers",

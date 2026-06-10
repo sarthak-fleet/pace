@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-08
+Last updated: 2026-06-10
 
 ## Current Scope
 
@@ -30,6 +30,16 @@ entry was found for `clickyLocal`, `Pace`, or `space`.
 - Local tests and runtime smoke hooks are documented, with the latest snapshot
   reporting Xcode tests and smoke checks passing on 2026-06-03.
 
+## Product Convergence (Assistant + Dayflow)
+
+Pace should read as both a **local voice assistant** (menu-bar agent, PTT,
+streaming TTS, tool/MCP loop — like Dottie/OpenFelix) and a **screen-aware
+memory surface** (ambient capture, journal Q&A, timeline-style recall — like
+Dayflow). Today it is assistant-first: voice + actions ship; Dayflow-style
+persistent work journal and `pace://` Shortcuts deeplinks are not shipped yet.
+Built-in competitive research now covers Dayflow and the voice-assistant
+category alongside Project Minimi.
+
 ## Planned Next
 
 1. Resolve fleet registry identity: either add this repo as `clickyLocal` /
@@ -43,6 +53,10 @@ entry was found for `clickyLocal`, `Pace`, or `space`.
    scoring, and click verification/retry.
 5. Keep `CompanionManager.swift` decomposition scoped to the documented next
    splits: agent loop body and screen-context service.
+6. Ship `pace://` URL schemes (listen, chat/transcript, watch on/off) for
+   Shortcuts/Raycast parity with Dayflow and Dottie.
+7. Extend watch-mode / screen-context persistence into retrieval so Pace can
+   answer Dayflow-style "what did I do today?" questions from local history.
 
 ## Deferred / Parked
 
