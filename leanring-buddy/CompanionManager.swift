@@ -157,6 +157,14 @@ final class CompanionManager: ObservableObject {
         return retriever
     }()
 
+    private lazy var postureMonitor: PacePostureMonitor = {
+        let monitor = PacePostureMonitor()
+        monitor.onPostureEvent = { [weak self] postureEvent in
+            self?.handlePostureEvent(postureEvent)
+        }
+        return monitor
+    }()
+
     private lazy var appUsageTracker: PaceAppUsageTracker? = PaceAppUsageTracker(
         rehydratedJournal: localRetriever.rehydratedAppUsageJournal(),
         onFlushedDocument: { [weak self] flushedDocument in
@@ -414,6 +422,52 @@ final class CompanionManager: ObservableObject {
         } else {
             screenWatchModeController.stopWatching()
             latestWatchModeSummary = nil
+        }
+    }
+
+    // MARK: - Posture watch
+
+    @Published private(set) var isPostureWatchEnabled: Bool = PaceUserPreferencesStore.bool(
+        .isPostureWatchEnabled,
+        default: false
+    )
+    @Published private(set) var latestPostureStatus: String?
+
+    func setPostureWatchEnabled(_ enabled: Bool) {
+        guard enabled != isPostureWatchEnabled else { return }
+        isPostureWatchEnabled = enabled
+        PaceUserPreferencesStore.setBool(enabled, for: .isPostureWatchEnabled)
+        if enabled {
+            latestPostureStatus = "Calibrating — sit how you'd like to sit"
+            postureMonitor.start()
+        } else {
+            postureMonitor.stop()
+            latestPostureStatus = nil
+        }
+    }
+
+    func recalibratePostureWatch() {
+        guard isPostureWatchEnabled else { return }
+        postureMonitor.recalibrate()
+        latestPostureStatus = "Calibrating — sit how you'd like to sit"
+    }
+
+    private func handlePostureEvent(_ postureEvent: PacePostureEvent) {
+        switch postureEvent {
+        case .calibrated:
+            latestPostureStatus = "Watching posture"
+            print("📷 Posture watch calibrated")
+        case .alert(let assessment):
+            latestPostureStatus = "Nudged: \(assessment.displayName)"
+            print("📷 Posture alert: \(assessment.displayName)")
+            // Speak only when no turn is in flight — a posture nudge should
+            // never talk over an answer the user asked for.
+            guard voiceState == .idle else { return }
+            Task {
+                await streamingSentenceTTSPipeline.flushFinal(
+                    finalSpokenText: assessment.spokenNudge
+                )
+            }
         }
     }
 
@@ -1186,6 +1240,12 @@ final class CompanionManager: ObservableObject {
         if localRetriever.isSourceEnabled(.appUsageHistory) {
             appUsageTracker?.start()
         }
+
+        // Posture watch resumes across launches when the user left it on.
+        if isPostureWatchEnabled {
+            latestPostureStatus = "Calibrating — sit how you'd like to sit"
+            postureMonitor.start()
+        }
     }
 
     func clearDetectedElementLocation() {
@@ -1196,6 +1256,9 @@ final class CompanionManager: ObservableObject {
 
     func stop() {
         appUsageTracker?.stop()
+        if isPostureWatchEnabled {
+            postureMonitor.stop()
+        }
         globalPushToTalkShortcutMonitor.stop()
         buddyDictationManager.cancelCurrentDictation()
         overlayWindowManager.hideOverlay()

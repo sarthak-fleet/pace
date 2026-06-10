@@ -42,8 +42,16 @@ entry was found for `clickyLocal`, `Pace`, or `space`.
   "how did I spend my time?" locally. The screen journal only covers periods
   watch mode is on; the usage journal records app-switch metadata only. Both
   are per-source disable/clear-able in Settings and keep 7 days.
-- Full unit suite green: 315 tests including MCP integration, deeplink parser,
-  journal, and download-tool coverage (run via `scripts/test-pace.sh`).
+- **Posture watch (opt-in)**: one camera frame every ten seconds through
+  Vision face detection, median-calibrated baseline, hysteresis + cooldown,
+  gentle spoken nudges for slouching/leaning. Off by default; frames are
+  analyzed on-device and never stored.
+- Embedding re-ranker over lexical retrieval (LM Studio `/v1/embeddings`,
+  best-effort with lexical fallback) — the first slice of the vector-RAG
+  track.
+- Full unit suite green: 336 tests including MCP integration, deeplink parser,
+  journal, posture, reranker, and download-tool coverage (run via
+  `scripts/test-pace.sh`).
 
 ## Product Convergence (Assistant + Dayflow)
 

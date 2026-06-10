@@ -116,8 +116,18 @@ enum PaceEmbeddingReranker {
                 lexical: matches.map(\.score),
                 semantic: semantic
             )
-            return zip(matches, blended)
-                .sorted { $0.1 > $1.1 }
+            // Ties broken by raw semantic similarity. With min-max
+            // normalization the equal-weight blend ties whenever lexical and
+            // semantic disagree on a pair (both normalize to 1 vs 0), and a
+            // stable sort would silently keep lexical order — making the
+            // reranker a no-op exactly when it has something to say.
+            return zip(matches, zip(blended, semantic))
+                .sorted { lhs, rhs in
+                    if lhs.1.0 == rhs.1.0 {
+                        return lhs.1.1 > rhs.1.1
+                    }
+                    return lhs.1.0 > rhs.1.0
+                }
                 .map(\.0)
         } catch {
             return matches
