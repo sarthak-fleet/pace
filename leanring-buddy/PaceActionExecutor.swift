@@ -808,6 +808,8 @@ final class PaceActionExecutor {
             return await runShortcut(named: shortcutName)
         case .openMessages(let messageRequest):
             return await openMessages(messageRequest)
+        case .downloadFile(let downloadRequest):
+            return await downloadFile(downloadRequest)
         case .mcp(let mcpToolCall):
             return await callMCPTool(mcpToolCall)
         }
@@ -1247,6 +1249,66 @@ final class PaceActionExecutor {
             toolName: "open_app",
             summary: "Opened app: \(trimmedApplicationName)"
         )
+    }
+
+    private func downloadFile(_ downloadRequest: PaceFileDownloadRequest) async -> PaceActionExecutionObservation {
+        let downloadURL = downloadRequest.url
+        print("🧰 Download file \"\(downloadURL.absoluteString)\" (enabled: \(actionsAreEnabled))")
+        guard actionsAreEnabled else {
+            return PaceActionExecutionObservation(
+                toolName: "download_file",
+                summary: "Would download file: \(downloadURL.absoluteString)"
+            )
+        }
+
+        guard let downloadsDirectoryURL = FileManager.default.urls(
+            for: .downloadsDirectory,
+            in: .userDomainMask
+        ).first else {
+            return PaceActionExecutionObservation(
+                toolName: "download_file",
+                summary: "Could not locate the Downloads folder."
+            )
+        }
+
+        do {
+            let (temporaryFileURL, response) = try await URLSession.shared.download(from: downloadURL)
+            if let httpResponse = response as? HTTPURLResponse,
+               !(200...299).contains(httpResponse.statusCode) {
+                try? FileManager.default.removeItem(at: temporaryFileURL)
+                return PaceActionExecutionObservation(
+                    toolName: "download_file",
+                    summary: "Download failed with HTTP \(httpResponse.statusCode): \(downloadURL.absoluteString)"
+                )
+            }
+
+            let sanitizedFilename = PaceDownloadFilenameSanitizer.sanitizedFilename(
+                suggestedFilename: downloadRequest.suggestedFilename ?? response.suggestedFilename,
+                downloadURL: downloadURL
+            )
+            let existingFilenames = Set(
+                (try? FileManager.default.contentsOfDirectory(atPath: downloadsDirectoryURL.path)) ?? []
+            )
+            let finalFilename = PaceDownloadFilenameSanitizer.collisionFreeFilename(
+                sanitizedFilename,
+                existingFilenames: existingFilenames
+            )
+            let destinationURL = downloadsDirectoryURL.appendingPathComponent(finalFilename)
+            try FileManager.default.moveItem(at: temporaryFileURL, to: destinationURL)
+
+            let downloadedByteCount = (try? FileManager.default.attributesOfItem(
+                atPath: destinationURL.path
+            )[.size] as? Int) ?? 0
+            return PaceActionExecutionObservation(
+                toolName: "download_file",
+                summary: "Downloaded \(finalFilename) (\(downloadedByteCount) bytes) to ~/Downloads."
+            )
+        } catch {
+            return PaceActionExecutionObservation(
+                toolName: "download_file",
+                summary: "Download failed: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func openURL(_ rawURLString: String) async -> PaceActionExecutionObservation {
@@ -3170,6 +3232,7 @@ enum PaceParsedAction {
     case createThingsToDo(PaceThingsToDoRequest)
     case runShortcut(String)
     case openMessages(PaceMessageRequest)
+    case downloadFile(PaceFileDownloadRequest)
     case mcp(PaceMCPToolCall)
 
     var approvalDescription: String {
@@ -3247,6 +3310,8 @@ enum PaceParsedAction {
                 return "Open Messages for: \(recipient)"
             }
             return "Open Messages"
+        case .downloadFile(let downloadRequest):
+            return "Download file to ~/Downloads: \(downloadRequest.url.absoluteString)"
         case .mcp(let mcpToolCall):
             return "Call MCP tool: \(mcpToolCall.approvalDescription)"
         }
@@ -4611,6 +4676,16 @@ enum PaceActionTagParser {
                 toolName: toolName,
                 arguments: mcpArguments
             ))
+        case "file.download", "download.file":
+            let rawURLString = firstStringValue(for: ["url", "text"], in: arguments) ?? ""
+            guard let downloadURL = PaceFileDownloadURLValidator.validatedDownloadURL(from: rawURLString) else {
+                return nil
+            }
+            let suggestedFilename = firstStringValue(for: ["filename", "name", "title"], in: arguments)
+            return .downloadFile(PaceFileDownloadRequest(
+                url: downloadURL,
+                suggestedFilename: suggestedFilename
+            ))
         case "finder.reveal":
             let path = firstStringValue(for: ["path", "url"], in: arguments)
             guard let path, !path.isEmpty else { return nil }
@@ -4695,6 +4770,11 @@ enum PaceActionTagParser {
         case "notes.search", "note.search":
             if !hasNonEmptyString(for: ["query", "text", "title", "name"], in: arguments) {
                 issues.append("requires notes query")
+            }
+        case "file.download", "download.file":
+            let rawURLString = firstStringValue(for: ["url", "text"], in: arguments) ?? ""
+            if PaceFileDownloadURLValidator.validatedDownloadURL(from: rawURLString) == nil {
+                issues.append("requires a valid http(s) download url")
             }
         case "mail.draft", "mail.compose":
             if stringArrayValue(for: "to", in: arguments).isEmpty
@@ -5137,6 +5217,8 @@ enum PaceActionTagParser {
             return parseShortcutToolCall(toolCall)
         case .messages:
             return parseMessagesToolCall(toolCall)
+        case .downloadFile:
+            return parseDownloadFileToolCall(toolCall)
         }
     }
 
@@ -5249,6 +5331,11 @@ enum PaceActionTagParser {
             }
         case .messages:
             break
+        case .downloadFile:
+            let rawURLString = firstStringValue(for: ["url", "text"], in: mergedArguments) ?? ""
+            if PaceFileDownloadURLValidator.validatedDownloadURL(from: rawURLString) == nil {
+                issues.append("requires a valid http(s) download url")
+            }
         }
 
         return issues
@@ -5755,6 +5842,19 @@ enum PaceActionTagParser {
         }
 
         return .createNote(noteRequest)
+    }
+
+    private static func parseDownloadFileToolCall(_ toolCall: ToolCallDTO) -> PaceParsedAction? {
+        let rawURLString = toolCall.url ?? toolCall.text ?? ""
+        guard let downloadURL = PaceFileDownloadURLValidator.validatedDownloadURL(from: rawURLString) else {
+            return nil
+        }
+        let suggestedFilename = (toolCall.name ?? toolCall.title)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return .downloadFile(PaceFileDownloadRequest(
+            url: downloadURL,
+            suggestedFilename: suggestedFilename?.isEmpty == false ? suggestedFilename : nil
+        ))
     }
 
     private static func parseMailToolCall(_ toolCall: ToolCallDTO) -> PaceParsedAction? {

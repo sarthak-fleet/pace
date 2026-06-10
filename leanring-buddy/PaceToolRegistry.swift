@@ -57,6 +57,7 @@ enum PaceLocalToolKind: String, CaseIterable {
     case things
     case shortcuts
     case messages
+    case downloadFile
 }
 
 struct PaceLocalToolDefinition {
@@ -317,6 +318,16 @@ enum PaceToolRegistry {
             riskLevel: .appOrSystemMutation,
             executionSummary: "Opens Messages or prepares a message draft.",
             observationSummary: "Reports whether Messages was opened."
+        ),
+        PaceLocalToolDefinition(
+            kind: .downloadFile,
+            canonicalName: "download_file",
+            aliases: ["download", "save_file"],
+            schemaExample: #"{"tool":"download_file","url":"https://example.com/report.pdf","name":"report.pdf"}"#,
+            description: "download a user-named http(s) URL into ~/Downloads. The product's only network action; always user-commanded.",
+            riskLevel: .externalIntegration,
+            executionSummary: "Downloads the URL into ~/Downloads with a sanitized, collision-free filename.",
+            observationSummary: "Reports the saved filename and byte count, or the failure reason."
         )
     ]
 
@@ -475,6 +486,8 @@ enum PaceToolRegistry {
             return definition(forToolName: "shortcuts")
         case .openMessages:
             return definition(forToolName: "messages")
+        case .downloadFile:
+            return definition(forToolName: "download_file")
         case .mcp:
             return nil
         }
