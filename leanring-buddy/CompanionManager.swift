@@ -132,8 +132,8 @@ final class CompanionManager: ObservableObject {
     /// planner entirely; pure knowledge takes a text-only planner path.
     /// The rule-based backend ships now; a tiny model can replace it
     /// once it beats these rules on local fixtures.
-    private lazy var intentClassifier: PaceIntentClassifier = {
-        return PaceIntentClassifier()
+    private lazy var intentClassifier: any PaceIntentClassifying = {
+        return PaceIntentClassifierFactory.makeDefault()
     }()
 
     // Main reasoning/planning model for screen and action turns.
@@ -2131,6 +2131,12 @@ final class CompanionManager: ObservableObject {
     /// planner re-anchors on the conversation history rather than a
     /// repeated user statement.
     private func sendTranscriptToPlannerWithScreenshot(transcript: String) {
+        Task { @MainActor in
+            await sendTranscriptToPlannerWithScreenshotAsync(transcript: transcript)
+        }
+    }
+
+    private func sendTranscriptToPlannerWithScreenshotAsync(transcript: String) async {
         currentResponseTask?.cancel()
         ttsClient.stopPlayback()
         pendingIntentClarification = nil
@@ -2159,7 +2165,7 @@ final class CompanionManager: ObservableObject {
         // Conservative: only fires when the classifier is confident
         // enough to return .chitchat (not .unknown). Anything ambiguous
         // falls through to the full pipeline.
-        let intentPrediction = intentClassifier.classify(transcript)
+        let intentPrediction = await intentClassifier.classify(transcript)
         currentTurnHUDState = .understanding(routeHUDDetail(for: intentPrediction))
         if let clarification = PaceIntentClarifier.clarification(for: transcript) {
             print("❔ Intent clarification: \(clarification.question)")
