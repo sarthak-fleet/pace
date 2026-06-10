@@ -96,12 +96,11 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
     private let fallbackClient: any BuddyTTSClient
     private let urlSession: URLSession
 
-    private struct SynthesisJob {
+    private struct PendingUtterance {
         let text: String
-        let task: Task<Data?, Never>
     }
 
-    private var synthesisJobQueue: [SynthesisJob] = []
+    private var pendingUtteranceQueue: [PendingUtterance] = []
     private var isDrainingPlaybackQueue = false
     private var audioPlayer: AVAudioPlayer?
     private var playbackContinuation: CheckedContinuation<Void, Never>?
@@ -133,68 +132,69 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
         }
     }
 
+    /// True while the client has work to do — pending text, in-flight
+    /// synthesis, or audio still playing through either voice.
     var isPlaying: Bool {
-        !synthesisJobQueue.isEmpty
+        !pendingUtteranceQueue.isEmpty
             || isDrainingPlaybackQueue
             || audioPlayer?.isPlaying == true
             || fallbackClient.isPlaying
     }
 
+    /// Enqueues an utterance. Synthesis and playback are SERIALIZED inside
+    /// the drain loop: one request at a time to the sidecar, drained
+    /// strictly in arrival order. The previous design fired every
+    /// sentence's synthesis in parallel, which made the second voice show
+    /// up mid-reply whenever Kokoro queued or slow-rejected a concurrent
+    /// request — a single bad sentence dropped to Apple TTS while
+    /// neighbors stayed on Kokoro, producing the half-and-half voice mix.
     func speakText(_ text: String) async throws {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
-
-        if let serverUnavailableUntil, Date() < serverUnavailableUntil {
-            try await fallbackClient.speakText(trimmedText)
-            return
-        }
-
-        // Synthesis starts immediately so later sentences render while
-        // earlier ones play; nil result means "use the fallback voice".
-        let synthesisTask = Task<Data?, Never> { [urlSession, configuration] in
-            let synthesisStartedAt = Date()
-            func auditSynthesis(outcome: String, outputByteCount: Int? = nil) {
-                PaceAPIAuditLog.shared.record(
-                    subsystem: "tts",
-                    operation: "audio.speech",
-                    target: "\(configuration.modelIdentifier)/\(configuration.voiceIdentifier)",
-                    durationMilliseconds: Int(Date().timeIntervalSince(synthesisStartedAt) * 1000),
-                    outcome: outcome,
-                    inputCharacterCount: trimmedText.count,
-                    outputCharacterCount: outputByteCount
-                )
-            }
-            do {
-                let (audioData, response) = try await urlSession.data(
-                    for: configuration.speechRequest(for: trimmedText)
-                )
-                guard let httpResponse = response as? HTTPURLResponse,
-                      (200..<300).contains(httpResponse.statusCode),
-                      !audioData.isEmpty else {
-                    auditSynthesis(outcome: "bad_response")
-                    return nil
-                }
-                auditSynthesis(outcome: "ok", outputByteCount: audioData.count)
-                return audioData
-            } catch {
-                auditSynthesis(outcome: "transport_error")
-                return nil
-            }
-        }
-        synthesisJobQueue.append(SynthesisJob(text: trimmedText, task: synthesisTask))
+        pendingUtteranceQueue.append(PendingUtterance(text: trimmedText))
         startDrainingPlaybackQueueIfNeeded()
     }
 
     func stopPlayback() {
-        for job in synthesisJobQueue {
-            job.task.cancel()
-        }
-        synthesisJobQueue = []
+        pendingUtteranceQueue = []
         audioPlayer?.stop()
         audioPlayer = nil
         playbackContinuation?.resume()
         playbackContinuation = nil
         fallbackClient.stopPlayback()
+    }
+
+    private func synthesizeAudioData(forText text: String) async -> Data? {
+        let synthesisStartedAt = Date()
+        let configurationSnapshot = configuration
+        let sessionSnapshot = urlSession
+        func auditSynthesis(outcome: String, outputByteCount: Int? = nil) {
+            PaceAPIAuditLog.shared.record(
+                subsystem: "tts",
+                operation: "audio.speech",
+                target: "\(configurationSnapshot.modelIdentifier)/\(configurationSnapshot.voiceIdentifier)",
+                durationMilliseconds: Int(Date().timeIntervalSince(synthesisStartedAt) * 1000),
+                outcome: outcome,
+                inputCharacterCount: text.count,
+                outputCharacterCount: outputByteCount
+            )
+        }
+        do {
+            let (audioData, response) = try await sessionSnapshot.data(
+                for: configurationSnapshot.speechRequest(for: text)
+            )
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode),
+                  !audioData.isEmpty else {
+                auditSynthesis(outcome: "bad_response")
+                return nil
+            }
+            auditSynthesis(outcome: "ok", outputByteCount: audioData.count)
+            return audioData
+        } catch {
+            auditSynthesis(outcome: "transport_error")
+            return nil
+        }
     }
 
     private func startDrainingPlaybackQueueIfNeeded() {
@@ -207,16 +207,25 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
 
     private func drainPlaybackQueue() async {
         defer { isDrainingPlaybackQueue = false }
-        while !synthesisJobQueue.isEmpty {
-            let job = synthesisJobQueue.removeFirst()
-            guard let audioData = await job.task.value else {
-                // Server failed for this sentence: memo the outage so the
-                // rest of the turn skips straight to the fallback voice.
+        // Once a turn flips to the fallback voice, finish the turn there —
+        // mixing voices mid-reply is worse than a consistent fallback.
+        var hasCommittedToFallbackForThisTurn = false
+        while !pendingUtteranceQueue.isEmpty {
+            let utterance = pendingUtteranceQueue.removeFirst()
+
+            if hasCommittedToFallbackForThisTurn
+                || (serverUnavailableUntil.map { Date() < $0 } ?? false) {
+                try? await fallbackClient.speakText(utterance.text)
+                continue
+            }
+
+            guard let audioData = await synthesizeAudioData(forText: utterance.text) else {
                 serverUnavailableUntil = Date().addingTimeInterval(
                     LocalServerTTSConfiguration.unavailabilityMemoInSeconds
                 )
-                print("🔊 Server TTS unavailable — falling back to Apple TTS")
-                try? await fallbackClient.speakText(job.text)
+                hasCommittedToFallbackForThisTurn = true
+                print("🔊 Server TTS unavailable — finishing this turn on the Apple voice")
+                try? await fallbackClient.speakText(utterance.text)
                 continue
             }
             serverUnavailableUntil = nil
