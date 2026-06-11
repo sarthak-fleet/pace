@@ -207,30 +207,71 @@ final class LocalServerTTSClient: NSObject, BuddyTTSClient {
 
     private func drainPlaybackQueue() async {
         defer { isDrainingPlaybackQueue = false }
-        // Once a turn flips to the fallback voice, finish the turn there —
-        // mixing voices mid-reply is worse than a consistent fallback.
-        var hasCommittedToFallbackForThisTurn = false
         while !pendingUtteranceQueue.isEmpty {
             let utterance = pendingUtteranceQueue.removeFirst()
-
-            if hasCommittedToFallbackForThisTurn
-                || (serverUnavailableUntil.map { Date() < $0 } ?? false) {
-                try? await fallbackClient.speakText(utterance.text)
-                continue
-            }
-
-            guard let audioData = await synthesizeAudioData(forText: utterance.text) else {
-                serverUnavailableUntil = Date().addingTimeInterval(
-                    LocalServerTTSConfiguration.unavailabilityMemoInSeconds
-                )
-                hasCommittedToFallbackForThisTurn = true
-                print("🔊 Server TTS unavailable — finishing this turn on the Apple voice")
-                try? await fallbackClient.speakText(utterance.text)
-                continue
-            }
-            serverUnavailableUntil = nil
-            await playAudioData(audioData)
+            await speakWithKokoroOrSwallow(text: utterance.text)
         }
+    }
+
+    /// Strict "Kokoro or silent" policy. The Apple voice was rated worse
+    /// than no audio, so we never speak through it: a failed sentence is
+    /// retried (once on the raw text for transients, then by splitting on
+    /// a punctuation boundary to dodge mlx-audio's input-shape bugs), and
+    /// if both halves still fail the response overlay still shows the
+    /// text — only the audio is dropped for that fragment.
+    private func speakWithKokoroOrSwallow(text: String) async {
+        if let audioData = await synthesizeAudioData(forText: text) {
+            await playAudioData(audioData)
+            return
+        }
+        // First retry: same text. Transient transport errors are common
+        // and almost always succeed on a clean second try.
+        if let retriedAudioData = await synthesizeAudioData(forText: text) {
+            await playAudioData(retriedAudioData)
+            return
+        }
+        // Second retry: split the text at a punctuation boundary and try
+        // each half independently. mlx-audio's Kokoro path occasionally
+        // fails with "broadcast_shapes (1,N,1) and (1,M,9) cannot be
+        // broadcast" on specific phoneme sequences; the split text uses
+        // a different sequence that usually doesn't trip the bug.
+        let (firstHalf, secondHalf) = Self.splitForSynthesisRetry(text)
+        if firstHalf != text, let firstHalfAudio = await synthesizeAudioData(forText: firstHalf) {
+            await playAudioData(firstHalfAudio)
+            if !secondHalf.isEmpty, let secondHalfAudio = await synthesizeAudioData(forText: secondHalf) {
+                await playAudioData(secondHalfAudio)
+            } else {
+                print("🔊 Kokoro: dropping inaudible fragment '\(secondHalf.prefix(60))' — text still in overlay")
+            }
+            return
+        }
+        print("🔊 Kokoro: dropping inaudible sentence '\(text.prefix(60))' — text still in overlay")
+    }
+
+    /// Splits text near the middle at the LAST punctuation boundary in
+    /// the first half — gives synthesis-retry a fighting chance without
+    /// chopping mid-word. Falls back to returning (text, "") when no
+    /// punctuation is present.
+    private static func splitForSynthesisRetry(_ text: String) -> (String, String) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedText.count > 32 else { return (trimmedText, "") }
+        let punctuationSet = CharacterSet(charactersIn: ".,;:!?—-")
+        let halfwayCharacterIndex = trimmedText.index(
+            trimmedText.startIndex,
+            offsetBy: trimmedText.count / 2
+        )
+        let firstHalfSubstring = trimmedText[..<halfwayCharacterIndex]
+        if let lastPunctuationRange = firstHalfSubstring.rangeOfCharacter(
+            from: punctuationSet,
+            options: .backwards
+        ) {
+            let firstPart = trimmedText[..<lastPunctuationRange.upperBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let secondPart = trimmedText[lastPunctuationRange.upperBound...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (firstPart, secondPart)
+        }
+        return (trimmedText, "")
     }
 
     private func playAudioData(_ audioData: Data) async {

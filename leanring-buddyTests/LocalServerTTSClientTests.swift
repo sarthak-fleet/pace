@@ -136,43 +136,30 @@ struct LocalServerTTSClientIntegrationTests {
         func stopPlayback() {}
     }
 
-    @Test func unreachableServerRoutesUtteranceToFallbackClient() async throws {
-        let recordingFallback = SilentRecordingTTSClient()
+    @Test func unreachableServerDropsUtteranceSilentlyInsteadOfFallingBack() async throws {
+        // Policy: NEVER speak through the Apple voice — it was rated worse
+        // than no audio. Failed synth retries once on the same text, then
+        // splits on punctuation. If every attempt fails, the fragment is
+        // dropped (the visible response overlay still shows the text).
+        let mustNeverSpeakFallback = SilentRecordingTTSClient()
         let client = LocalServerTTSClient(
             configuration: LocalServerTTSConfiguration(
-                // Loopback port nothing listens on: synthesis fails fast and
-                // the utterance routes to the fallback voice.
                 configuredBaseURLString: "http://127.0.0.1:59997/v1",
                 configuredModelIdentifier: nil,
                 configuredVoiceIdentifier: nil,
                 configuredSpeedString: nil
             ),
-            fallbackClient: recordingFallback
+            fallbackClient: mustNeverSpeakFallback
         )
         try await client.speakText("fallback check")
 
-        var fallbackReceivedUtterance = false
-        for _ in 0..<50 {
-            if recordingFallback.spokenTexts == ["fallback check"] {
-                fallbackReceivedUtterance = true
-                break
-            }
+        // Let the drain loop run to completion.
+        for _ in 0..<60 {
+            if !client.isPlaying { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
-        #expect(fallbackReceivedUtterance)
-        #expect(!client.isPlaying)
 
-        // The outage memo should route the NEXT utterance straight to the
-        // fallback without re-attempting the dead endpoint.
-        try await client.speakText("second sentence")
-        var memoRouted = false
-        for _ in 0..<20 {
-            if recordingFallback.spokenTexts.count == 2 {
-                memoRouted = true
-                break
-            }
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
-        #expect(memoRouted)
+        #expect(mustNeverSpeakFallback.spokenTexts.isEmpty)
+        #expect(!client.isPlaying)
     }
 }
