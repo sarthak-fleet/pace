@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/sarthakagrawal927/pace/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>UGbOz43wfHeH3fwSu45Z0dNFIlomd1Tra+B9mjOFdSI=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

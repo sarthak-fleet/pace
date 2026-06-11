@@ -64,6 +64,11 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         // user's first push-to-talk doesn't pay the cold-load tax.
         // Fire-and-forget — app launch is not blocked. Companion
         // unload happens in `applicationWillTerminate`.
+        // Auto-update: Sparkle starts its background check immediately
+        // against the GitHub-hosted appcast. Manual checks live behind
+        // PaceAutoUpdateController.shared.checkForUpdatesManually().
+        _ = PaceAutoUpdateController.shared
+
         PaceLMStudioModelLoader.warmUpConfiguredModelsAsync()
         // Auto-start the Kokoro TTS sidecar so the user never has to
         // remember scripts/start-tts-server.sh. Idempotent — does
