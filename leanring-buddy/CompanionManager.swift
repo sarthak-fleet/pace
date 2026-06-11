@@ -61,6 +61,13 @@ enum CompanionVoiceState {
 final class CompanionManager: ObservableObject {
     @Published private(set) var voiceState: CompanionVoiceState = .idle
     @Published private(set) var lastTranscript: String?
+
+    /// Most recent partial transcript from the active dictation session.
+    /// Used by the post-release safety net so a slow WhisperKit finalize
+    /// doesn't lose the user's words — if no final transcript arrives
+    /// within the timeout but a partial exists, we treat the partial as
+    /// the final instead of dropping the whole turn as "no audio detected".
+    private var lastPartialTranscriptFromActiveDictation: String?
     @Published private(set) var currentAudioPowerLevel: CGFloat = 0
     @Published private(set) var hasAccessibilityPermission = false
     @Published private(set) var hasScreenRecordingPermission = false
@@ -1746,6 +1753,7 @@ final class CompanionManager: ObservableObject {
                         let trimmedPartial = partialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmedPartial.isEmpty else { return }
                         Task { @MainActor [weak self] in
+                            self?.lastPartialTranscriptFromActiveDictation = trimmedPartial
                             self?.responseOverlayManager.updateStreamingText(trimmedPartial)
                         }
                     },
@@ -1791,18 +1799,43 @@ final class CompanionManager: ObservableObject {
             transcriptArrivedSinceRelease = false
             transcriptSafetyTask?.cancel()
             transcriptSafetyTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                // 12s, not 5s — WhisperKit's first finalize after launch
+                // takes 5-10s on its own, and the previous timeout dropped
+                // the user's words too aggressively. The fallback below
+                // also rescues turns that have a partial but no final.
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
                 await MainActor.run {
                     guard let self else { return }
                     guard !self.transcriptArrivedSinceRelease else { return }
-                    print("⚠️ Transcript didn't arrive within 5s — resetting state")
+                    // If WhisperKit gave us a partial but never finalized,
+                    // use the partial as the transcript — better than
+                    // dropping the whole turn as "no audio detected".
+                    if let rescuedPartial = self.lastPartialTranscriptFromActiveDictation,
+                       !rescuedPartial.isEmpty {
+                        print("🗣️ Final transcript timed out — rescuing partial: \(rescuedPartial)")
+                        self.transcriptArrivedSinceRelease = true
+                        self.lastTranscript = rescuedPartial
+                        self.lastPartialTranscriptFromActiveDictation = nil
+                        _ = PaceAPIAuditLog.shared.beginTurn()
+                        PaceAnalytics.trackUserMessageSent(transcript: rescuedPartial)
+                        self.currentTurnHUDState = .understanding("classifying intent")
+                        self.responseOverlayManager.updateStreamingText(rescuedPartial)
+                        self.sendTranscriptToPlannerWithScreenshot(transcript: rescuedPartial)
+                        return
+                    }
+                    print("⚠️ Transcript didn't arrive within 12s — resetting state")
+                    PaceAPIAuditLog.shared.record(
+                        subsystem: "dictation",
+                        operation: "finalize_timeout",
+                        target: self.buddyDictationManager.transcriptionProvider.displayName,
+                        durationMilliseconds: 12000,
+                        outcome: "no_transcript",
+                        detail: "no partial captured"
+                    )
                     self.responseOverlayManager.updateStreamingText("no audio detected")
                     self.responseOverlayManager.finishStreaming()
                     self.voiceState = .idle
                     self.currentTurnHUDState = .failed("No audio detected")
-                    // Mirror the normal turn-end cleanup: bring back the
-                    // walking avatar if the user has it on, and reset the
-                    // trigger so the next press defaults to keyboard.
                     if self.isWalkingAvatarEnabled {
                         self.avatarOverlayManager?.show()
                     }
