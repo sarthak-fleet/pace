@@ -1273,6 +1273,17 @@ final class CompanionManager: ObservableObject {
     func start() {
         refreshAllPermissions()
         print("🔑 Pace start — accessibility: \(hasAccessibilityPermission), screen: \(hasScreenRecordingPermission), mic: \(hasMicrophonePermission), screenContent: \(hasScreenContentPermission), onboarded: \(hasCompletedOnboarding)")
+        // Wire the timer-scheduler speak callback to the active TTS
+        // client and rehydrate any persisted timers. Doing this before
+        // anything else means a 3-minute egg timer fired while Pace
+        // was quit speaks the moment we come back up.
+        actionExecutor.setTimerOnFireSpeakCallback { [weak self] spokenReminderText in
+            guard let self else { return }
+            Task { @MainActor in
+                try? await self.ttsClient.speakText(spokenReminderText)
+            }
+        }
+        actionExecutor.rehydratePersistedTimers()
         startPermissionPolling()
         startLMStudioReachabilityPolling()
         bindVoiceStateObservation()

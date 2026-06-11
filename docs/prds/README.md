@@ -18,6 +18,13 @@ scope, test gates, and acceptance criteria.
 | `local-vlm-runtime-port.md` | partial | Screen-analysis provider abstraction and in-process placeholder are wired; real CoreML/MLX runtime remains queued. |
 | `dictation-postproc-and-voice-edit.md` | partial | Rule-backed dictation cleanup plus deterministic selected-text voice-edit scaffold; trained specialists remain queued. |
 | `hud-intent-disambiguator.md` | partial | HUD route/progress state, panel option-click clarification resolution, local-only unsupported routing, and Reduce Motion cursor-overlay fallback are wired; visual target ambiguity and runtime smoke remain queued. |
+| `restraint-policy.md` | queued | Defines the pure speak/stay-quiet/queue gate that proactive sources must call before emitting speech. |
+| `always-listening-mode.md` | queued | Adds opt-in wake-word/ambient listening while preserving push-to-talk as the default and safety floor. |
+| `barge-in-tts-interrupt.md` | queued | Lets the user interrupt Pace mid-TTS by speaking once always-listening is active. |
+| `episodic-memory.md` | queued | Extracts durable local facts from completed turns and exposes them through local retrieval with user inspection/deletion. |
+| `proactive-nudges.md` | queued | Adds opt-in local nudge generators for focus fatigue, calendar lead time, and watch-mode error observations after restraint lands. |
+| `demonstration-replay.md` | queued | Records user-demonstrated AX/key flows into auditable local JSON and replays them with approval gates. |
+| `her-arc-roadmap.md` | planning | Meta roadmap that orders the restraint/memory/listening/nudge/barge-in/replay PRDs and defines the arc's overall acceptance criteria. |
 
 ## Ordering
 
@@ -29,6 +36,12 @@ scope, test gates, and acceptance criteria.
 6. Local VLM runtime port
 7. Dictation post-processing and voice edit
 8. HUD and intent disambiguator
+9. Restraint policy
+10. Episodic memory
+11. Always-listening mode
+12. Proactive nudges
+13. Barge-in TTS interrupt
+14. Demonstration replay
 
 Do not treat a PRD as permission to broaden scope. Each implementation pass
 should pick one PRD, satisfy its smallest useful acceptance slice, and run the

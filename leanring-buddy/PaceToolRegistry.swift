@@ -58,6 +58,7 @@ enum PaceLocalToolKind: String, CaseIterable {
     case shortcuts
     case messages
     case downloadFile
+    case startTimer
 }
 
 struct PaceLocalToolDefinition {
@@ -328,6 +329,16 @@ enum PaceToolRegistry {
             riskLevel: .externalIntegration,
             executionSummary: "Downloads the URL into ~/Downloads with a sanitized, collision-free filename.",
             observationSummary: "Reports the saved filename and byte count, or the failure reason."
+        ),
+        PaceLocalToolDefinition(
+            kind: .startTimer,
+            canonicalName: "start_timer",
+            aliases: ["timer", "set_timer"],
+            schemaExample: #"{"tool":"start_timer","duration":"3 minutes","label":"tea"}"#,
+            description: "schedule a spoken nudge after a duration. duration accepts \"3 minutes\", \"30s\", \"2 hours\", or a plain seconds number.",
+            riskLevel: .appOrSystemMutation,
+            executionSummary: "Schedules an in-process Timer that fires a spoken nudge through TTS.",
+            observationSummary: "Reports the scheduled fire time, or a validation error if the duration was unparseable."
         )
     ]
 
@@ -498,6 +509,8 @@ enum PaceToolRegistry {
             return definition(forToolName: "messages")
         case .downloadFile:
             return definition(forToolName: "download_file")
+        case .startTimer:
+            return definition(forToolName: "start_timer")
         case .mcp:
             return nil
         }

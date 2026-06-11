@@ -625,14 +625,20 @@ final class PaceActionExecutor {
     private let eventStore = EKEventStore()
     private let contactStore = CNContactStore()
     private let mcpClient: PaceMCPStdioClient
+    private let timerScheduler: PaceTimerScheduler
     private var mutationLog: [PaceActionMutation] = []
     private var activeStreamingMailDraftState: PaceStreamingMailDraftState?
 
     init(
         actionsAreEnabledOverride: Bool? = nil,
-        mcpClient: PaceMCPStdioClient = PaceMCPStdioClient()
+        mcpClient: PaceMCPStdioClient = PaceMCPStdioClient(),
+        timerScheduler: PaceTimerScheduler? = nil
     ) {
         self.mcpClient = mcpClient
+        // Default-construct on the MainActor init body — the
+        // @MainActor-isolated initializer can't be the default arg of
+        // another @MainActor init in Swift 6 concurrency checking.
+        self.timerScheduler = timerScheduler ?? PaceTimerScheduler()
         if let actionsAreEnabledOverride {
             self.actionsAreEnabled = actionsAreEnabledOverride
         } else {
@@ -835,6 +841,8 @@ final class PaceActionExecutor {
             return await openMessages(messageRequest)
         case .downloadFile(let downloadRequest):
             return await downloadFile(downloadRequest)
+        case .startTimer(let timerRequest):
+            return await startTimer(timerRequest)
         case .mcp(let mcpToolCall):
             return await callMCPTool(mcpToolCall)
         }
@@ -1273,6 +1281,48 @@ final class PaceActionExecutor {
         return PaceActionExecutionObservation(
             toolName: "open_app",
             summary: "Opened app: \(trimmedApplicationName)"
+        )
+    }
+
+    /// Public hook so CompanionManager can hand the scheduler a speak
+    /// closure after it has finished wiring its TTS client. Without this
+    /// the scheduler fires silently — it has no idea how to talk on its
+    /// own.
+    func setTimerOnFireSpeakCallback(_ speakCallback: @escaping (String) -> Void) {
+        timerScheduler.onFire = speakCallback
+    }
+
+    /// Reload any persisted timers from disk so a quit+restart doesn't
+    /// silently swallow an in-flight nudge.
+    func rehydratePersistedTimers() {
+        timerScheduler.rehydrate()
+    }
+
+    private func startTimer(_ timerRequest: PaceTimerRequest) async -> PaceActionExecutionObservation {
+        let durationInSeconds = max(0.001, timerRequest.durationInSeconds)
+        let trimmedLabel = timerRequest.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("🧰 Start timer label=\"\(trimmedLabel)\" duration=\(durationInSeconds)s")
+        guard actionsAreEnabled else {
+            return PaceActionExecutionObservation(
+                toolName: "start_timer",
+                summary: "Would start timer for \(Int(durationInSeconds))s\(trimmedLabel.isEmpty ? "" : ": \(trimmedLabel)")."
+            )
+        }
+        let scheduledTimer = timerScheduler.schedule(
+            label: trimmedLabel,
+            durationInSeconds: durationInSeconds
+        )
+        let minutesRemaining = Int((durationInSeconds / 60.0).rounded())
+        let humanDurationText: String
+        if minutesRemaining >= 1 {
+            humanDurationText = "\(minutesRemaining) minute\(minutesRemaining == 1 ? "" : "s")"
+        } else {
+            humanDurationText = "\(Int(durationInSeconds)) seconds"
+        }
+        let labelSuffix = trimmedLabel.isEmpty ? "" : " for \(trimmedLabel)"
+        return PaceActionExecutionObservation(
+            toolName: "start_timer",
+            summary: "Timer set\(labelSuffix) for \(humanDurationText) — fires at \(scheduledTimer.fireDate.formatted(date: .omitted, time: .shortened))."
         )
     }
 
@@ -3230,6 +3280,7 @@ enum PaceParsedAction {
     case runShortcut(String)
     case openMessages(PaceMessageRequest)
     case downloadFile(PaceFileDownloadRequest)
+    case startTimer(PaceTimerRequest)
     case mcp(PaceMCPToolCall)
 
     /// Audit-log operation slug — the verb part. Mirrors the case name.
@@ -3263,6 +3314,7 @@ enum PaceParsedAction {
         case .runShortcut: return "shortcut_run"
         case .openMessages: return "messages_open"
         case .downloadFile: return "download_file"
+        case .startTimer: return "start_timer"
         case .mcp: return "mcp_call"
         }
     }
@@ -3295,6 +3347,8 @@ enum PaceParsedAction {
             return String(request.path.prefix(120))
         case .downloadFile(let request):
             return String(request.url.absoluteString.prefix(120))
+        case .startTimer(let request):
+            return String(request.label.prefix(60))
         case .mcp(let toolCall):
             return "\(toolCall.serverName).\(toolCall.toolName)"
         case .pressKey(let keyName, let modifiers):
@@ -3392,6 +3446,15 @@ enum PaceParsedAction {
             return "Open Messages"
         case .downloadFile(let downloadRequest):
             return "Download file to ~/Downloads: \(downloadRequest.url.absoluteString)"
+        case .startTimer(let timerRequest):
+            let durationMinutes = Int((timerRequest.durationInSeconds / 60.0).rounded())
+            if durationMinutes >= 1, !timerRequest.label.isEmpty {
+                return "Start \(durationMinutes)-minute timer: \(timerRequest.label)"
+            }
+            if durationMinutes >= 1 {
+                return "Start \(durationMinutes)-minute timer"
+            }
+            return "Start timer for \(Int(timerRequest.durationInSeconds))s"
         case .mcp(let mcpToolCall):
             return "Call MCP tool: \(mcpToolCall.approvalDescription)"
         }
@@ -3602,6 +3665,11 @@ enum PaceCalendarRange: String, Equatable {
 struct PaceReminderRequest {
     let title: String
     let notes: String?
+}
+
+struct PaceTimerRequest {
+    let label: String
+    let durationInSeconds: TimeInterval
 }
 
 struct PaceFinderRequest {
@@ -5299,7 +5367,28 @@ enum PaceActionTagParser {
             return parseMessagesToolCall(toolCall)
         case .downloadFile:
             return parseDownloadFileToolCall(toolCall)
+        case .startTimer:
+            return parseStartTimerToolCall(toolCall)
         }
+    }
+
+    private static func parseStartTimerToolCall(_ toolCall: ToolCallDTO) -> PaceParsedAction? {
+        let mergedArguments = mergeMCPArguments(from: toolCall)
+        guard let rawDurationText = firstStringValue(
+            for: ["duration", "time", "for", "interval", "seconds", "minutes"],
+            in: mergedArguments
+        ) else {
+            return nil
+        }
+        guard let durationInSeconds = PaceTimerDurationParser.seconds(from: rawDurationText) else {
+            return nil
+        }
+        let rawLabel = firstStringValue(
+            for: ["label", "name", "title", "reason", "text"],
+            in: mergedArguments
+        ) ?? ""
+        let trimmedLabel = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .startTimer(PaceTimerRequest(label: trimmedLabel, durationInSeconds: durationInSeconds))
     }
 
     private static func validateLocalToolCall(_ toolCall: ToolCallDTO, kind: PaceLocalToolKind) -> [String] {
@@ -5423,6 +5512,14 @@ enum PaceActionTagParser {
             let rawURLString = firstStringValue(for: ["url", "text"], in: mergedArguments) ?? ""
             if PaceFileDownloadURLValidator.validatedDownloadURL(from: rawURLString) == nil {
                 issues.append("requires a valid http(s) download url")
+            }
+        case .startTimer:
+            let rawDurationText = firstStringValue(
+                for: ["duration", "time", "for", "interval", "seconds", "minutes"],
+                in: mergedArguments
+            ) ?? ""
+            if PaceTimerDurationParser.seconds(from: rawDurationText) == nil {
+                issues.append("requires a valid duration (e.g. \"3 minutes\", \"30s\")")
             }
         }
 

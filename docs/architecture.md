@@ -180,13 +180,20 @@ Built in this sequence because each baby unblocks the next:
 6. VLM port + ANE chunked
 7. Dictation post-processor + voice-edit specialist
 8. HUD overlay + intent disambiguator carve-out
-9. Polish + ship
+9. Restraint policy for every proactive source
+10. Episodic memory
+11. Always-listening mode
+12. Proactive nudges
+13. Barge-in TTS interrupt
+14. Demonstration replay
+15. Polish + ship
 
 There are no months. There are next-correct-things. Do the next one.
 
 ## Source PRDs
 
 - PRD index: `pace/docs/prds/README.md`
+- Her arc roadmap: `pace/docs/prds/her-arc-roadmap.md`
 - tinygpt-side body streaming: `tinygpt/docs/prds/pace-v9-body-streaming.md`
 - Pace-side body streaming wiring: `pace/docs/prds/pace-v9-body-streaming-wiring.md`
 - Planner v10 parameterized actions: `pace/docs/prds/pace-planner-v10-parameterized-actions.md`
@@ -198,5 +205,11 @@ There are no months. There are next-correct-things. Do the next one.
 - Local VLM runtime port: `pace/docs/prds/local-vlm-runtime-port.md`
 - Dictation post-processing and voice edit: `pace/docs/prds/dictation-postproc-and-voice-edit.md`
 - HUD and intent disambiguator: `pace/docs/prds/hud-intent-disambiguator.md`
+- Restraint policy: `pace/docs/prds/restraint-policy.md`
+- Episodic memory: `pace/docs/prds/episodic-memory.md`
+- Always-listening mode: `pace/docs/prds/always-listening-mode.md`
+- Proactive nudges: `pace/docs/prds/proactive-nudges.md`
+- Barge-in TTS interrupt: `pace/docs/prds/barge-in-tts-interrupt.md`
+- Demonstration replay: `pace/docs/prds/demonstration-replay.md`
 
 This file is the canonical map. PRDs are the per-pillar specifications. When in doubt, this doc wins.

@@ -110,7 +110,7 @@ nonisolated enum PaceActionApprovalPolicy {
         case .click, .doubleClick, .clickCandidates, .type, .setTextValue, .editSelectedText,
              .undoLastMutation, .pressKey, .readClipboard, .snapWindow, .scroll, .openApplication,
              .openURL, .controlMusic, .adjustVolume, .adjustBrightness,
-             .listCalendarEvents, .finder, .searchNotes:
+             .listCalendarEvents, .finder, .searchNotes, .startTimer:
             return false
         }
     }
@@ -120,7 +120,7 @@ nonisolated enum PaceActionApprovalPolicy {
         case .click, .doubleClick, .clickCandidates, .type, .setTextValue, .editSelectedText,
              .undoLastMutation, .pressKey, .readClipboard, .snapWindow, .scroll, .openApplication,
              .openURL, .controlMusic, .adjustVolume, .adjustBrightness,
-             .listCalendarEvents, .finder, .searchNotes:
+             .listCalendarEvents, .finder, .searchNotes, .startTimer:
             return true
         case .openMessages(let messageRequest):
             return messageRequest.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
