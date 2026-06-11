@@ -112,6 +112,27 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 echo "✅ Built ${APP_PATH}"
 
+# ── Bundle TTS launcher script so PaceTTSSidecarLauncher finds it in the
+# installed app (otherwise auto-start only works in dev builds where the
+# hardcoded repo-path fallback fires). The Resources/ path is the first
+# location the launcher probes via Bundle.main.resourceURL.
+mkdir -p "${APP_PATH}/Contents/Resources/scripts"
+cp "${PROJECT_DIR}/scripts/start-tts-server.sh" "${APP_PATH}/Contents/Resources/scripts/start-tts-server.sh"
+chmod +x "${APP_PATH}/Contents/Resources/scripts/start-tts-server.sh"
+echo "✅ Bundled start-tts-server.sh into Resources/"
+
+# ── Resign every embedded framework + the app itself with ad-hoc identity
+# so Pace launches on machines that don't have our (non-existent) Apple
+# Developer Team ID. Without this, dyld refuses to load Sparkle.framework
+# because its prebuilt code signature has a different Team ID than the
+# ad-hoc-signed Pace binary — the exact crash that hit v0.3.0's first install.
+echo "🔐 Resigning embedded frameworks ad-hoc..."
+find "${APP_PATH}/Contents/Frameworks" -maxdepth 2 -name "*.framework" -type d 2>/dev/null | while read framework_path; do
+    codesign --force --deep --sign - "${framework_path}" 2>&1 | tail -1
+done
+codesign --force --deep --sign - "${APP_PATH}" 2>&1 | tail -1
+codesign --verify --deep "${APP_PATH}" && echo "✅ Codesign verify passed"
+
 # ── Zip + Sparkle-sign ─────────────────────────────────────────────────────
 
 zip_name="Pace-${next_version}.zip"
