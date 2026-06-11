@@ -4190,6 +4190,17 @@ enum PaceFastActionCommandParser {
 }
 
 enum PaceActionTagParser {
+    private struct ToolCallBlockParseResult {
+        let range: Range<String.Index>
+        let steps: [PaceActionExecutionStep]
+    }
+
+    private struct OrderedActionStep {
+        let sourceOffset: Int
+        let parseOrder: Int
+        let step: PaceActionExecutionStep
+    }
+
     private struct PlannerResponseDTO: Decodable {
         let spokenText: String?
         let intent: String?
@@ -4445,61 +4456,63 @@ enum PaceActionTagParser {
             return plannerResponseParseResult
         }
 
-        let (toolCallSteps, responseTextWithoutToolCallBlocks) = parseToolCallBlocks(in: responseText)
+        let toolCallBlocks = parseToolCallBlocks(in: responseText)
+        let toolCallRanges = toolCallBlocks.map(\.range)
+        let actionTagMatches = parseActionTagMatches(
+            in: responseText,
+            excludingRanges: toolCallRanges
+        )
 
-        // One regex that matches any of the supported tag shapes. We use a
-        // single pass so we can walk matches in source order. Group 1 is the
-        // tag name; group 2 is the everything-after-the-colon payload.
-        let actionTagPattern = #"\[(CLICK|DOUBLE_CLICK|TYPE|KEY|SCROLL|OPEN_APP|OPEN_URL|MUSIC|VOLUME|BRIGHTNESS|CALENDAR|REMINDER):([^\]]+)\]"#
+        var orderedSteps: [OrderedActionStep] = []
+        var parseOrder = 0
 
-        guard let actionTagRegex = try? NSRegularExpression(
-            pattern: actionTagPattern,
-            options: [.caseInsensitive]
-        ) else {
-            let allActions = toolCallSteps.flatMap(\.actions)
-            return PaceActionTagParseResult(
-                spokenText: responseTextWithoutToolCallBlocks,
-                actions: allActions,
-                executionPlan: PaceActionExecutionPlan(steps: toolCallSteps),
-                firstClickVisualisationLocation: firstClickVisualisationLocation(in: allActions)
-            )
+        for block in toolCallBlocks {
+            let sourceOffset = responseText.distance(from: responseText.startIndex, to: block.range.lowerBound)
+            for step in block.steps {
+                orderedSteps.append(OrderedActionStep(
+                    sourceOffset: sourceOffset,
+                    parseOrder: parseOrder,
+                    step: step
+                ))
+                parseOrder += 1
+            }
         }
 
-        let entireRange = NSRange(responseTextWithoutToolCallBlocks.startIndex..., in: responseTextWithoutToolCallBlocks)
-        let matches = actionTagRegex.matches(in: responseTextWithoutToolCallBlocks, options: [], range: entireRange)
-
-        var parsedActions: [PaceParsedAction] = []
-        var spokenTextWithoutActionTags = responseTextWithoutToolCallBlocks
-
-        // Build spoken text by removing matches in reverse so ranges stay valid.
-        let matchesInForwardOrder = matches
-        let matchesInReverseOrder = matches.reversed()
-
-        for match in matchesInForwardOrder {
-            guard let fullRange = Range(match.range, in: responseTextWithoutToolCallBlocks),
-                  let nameRange = Range(match.range(at: 1), in: responseTextWithoutToolCallBlocks),
-                  let payloadRange = Range(match.range(at: 2), in: responseTextWithoutToolCallBlocks) else {
+        for match in actionTagMatches {
+            guard let nameRange = Range(match.range(at: 1), in: responseText),
+                  let payloadRange = Range(match.range(at: 2), in: responseText) else {
                 continue
             }
-            let tagName = String(responseTextWithoutToolCallBlocks[nameRange]).uppercased()
-            let payload = String(responseTextWithoutToolCallBlocks[payloadRange])
+            let tagName = String(responseText[nameRange]).uppercased()
+            let payload = String(responseText[payloadRange])
 
-            if let parsedAction = parseSingleAction(tagName: tagName, payload: payload) {
-                parsedActions.append(parsedAction)
+            guard let parsedAction = parseSingleAction(tagName: tagName, payload: payload) else {
+                continue
             }
-            _ = fullRange // silence unused warning; we use it via the reverse loop below
+
+            let sourceOffset = responseText.distance(from: responseText.startIndex, to: match.range.lowerBound)
+            orderedSteps.append(OrderedActionStep(
+                sourceOffset: sourceOffset,
+                parseOrder: parseOrder,
+                step: PaceActionExecutionStep(actions: [parsedAction])
+            ))
+            parseOrder += 1
         }
 
-        for match in matchesInReverseOrder {
-            guard let fullRange = Range(match.range, in: spokenTextWithoutActionTags) else { continue }
-            spokenTextWithoutActionTags.removeSubrange(fullRange)
-        }
-
-        let cleanedSpokenText = spokenTextWithoutActionTags
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let executionSteps = toolCallSteps + parsedActions.map { PaceActionExecutionStep(actions: [$0]) }
+        let executionSteps = orderedSteps
+            .sorted {
+                if $0.sourceOffset == $1.sourceOffset {
+                    return $0.parseOrder < $1.parseOrder
+                }
+                return $0.sourceOffset < $1.sourceOffset
+            }
+            .map(\.step)
         let allActions = executionSteps.flatMap(\.actions)
+        let cleanedSpokenText = stripRanges(
+            in: responseText,
+            removingRanges: toolCallRanges + actionTagMatches.map(\.range)
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return PaceActionTagParseResult(
             spokenText: cleanedSpokenText,
@@ -5266,34 +5279,30 @@ enum PaceActionTagParser {
         }
     }
 
-    private static func parseToolCallBlocks(in responseText: String) -> (steps: [PaceActionExecutionStep], strippedText: String) {
+    private static func parseToolCallBlocks(in responseText: String) -> [ToolCallBlockParseResult] {
         let pattern = #"<tool_calls>(.*?)</tool_calls>"#
         guard let regex = try? NSRegularExpression(
             pattern: pattern,
             options: [.caseInsensitive, .dotMatchesLineSeparators]
         ) else {
-            return ([], responseText)
+            return []
         }
 
         let entireRange = NSRange(responseText.startIndex..., in: responseText)
         let matches = regex.matches(in: responseText, options: [], range: entireRange)
-        guard !matches.isEmpty else { return ([], responseText) }
+        guard !matches.isEmpty else { return [] }
 
-        var parsedSteps: [PaceActionExecutionStep] = []
-        var strippedText = responseText
+        var parsedBlocks: [ToolCallBlockParseResult] = []
 
         for match in matches {
-            guard let jsonRange = Range(match.range(at: 1), in: responseText) else { continue }
+            guard let blockRange = Range(match.range, in: responseText),
+                  let jsonRange = Range(match.range(at: 1), in: responseText) else { continue }
             let jsonText = String(responseText[jsonRange])
-            parsedSteps.append(contentsOf: decodeToolCallSteps(from: jsonText))
+            let decodedSteps = decodeToolCallSteps(from: jsonText)
+            parsedBlocks.append(ToolCallBlockParseResult(range: blockRange, steps: decodedSteps))
         }
 
-        for match in matches.reversed() {
-            guard let fullRange = Range(match.range, in: strippedText) else { continue }
-            strippedText.removeSubrange(fullRange)
-        }
-
-        return (parsedSteps, strippedText)
+        return parsedBlocks
     }
 
     private static func decodeToolCallSteps(from jsonText: String) -> [PaceActionExecutionStep] {
@@ -5302,8 +5311,11 @@ enum PaceActionTagParser {
 
         if let groupedToolCalls = try? decoder.decode([[ToolCallDTO]].self, from: jsonData) {
             return groupedToolCalls.compactMap { toolCallGroup in
-                let actions = toolCallGroup.compactMap(parseToolCall)
-                return actions.isEmpty ? nil : PaceActionExecutionStep(actions: actions)
+                let parsedActions = toolCallGroup.compactMap(parseToolCall)
+                guard parsedActions.count == toolCallGroup.count, !parsedActions.isEmpty else {
+                    return nil
+                }
+                return PaceActionExecutionStep(actions: parsedActions)
             }
         }
 
@@ -5315,6 +5327,43 @@ enum PaceActionTagParser {
         }
 
         return []
+    }
+
+    private static func parseActionTagMatches(
+        in responseText: String,
+        excludingRanges excludedRanges: [Range<String.Index>]
+    ) -> [NSTextCheckingResult] {
+        let actionTagPattern = #"\[(CLICK|DOUBLE_CLICK|TYPE|KEY|SCROLL|OPEN_APP|OPEN_URL|MUSIC|VOLUME|BRIGHTNESS|CALENDAR|REMINDER):([^\]]+)\]"#
+        guard let actionTagRegex = try? NSRegularExpression(
+            pattern: actionTagPattern,
+            options: [.caseInsensitive]
+        ) else {
+            return []
+        }
+
+        let entireRange = NSRange(responseText.startIndex..., in: responseText)
+        let matches = actionTagRegex.matches(in: responseText, options: [], range: entireRange)
+        guard !matches.isEmpty else { return [] }
+
+        return matches.filter { match in
+            guard let matchRange = Range(match.range, in: responseText) else { return false }
+            return !excludedRanges.contains { excludedRange in
+                excludedRange.lowerBound <= matchRange.lowerBound
+                    && matchRange.upperBound <= excludedRange.upperBound
+            }
+        }
+    }
+
+    private static func stripRanges(
+        in text: String,
+        removingRanges ranges: [Range<String.Index>]
+    ) -> String {
+        var strippedText = text
+        for range in ranges.sorted(by: { $0.lowerBound > $1.lowerBound }) {
+            guard let mutableRange = Range(range, in: strippedText) else { continue }
+            strippedText.removeSubrange(mutableRange)
+        }
+        return strippedText
     }
 
     private static func parseToolCall(_ toolCall: ToolCallDTO) -> PaceParsedAction? {

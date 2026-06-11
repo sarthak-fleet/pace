@@ -215,6 +215,67 @@ struct PaceActionTagParserTests {
         #expect(musicCommand == .play)
     }
 
+    @Test func mixedToolCallsAndInlineTagsPreserveSourceOrder() async throws {
+        let inputResponse = """
+        first line. [TYPE:hello]
+        <tool_calls>
+        [
+          [
+            {"tool":"open_app","app":"Safari"}
+          ]
+        ]
+        </tool_calls>
+        last line. [CLICK:400,300]
+        """
+
+        let parseResult = PaceActionTagParser.parseActions(from: inputResponse)
+
+        #expect(parseResult.spokenText == "first line.  last line.")
+        #expect(parseResult.actions.count == 3)
+
+        guard case .type(let typedText) = parseResult.actions[0] else {
+            Issue.record("Expected inline TYPE action first")
+            return
+        }
+        #expect(typedText == "hello")
+
+        guard case .openApplication(let applicationName) = parseResult.actions[1] else {
+            Issue.record("Expected tool-call open_app second")
+            return
+        }
+        #expect(applicationName == "Safari")
+
+        guard case .click(let clickLocation) = parseResult.actions[2] else {
+            Issue.record("Expected inline CLICK last")
+            return
+        }
+        #expect(clickLocation.xInScreenshotPixels == 400)
+        #expect(clickLocation.yInScreenshotPixels == 300)
+    }
+
+    @Test func invalidActionInsideParallelToolCallGroupRejectsWholeGroup() async throws {
+        let parseResult = PaceActionTagParser.parseActions(from: """
+        <tool_calls>
+        [
+          [
+            {"tool":"open_app","app":"Safari"},
+            {"tool":"scroll","direction":"sideways"}
+          ],
+          [
+            {"tool":"open_url","url":"https://example.com"}
+          ]
+        ]
+        </tool_calls>
+        """)
+
+        #expect(parseResult.actions.count == 1)
+        guard case .openURL(let urlString) = parseResult.actions.first else {
+            Issue.record("Expected only the valid second step to survive")
+            return
+        }
+        #expect(urlString == "https://example.com")
+    }
+
     @Test func calendarAndReminderToolCallsParseIntoReadableTools() async throws {
         let parseResult = PaceActionTagParser.parseActions(from: """
         checking and saving it.

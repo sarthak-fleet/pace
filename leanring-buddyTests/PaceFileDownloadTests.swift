@@ -24,6 +24,12 @@ struct PaceFileDownloadTests {
         #expect(PaceFileDownloadURLValidator.validatedDownloadURL(from: "") == nil)
     }
 
+    @Test func validatorRejectsLoopbackHosts() async throws {
+        #expect(PaceFileDownloadURLValidator.validatedDownloadURL(from: "https://localhost/report.pdf") == nil)
+        #expect(PaceFileDownloadURLValidator.validatedDownloadURL(from: "http://127.0.0.1/report.pdf") == nil)
+        #expect(PaceFileDownloadURLValidator.validatedDownloadURL(from: "https://[::1]/report.pdf") == nil)
+    }
+
     @Test func sanitizerStripsPathSeparatorsAndTraversal() async throws {
         let downloadURL = URL(string: "https://example.com/files/report.pdf")!
         #expect(

@@ -24,6 +24,7 @@ nonisolated enum PaceFileDownloadURLValidator {
         guard !trimmedURLString.isEmpty, let url = URL(string: trimmedURLString) else { return nil }
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else { return nil }
         guard let host = url.host, !host.isEmpty else { return nil }
+        guard !PaceLocalEndpointGuard.isLoopbackHost(host.lowercased()) else { return nil }
         guard url.user == nil, url.password == nil else { return nil }
         return url
     }
