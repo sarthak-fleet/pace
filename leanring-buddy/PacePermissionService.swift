@@ -55,13 +55,14 @@ final class PacePermissionService: ObservableObject {
     private var pollTimer: Timer?
     private var lifecycleObservers: [NSObjectProtocol] = []
 
-    // Live-probe caches: macOS's status APIs lie for two permissions
-    // (Screen Recording, Accessibility). The live probes settle the
-    // truth asynchronously; their results are believed over the stale
-    // status APIs once they finish.
-    private var liveScreenRecordingResult: Bool?
-    private var liveScreenRecordingResultAt: Date = .distantPast
-    private var screenRecordingProbeInFlight = false
+    // No SCShareableContent live probe: it triggers the macOS Screen
+    // Recording modal whenever the running process's cdhash hasn't been
+    // explicitly authorized — even when the toggle in System Settings is
+    // already ON for a previous Pace cdhash. That made the "detect granted
+    // toggle" feature actively cause the prompt spam it was trying to
+    // sidestep. We rely on CGPreflightScreenCaptureAccess (which never
+    // prompts) and accept that a fresh Pace process may show the toggle
+    // as not-granted-yet until next relaunch.
 
     private init() {
         refresh()
@@ -94,15 +95,13 @@ final class PacePermissionService: ObservableObject {
     func refresh() {
         var next = grants
 
-        // Screen Recording: optimistic fast path with stale-cache rescue.
-        if CGPreflightScreenCaptureAccess() {
-            liveScreenRecordingResult = true
-            liveScreenRecordingResultAt = Date()
-            next[.screenRecording] = true
-        } else {
-            refreshLiveScreenRecordingIfStale()
-            next[.screenRecording] = liveScreenRecordingResult ?? false
-        }
+        // Screen Recording: CGPreflight only. It does NOT trigger any
+        // system prompt. The downside is the documented staleness — a
+        // fresh process whose cdhash wasn't pre-authorized will keep
+        // returning false until relaunch. The onboarding flow tells the
+        // user to relaunch when that happens; spam-prompt is worse than
+        // a relaunch.
+        next[.screenRecording] = CGPreflightScreenCaptureAccess()
 
         // Accessibility: AXIsProcessTrusted is the canonical check, but
         // it caches false the same way as CGPreflight. The 'live probe'
@@ -142,38 +141,6 @@ final class PacePermissionService: ObservableObject {
             kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false
         ] as CFDictionary
         return AXIsProcessTrustedWithOptions(optionsDictionary)
-    }
-
-    private func refreshLiveScreenRecordingIfStale() {
-        let secondsSinceLast = Date().timeIntervalSince(liveScreenRecordingResultAt)
-        guard secondsSinceLast >= liveProbeStalenessInSeconds,
-              !screenRecordingProbeInFlight else {
-            return
-        }
-        screenRecordingProbeInFlight = true
-        Task.detached(priority: .userInitiated) {
-            let canRecord: Bool
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(
-                    false,
-                    onScreenWindowsOnly: true
-                )
-                canRecord = !content.displays.isEmpty
-            } catch {
-                canRecord = false
-            }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.liveScreenRecordingResult = canRecord
-                self.liveScreenRecordingResultAt = Date()
-                self.screenRecordingProbeInFlight = false
-                if canRecord, self.grants[.screenRecording] != true {
-                    self.grants[.screenRecording] = true
-                } else if !canRecord, self.grants[.screenRecording] != false {
-                    self.grants[.screenRecording] = false
-                }
-            }
-        }
     }
 
     // MARK: - EventKit version drift

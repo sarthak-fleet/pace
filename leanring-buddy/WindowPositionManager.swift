@@ -82,70 +82,13 @@ class WindowPositionManager {
     // MARK: - Screen Recording Permission
 
     /// Returns true if Screen Recording permission is granted.
-    /// Last live result and the timestamp it was captured at. The async
-    /// probe is fast (~50ms) but firing it from every 1.5s permissions
-    /// poll is wasteful — cache for 5s.
-    private static var cachedScreenRecordingLiveResult: Bool?
-    private static var cachedScreenRecordingLiveResultAt: Date = .distantPast
-    private static let liveScreenRecordingResultStalenessInSeconds: TimeInterval = 5
-
-    /// Returns true if Pace can actually record the screen.
-    ///
-    /// CGPreflightScreenCaptureAccess has a documented macOS caching
-    /// bug: once it returns false for a running process, it keeps
-    /// returning false even after the user grants the permission in
-    /// System Settings — only a quit/relaunch refreshes it. That made
-    /// Pace's permissions panel claim "Grant" even when Settings showed
-    /// the toggle ON.
-    ///
-    /// We now treat CGPreflight as the optimistic fast path AND start
-    /// an async SCShareableContent probe to verify. The cached probe
-    /// result wins over a false negative from preflight, so a granted
-    /// toggle flips the panel state within ~5s of the next poll.
+    /// Returns true if Pace can record the screen, using only the
+    /// non-prompting CGPreflight check. The prior SCShareableContent
+    /// probe was removed — it triggered the macOS Screen Recording
+    /// modal whenever the running cdhash wasn't pre-authorized, which
+    /// IS the spam it was trying to avoid.
     static func hasScreenRecordingPermission() -> Bool {
-        if CGPreflightScreenCaptureAccess() {
-            cachedScreenRecordingLiveResult = true
-            cachedScreenRecordingLiveResultAt = Date()
-            return true
-        }
-        // Preflight said no — kick off (or reuse) the live probe and
-        // believe IT instead. Probe success means the grant is real
-        // and macOS just hasn't told preflight yet.
-        refreshLiveScreenRecordingPermissionIfStale()
-        return cachedScreenRecordingLiveResult ?? false
-    }
-
-    private static var liveProbeInFlight = false
-
-    private static func refreshLiveScreenRecordingPermissionIfStale() {
-        let secondsSinceLastProbe = Date().timeIntervalSince(cachedScreenRecordingLiveResultAt)
-        guard secondsSinceLastProbe >= liveScreenRecordingResultStalenessInSeconds,
-              !liveProbeInFlight else {
-            return
-        }
-        liveProbeInFlight = true
-        Task.detached(priority: .userInitiated) {
-            // SCShareableContent.current actually attempts the
-            // privileged enumeration; success means TCC granted us
-            // access right now, failure (or empty displays) means it
-            // didn't. Use the same API that real captures use so the
-            // answer reflects reality.
-            let canRecord: Bool
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(
-                    false,
-                    onScreenWindowsOnly: true
-                )
-                canRecord = !content.displays.isEmpty
-            } catch {
-                canRecord = false
-            }
-            await MainActor.run {
-                cachedScreenRecordingLiveResult = canRecord
-                cachedScreenRecordingLiveResultAt = Date()
-                liveProbeInFlight = false
-            }
-        }
+        return CGPreflightScreenCaptureAccess()
     }
 
     /// Prompts the system dialog for Screen Recording permission.
