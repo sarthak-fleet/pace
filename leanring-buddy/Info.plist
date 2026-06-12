@@ -7,7 +7,7 @@
 	<key>AlwaysRunLocalVLMRegardlessOfTranscript</key>
 	<string>false</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.10</string>
+	<string>0.3.11</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -20,17 +20,17 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>10</string>
-	<key>EnableActions</key>
-	<string>true</string>
-	<key>LSUIElement</key>
-	<true/>
+	<string>11</string>
 	<key>CloudBridgeBaseURL</key>
 	<string>http://localhost:3456</string>
 	<key>CloudBridgeDefaultModel</key>
 	<string>sonnet</string>
 	<key>CloudBridgeDefaultUpstream</key>
 	<string>claude</string>
+	<key>EnableActions</key>
+	<string>true</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>LocalPlannerBaseURL</key>
 	<string>http://localhost:1234/v1</string>
 	<key>LocalPlannerModelIdentifier</key>
@@ -59,8 +59,6 @@
 	<string>http://localhost:1234/v1</string>
 	<key>LocalVLMModelIdentifier</key>
 	<string>ui-venus-1.5-2b</string>
-	<key>NotchChatShortcut</key>
-	<string>commandShiftP</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Pace uses Apple Events only when you ask it to control local Mac apps like Notes, Music, Mail, Things, Shortcuts, or Messages.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
@@ -81,6 +79,8 @@
 	<string>Pace needs screen recording access to see your screen and help you.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Pace uses speech recognition to transcribe your voice when you talk to it</string>
+	<key>NotchChatShortcut</key>
+	<string>commandShiftP</string>
 	<key>PlannerProvider</key>
 	<string>local</string>
 	<key>PrewarmMailForDrafts</key>
