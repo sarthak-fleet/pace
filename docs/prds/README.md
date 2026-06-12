@@ -29,6 +29,7 @@ scope, test gates, and acceptance criteria.
 | `recipe-library.md` | ready-to-implement | Five bundled installable `PaceFlow` recipes (morning standup, weekly review, inbox triage, focus mode, end-of-day shutdown). Multiplier on the flow-replay PRD. Maps to Poke's Recipes. |
 | `chat-interface.md` | ready-to-implement | Text input + live transcript inside the existing PaceMainWindow Conversations tab; shares `paceHistory` retrieval with voice. Notch stays voice-first. |
 | `conversational-thread-memory.md` | ready-to-implement | Two-tier in-context memory: last K turns verbatim plus a detached rolling summary of older turns, injected as `<conversation_so_far>` on every planner call. Session-scoped, ephemeral, on-device. Sits between literal-recent-window and episodic facts. |
+| `planner-tier-picker.md` | ready-to-implement | User-facing planner tier picker (Local / CLI bridge / Direct API BYO / Apple FM only) in Settings → Planner. Adds `DirectAPIPlannerClient` plus Keychain-backed key storage (`PaceKeychainStore`) and an off-device audit log; preserves Local as the upgrade default and tints the menu-bar capsule amber for every non-Local turn. |
 
 ## Ordering
 
