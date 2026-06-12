@@ -163,51 +163,146 @@ enum BuddyPlannerClientFactory {
         case local = "local"
     }
 
-    /// Resolve the active planner from Info.plist key `PlannerProvider`,
-    /// then layer the cloud-bridge mode on top if the user has consented.
+    /// Resolve the active planner. Order of dispatch:
+    ///   1. User's chosen `PacePlannerTier` from Settings → Planner.
+    ///        - `.local`                 → LM Studio or Apple FM per Info.plist (existing path).
+    ///        - `.cliBridge`             → CloudBridgePlannerClient if consent + mode allow.
+    ///        - `.directAPI`             → DirectAPIPlannerClient with BYO key from Keychain.
+    ///        - `.appleFoundationModels` → Apple FM as sole planner.
+    ///   2. Cloud-bridge mode layer ON TOP of `.local`: keeps the
+    ///      pre-tier-picker behavior for users who previously enabled the
+    ///      bridge by editing UserDefaults directly.
+    ///   3. Anything unmappable → safe local default so Pace stays usable.
     ///
-    /// Priority order:
-    ///   1. `alwaysBridge` + consent → CloudBridgePlannerClient (all turns go to bridge)
-    ///   2. `hybrid` + consent       → HybridPlannerClient (bridge for preferLarge turns)
-    ///   3. Anything else            → local planner from PlannerProvider (default behavior)
-    ///
-    /// **Falls back to LocalPlannerClient automatically when Foundation
-    /// Models isn't available** — most commonly because the user
-    /// hasn't enabled Apple Intelligence in System Settings.
+    /// Existing users (no UserDefaults state for the picker) see `.local`
+    /// — byte-identical behavior to today. See PRD:
+    /// docs/prds/planner-tier-picker.md
     @MainActor
     static func makeDefault() -> any BuddyPlannerClient {
-        let cloudBridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
+        let plannerTierConfiguration = PacePlannerTierStore.loadConfiguration()
 
-        // Gate: both conditions must be true before the bridge code path activates.
-        // If the user somehow has a non-off mode saved but hasn't accepted the
-        // consent dialog (e.g. from a previous install), we fall through to local.
+        switch plannerTierConfiguration.tier {
+        case .directAPI:
+            if let directAPIPlanner = makeDirectAPIPlannerOrNil(
+                configuration: plannerTierConfiguration
+            ) {
+                print("🧠 Planner: using \(directAPIPlanner.displayName) [tier=directAPI]")
+                return directAPIPlanner
+            }
+            // Missing key or invalid URL — fall through to local so Pace
+            // stays usable. The Settings panel surfaces a yellow "no key
+            // set" status row that links here.
+            print("⚠️ Planner: tier=directAPI selected but configuration is incomplete — falling back to local")
+            return makeLocalOrFoundationModelsPlanner()
+
+        case .appleFoundationModels:
+            return makeFoundationModelsPlannerOrFallback()
+
+        case .cliBridge:
+            return makeCLIBridgePlannerOrLocalFallback()
+
+        case .local:
+            // The historical cloud-bridge UserDefaults still apply when
+            // tier=.local — pre-tier-picker upgraders who enabled the
+            // bridge keep their setup. The tier picker is the new
+            // explicit override; the legacy bridge mode is the implicit
+            // continuation.
+            return makeLocalOrFoundationModelsPlanner_layeringCLIBridgeIfAccepted()
+        }
+    }
+
+    /// Builds the Direct-API client when the user has a stored key + a
+    /// valid endpoint URL. Returns nil in either of two cases:
+    ///   - No key in Keychain for the configured provider.
+    ///   - Custom endpoint URL rejected by `validatedDirectAPIURL` (e.g.
+    ///     missing scheme, plaintext http to a non-loopback host).
+    @MainActor
+    private static func makeDirectAPIPlannerOrNil(
+        configuration: PacePlannerTierConfiguration
+    ) -> DirectAPIPlannerClient? {
+        let storedAPIKey = PaceKeychainStore.loadAPIKey(for: configuration.directAPIProvider)
+        guard let storedAPIKey, !storedAPIKey.isEmpty else {
+            print("⚠️ Planner: Direct API tier selected but no API key stored for \(configuration.directAPIProvider.rawValue)")
+            return nil
+        }
+
+        let configuredEndpointURLString = PacePlannerTierStore
+            .resolvedDirectAPIEndpointURLString(for: configuration)
+
+        let validatedEndpointURL: URL
+        do {
+            validatedEndpointURL = try PaceLocalEndpointGuard.validatedDirectAPIURL(
+                from: configuredEndpointURLString
+            )
+        } catch {
+            print("⚠️ Planner: Direct API endpoint URL rejected — \(error.localizedDescription)")
+            return nil
+        }
+
+        return DirectAPIPlannerClient(
+            provider: configuration.directAPIProvider,
+            endpointURL: validatedEndpointURL,
+            modelIdentifier: configuration.directAPIModelIdentifier
+        )
+    }
+
+    /// Constructs the bridge planner when the user has accepted the
+    /// consent dialog AND chosen a non-off mode. Falls back to local
+    /// otherwise so the tier picker never strands the user without a
+    /// working planner.
+    @MainActor
+    private static func makeCLIBridgePlannerOrLocalFallback() -> any BuddyPlannerClient {
+        let cloudBridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
+        guard cloudBridgeConfiguration.hasUserAcceptedConsent else {
+            print("⚠️ Planner: tier=cliBridge selected but consent not accepted — falling back to local")
+            return makeLocalOrFoundationModelsPlanner()
+        }
+
+        switch cloudBridgeConfiguration.mode {
+        case .alwaysBridge:
+            let cloudBridgePlanner = CloudBridgePlannerClient(configuration: cloudBridgeConfiguration)
+            print("🧠 Planner: using \(cloudBridgePlanner.displayName) [tier=cliBridge mode=alwaysBridge]")
+            return cloudBridgePlanner
+        case .hybrid:
+            let localBaselineForHybrid = makeLocalOrFoundationModelsPlanner()
+            let cloudBridgePlanner = CloudBridgePlannerClient(configuration: cloudBridgeConfiguration)
+            let hybridPlanner = HybridPlannerClient(
+                localPlannerClient: localBaselineForHybrid,
+                cloudBridgePlannerClient: cloudBridgePlanner
+            )
+            print("🧠 Planner: using \(hybridPlanner.displayName) [tier=cliBridge mode=hybrid]")
+            return hybridPlanner
+        case .off:
+            print("⚠️ Planner: tier=cliBridge but mode=off — falling back to local")
+            return makeLocalOrFoundationModelsPlanner()
+        }
+    }
+
+    /// Pre-tier-picker behavior preserved for `tier == .local` users:
+    /// the historical bridge UserDefaults can still upgrade the local
+    /// planner into the hybrid/always-bridge code paths.
+    @MainActor
+    private static func makeLocalOrFoundationModelsPlanner_layeringCLIBridgeIfAccepted() -> any BuddyPlannerClient {
+        let cloudBridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
         if cloudBridgeConfiguration.hasUserAcceptedConsent {
             switch cloudBridgeConfiguration.mode {
             case .alwaysBridge:
-                let cloudBridgePlanner = CloudBridgePlannerClient(
-                    configuration: cloudBridgeConfiguration
-                )
-                print("🧠 Planner: using \(cloudBridgePlanner.displayName) [alwaysBridge]")
+                let cloudBridgePlanner = CloudBridgePlannerClient(configuration: cloudBridgeConfiguration)
+                print("🧠 Planner: using \(cloudBridgePlanner.displayName) [legacy alwaysBridge]")
                 return cloudBridgePlanner
-
             case .hybrid:
                 let localBaselineForHybrid = makeLocalOrFoundationModelsPlanner()
-                let cloudBridgePlanner = CloudBridgePlannerClient(
-                    configuration: cloudBridgeConfiguration
-                )
+                let cloudBridgePlanner = CloudBridgePlannerClient(configuration: cloudBridgeConfiguration)
                 let hybridPlanner = HybridPlannerClient(
                     localPlannerClient: localBaselineForHybrid,
                     cloudBridgePlannerClient: cloudBridgePlanner
                 )
-                print("🧠 Planner: using \(hybridPlanner.displayName) [hybrid]")
+                print("🧠 Planner: using \(hybridPlanner.displayName) [legacy hybrid]")
                 return hybridPlanner
-
             case .off:
                 break
             }
         }
-
-        // Default: no bridge. Use local planner from PlannerProvider.
         return makeLocalOrFoundationModelsPlanner()
     }
 

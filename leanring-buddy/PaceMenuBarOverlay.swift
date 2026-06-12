@@ -169,7 +169,11 @@ private struct PaceMenuBarOverlayView: View {
                         voiceState: companionManager.voiceState,
                         audioPowerLevel: companionManager.currentAudioPowerLevel,
                         reduceMotion: reduceMotion,
-                        isCloudBridgeCallActive: companionManager.isCloudBridgeCallActive
+                        // The amber tint fires for ANY non-Local tier in
+                        // flight (cliBridge OR directAPI), not just the
+                        // CLI bridge — so every off-device turn is
+                        // visually called out. See planner-tier-picker.md.
+                        isCloudBridgeCallActive: companionManager.isOffDeviceTurnInFlight
                     )
                 }
             }

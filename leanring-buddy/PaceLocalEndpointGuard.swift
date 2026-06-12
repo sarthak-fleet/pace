@@ -106,6 +106,78 @@ enum PaceLocalEndpointGuard {
         )
     }
 
+    /// Validator for the Direct-API (BYO key) endpoint. INTENTIONALLY separate
+    /// from `validateLocalHTTPURL` — Direct-API is consented cloud egress
+    /// while the loopback guard is on-device-only. Mixing the two is the
+    /// single biggest exfiltration risk in this codebase; they must stay
+    /// in distinct functions with distinct test files.
+    ///
+    /// Rules:
+    ///   - Scheme must be `http` or `https`.
+    ///   - `https` is allowed for ANY host (cloud egress on purpose).
+    ///   - `http` is only allowed when the host is loopback (so a local
+    ///     OpenAI-compatible proxy still works for testing). Any plaintext
+    ///     to a remote host fails closed — Pace will not send an API key
+    ///     in the clear to a non-loopback host.
+    ///   - Host must be present and non-empty.
+    ///
+    /// Throws `PaceLocalEndpointGuardError` on rejection — called from the
+    /// Settings save path so the user sees the failure inline.
+    static func validatedDirectAPIURL(from configuredURLString: String?) throws -> URL {
+        let settingName = "DirectAPIEndpointURL"
+        let trimmedConfiguredURLString = configuredURLString?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let trimmedConfiguredURLString,
+              !trimmedConfiguredURLString.isEmpty else {
+            throw PaceLocalEndpointGuardError(
+                settingName: settingName,
+                rejectedValue: configuredURLString ?? "",
+                reason: "endpoint URL is empty"
+            )
+        }
+
+        guard let parsedURL = URL(string: trimmedConfiguredURLString) else {
+            throw PaceLocalEndpointGuardError(
+                settingName: settingName,
+                rejectedValue: trimmedConfiguredURLString,
+                reason: "URL is not parseable"
+            )
+        }
+
+        let scheme = parsedURL.scheme?.lowercased()
+        guard scheme == "http" || scheme == "https" else {
+            throw PaceLocalEndpointGuardError(
+                settingName: settingName,
+                rejectedValue: trimmedConfiguredURLString,
+                reason: "scheme must be http or https"
+            )
+        }
+
+        guard let rawHost = parsedURL.host(percentEncoded: false),
+              !rawHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PaceLocalEndpointGuardError(
+                settingName: settingName,
+                rejectedValue: trimmedConfiguredURLString,
+                reason: "host is missing"
+            )
+        }
+
+        let normalizedHost = rawHost
+            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            .lowercased()
+
+        if scheme == "http" && !isLoopbackHost(normalizedHost) {
+            throw PaceLocalEndpointGuardError(
+                settingName: settingName,
+                rejectedValue: trimmedConfiguredURLString,
+                reason: "http is only allowed for loopback hosts — use https for '\(rawHost)'"
+            )
+        }
+
+        return parsedURL
+    }
+
     nonisolated static func isLoopbackHost(_ normalizedHost: String) -> Bool {
         if normalizedHost == "localhost" || normalizedHost == "::1" {
             return true

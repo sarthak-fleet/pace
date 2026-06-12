@@ -65,4 +65,73 @@ struct PaceLocalEndpointGuardTests {
 
         #expect(resolvedURL == PaceLocalEndpointGuard.defaultOpenAICompatibleBaseURL)
     }
+
+    // MARK: - validatedDirectAPIURL — cloud-fanout entry point
+
+    @Test func directAPIGuardAcceptsHTTPSToRemoteHosts() throws {
+        let acceptedRemoteURLs = [
+            "https://api.anthropic.com/v1/chat/completions",
+            "https://api.openai.com/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",
+            "https://example.com/some/path"
+        ]
+        for acceptedRemoteURLString in acceptedRemoteURLs {
+            let validatedURL = try PaceLocalEndpointGuard.validatedDirectAPIURL(
+                from: acceptedRemoteURLString
+            )
+            #expect(validatedURL.absoluteString == acceptedRemoteURLString)
+        }
+    }
+
+    @Test func directAPIGuardAcceptsHTTPOnlyForLoopbackHosts() throws {
+        let acceptedLoopbackHTTPURLs = [
+            "http://localhost:8000/v1/chat/completions",
+            "http://127.0.0.1:8000/v1/chat/completions",
+            "http://[::1]:8000/v1/chat/completions"
+        ]
+        for acceptedLoopbackHTTPURLString in acceptedLoopbackHTTPURLs {
+            let validatedURL = try PaceLocalEndpointGuard.validatedDirectAPIURL(
+                from: acceptedLoopbackHTTPURLString
+            )
+            #expect(validatedURL.absoluteString == acceptedLoopbackHTTPURLString)
+        }
+    }
+
+    @Test func directAPIGuardRejectsPlaintextHTTPToRemoteHosts() {
+        let rejectedPlaintextRemoteURLs = [
+            "http://api.anthropic.com/v1/chat/completions",
+            "http://api.openai.com/v1/chat/completions",
+            "http://192.168.1.5/v1/chat/completions",
+            "http://example.com/path"
+        ]
+        for rejectedPlaintextRemoteURLString in rejectedPlaintextRemoteURLs {
+            #expect(throws: PaceLocalEndpointGuardError.self) {
+                try PaceLocalEndpointGuard.validatedDirectAPIURL(
+                    from: rejectedPlaintextRemoteURLString
+                )
+            }
+        }
+    }
+
+    @Test func directAPIGuardRejectsEmptyOrMalformedURLStrings() {
+        let invalidInputs: [String?] = [
+            nil,
+            "",
+            "   ",
+            "not-a-url",
+            "://missing-scheme.example.com",
+            "ftp://example.com/path"
+        ]
+        for invalidInput in invalidInputs {
+            #expect(throws: PaceLocalEndpointGuardError.self) {
+                try PaceLocalEndpointGuard.validatedDirectAPIURL(from: invalidInput)
+            }
+        }
+    }
+
+    @Test func directAPIGuardRejectsURLsMissingAHost() {
+        #expect(throws: PaceLocalEndpointGuardError.self) {
+            try PaceLocalEndpointGuard.validatedDirectAPIURL(from: "https:///path-only")
+        }
+    }
 }

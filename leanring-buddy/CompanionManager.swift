@@ -445,6 +445,175 @@ final class CompanionManager: ObservableObject {
     /// Observed by `PaceMenuBarOverlay` to tint the right-icon slot amber.
     @Published private(set) var isCloudBridgeCallActive: Bool = false
 
+    // MARK: - Planner tier picker state
+
+    /// The user's chosen planner tier from Settings → Planner. Default is
+    /// `.local` for existing users — no UserDefaults state means the
+    /// factory returns the same LM Studio planner as before.
+    @Published private(set) var activePlannerTier: PacePlannerTier = {
+        PacePlannerTierStore.loadConfiguration().tier
+    }()
+
+    /// The provider Direct-API turns will target when tier == .directAPI.
+    @Published private(set) var directAPIProvider: PaceDirectAPIProvider = {
+        PacePlannerTierStore.loadConfiguration().directAPIProvider
+    }()
+
+    /// The model identifier sent in the Direct-API request body.
+    @Published private(set) var directAPIModelIdentifier: String = {
+        PacePlannerTierStore.loadConfiguration().directAPIModelIdentifier
+    }()
+
+    /// The user-pasted endpoint URL string, used only when provider == .custom.
+    @Published private(set) var directAPICustomEndpointURLString: String = {
+        PacePlannerTierStore.loadConfiguration().directAPICustomEndpointURLString
+    }()
+
+    /// Opt-in: when true AND a Direct-API turn errors, Pace retries the
+    /// SAME turn against LM Studio. Default is OFF so failures fail loud.
+    @Published private(set) var directAPIFallsBackToLocalOnCloudFailure: Bool = {
+        PacePlannerTierStore.loadConfiguration().fallsBackToLocalOnCloudFailure
+    }()
+
+    /// True when ANY non-Local tier (cliBridge OR directAPI) is actively
+    /// streaming. The menu-bar capsule observes this for the amber tint
+    /// so EVERY off-device turn is visible, not just bridge calls.
+    /// `isCloudBridgeCallActive` remains as a subset for backward compat
+    /// during the v1 cycle and continues to set/reset alongside this flag.
+    @Published private(set) var isOffDeviceTurnInFlight: Bool = false
+
+    func setActivePlannerTier(_ newTier: PacePlannerTier) {
+        activePlannerTier = newTier
+        PacePlannerTierStore.saveTier(newTier)
+        // Rebuild planner so the next turn uses the freshly-picked tier
+        // without requiring an app restart.
+        plannerClient = BuddyPlannerClientFactory.makeDefault()
+    }
+
+    func setDirectAPIProvider(_ newProvider: PaceDirectAPIProvider) {
+        directAPIProvider = newProvider
+        PacePlannerTierStore.saveDirectAPIProvider(newProvider)
+        // When the provider changes, also seed the model field with that
+        // provider's default — the user can immediately overwrite it but
+        // most users want a sensible starting model identifier.
+        let savedModelForProvider = PacePlannerTierStore.loadConfiguration().directAPIModelIdentifier
+        let modelIdentifierLooksEmptyOrStale = savedModelForProvider
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+        if modelIdentifierLooksEmptyOrStale {
+            setDirectAPIModelIdentifier(newProvider.defaultModelIdentifier)
+        }
+        plannerClient = BuddyPlannerClientFactory.makeDefault()
+    }
+
+    func setDirectAPIModelIdentifier(_ newModelIdentifier: String) {
+        directAPIModelIdentifier = newModelIdentifier
+        PacePlannerTierStore.saveDirectAPIModelIdentifier(newModelIdentifier)
+        plannerClient = BuddyPlannerClientFactory.makeDefault()
+    }
+
+    func setDirectAPICustomEndpointURLString(_ newCustomEndpointURLString: String) {
+        directAPICustomEndpointURLString = newCustomEndpointURLString
+        PacePlannerTierStore.saveDirectAPICustomEndpointURL(newCustomEndpointURLString)
+        plannerClient = BuddyPlannerClientFactory.makeDefault()
+    }
+
+    func setDirectAPIFallsBackToLocalOnCloudFailure(_ enabled: Bool) {
+        directAPIFallsBackToLocalOnCloudFailure = enabled
+        PacePlannerTierStore.saveFallsBackToLocalOnCloudFailure(enabled)
+    }
+
+    /// Whether the active planner tier is one that leaves the Mac.
+    /// Cliff-edge gates: cliBridge requires consent AND a non-off mode;
+    /// directAPI requires a stored key. Both checks mirror the factory
+    /// so the UI flag stays honest.
+    var activePlannerTierIsOffDevice: Bool {
+        switch activePlannerTier {
+        case .local, .appleFoundationModels:
+            return false
+        case .cliBridge:
+            let bridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
+            return bridgeConfiguration.hasUserAcceptedConsent
+                && bridgeConfiguration.mode != .off
+        case .directAPI:
+            return PaceKeychainStore.loadAPIKey(for: directAPIProvider) != nil
+        }
+    }
+
+    /// Verifies that the configured Direct-API provider, model, and key
+    /// can complete a single round trip. Builds a one-off
+    /// `DirectAPIPlannerClient` rather than reusing the active
+    /// `plannerClient` so the test does not disturb live state and is
+    /// not blocked by the tier choice. Surfaces the upstream error
+    /// verbatim on failure — users debugging API issues need to see the
+    /// provider's actual error string to find it in provider docs.
+    func runDirectAPITestRoundTrip() async -> Result<String, Error> {
+        let configurationAtTestTime = PacePlannerTierStore.loadConfiguration()
+        let resolvedEndpointURLString = PacePlannerTierStore
+            .resolvedDirectAPIEndpointURLString(for: configurationAtTestTime)
+
+        let validatedEndpointURL: URL
+        do {
+            validatedEndpointURL = try PaceLocalEndpointGuard.validatedDirectAPIURL(
+                from: resolvedEndpointURLString
+            )
+        } catch {
+            return .failure(error)
+        }
+
+        let testOnlyPlannerClient = DirectAPIPlannerClient(
+            provider: configurationAtTestTime.directAPIProvider,
+            endpointURL: validatedEndpointURL,
+            modelIdentifier: configurationAtTestTime.directAPIModelIdentifier
+        )
+
+        do {
+            let (responseText, _) = try await testOnlyPlannerClient.generateResponseStreaming(
+                images: [],
+                systemPrompt: "You are a connectivity-test echo. Respond with the model identifier you are, in exactly one word.",
+                conversationHistory: [],
+                userPrompt: "hi",
+                onTextChunk: { _ in }
+            )
+            let trimmedResponseText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .success(String(trimmedResponseText.prefix(60)))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Stores the user-pasted API key for the active Direct-API provider
+    /// and rebuilds the planner so the new key is picked up on the next
+    /// turn. The key value is passed straight to `PaceKeychainStore` and
+    /// is never persisted anywhere else.
+    @discardableResult
+    func saveDirectAPIKey(_ apiKey: String, for provider: PaceDirectAPIProvider) -> Bool {
+        let didStore = PaceKeychainStore.storeAPIKey(apiKey, for: provider)
+        if didStore {
+            plannerClient = BuddyPlannerClientFactory.makeDefault()
+        }
+        return didStore
+    }
+
+    /// Removes the stored API key for the given provider and rebuilds the
+    /// planner so the next turn either falls back to local (when no other
+    /// key is present) or picks up a different stored provider.
+    @discardableResult
+    func deleteDirectAPIKey(for provider: PaceDirectAPIProvider) -> Bool {
+        let didDelete = PaceKeychainStore.deleteAPIKey(for: provider)
+        if didDelete {
+            plannerClient = BuddyPlannerClientFactory.makeDefault()
+        }
+        return didDelete
+    }
+
+    /// Snapshot of which providers currently have an API key in Keychain.
+    /// Settings UI calls this to show a green checkmark next to a saved
+    /// provider.
+    func providersWithStoredDirectAPIKeys() -> Set<PaceDirectAPIProvider> {
+        return PaceKeychainStore.providersWithStoredKeys()
+    }
+
     func setCloudBridgeMode(_ mode: PaceCloudBridgeMode) {
         cloudBridgeMode = mode
         PaceCloudBridgeConsent.saveMode(mode)
@@ -2428,6 +2597,7 @@ You can turn this off at any time in Settings → Cloud bridge.
                 // Record first-use so the 24-hour soak timer starts ticking.
                 PaceCloudBridgeConsent.markFirstUsedIfUnset(now: Date())
                 isCloudBridgeCallActive = true
+                isOffDeviceTurnInFlight = true
 
                 let upstreamDisplayName = currentBridgeConfiguration.upstream.displayLabel
                 let bridgeRoutingHUDDetail = "thinking with \(upstreamDisplayName.lowercased())…"
@@ -2582,6 +2752,17 @@ You can turn this off at any time in Settings → Cloud bridge.
                     let isAgentModeEnabled = AppBundleConfiguration
                         .stringValue(forKey: "EnableActions")?
                         .lowercased() == "true"
+                    // Mark this turn as off-device for the amber-tint
+                    // capsule when the active planner is anything other
+                    // than the on-device tiers. The Hybrid wrapper sets
+                    // its own bridge-specific flag right before its bridge
+                    // branch fires; this catches every non-Local call
+                    // shape (DirectAPI, alwaysBridge, hybrid-large-routing
+                    // already handled above).
+                    if plannerClient is DirectAPIPlannerClient
+                        || plannerClient is CloudBridgePlannerClient {
+                        isOffDeviceTurnInFlight = true
+                    }
                     let (fullResponseText, _) = try await plannerClient.generateResponseStreaming(
                         images: imagesForPlanner,
                         systemPrompt: CompanionSystemPrompt.build(includeAgentMode: isAgentModeEnabled),
@@ -2625,8 +2806,11 @@ You can turn this off at any time in Settings → Cloud bridge.
 
                     // Clear the amber bridge indicator now that the stream has finished.
                     // Do this regardless of whether it was a bridge call or a local call —
-                    // clearing when already false is a safe no-op.
+                    // clearing when already false is a safe no-op. The
+                    // unified off-device flag follows the same lifecycle
+                    // so Direct-API turns un-tint the capsule too.
                     isCloudBridgeCallActive = false
+                    isOffDeviceTurnInFlight = false
 
                     // 6. Parse: action tags → [DONE] flag → pointing tag.
                     //    Each pass strips its own tag class so the final
@@ -2868,11 +3052,13 @@ You can turn this off at any time in Settings → Cloud bridge.
                 // overlay immediately so it doesn't linger over the next
                 // turn's "listening…" state.
                 isCloudBridgeCallActive = false
+                isOffDeviceTurnInFlight = false
                 responseOverlayManager.hideOverlay()
             } catch {
                 PaceAnalytics.trackResponseError(error: error.localizedDescription)
                 print("⚠️ Companion response error: \(error)")
                 isCloudBridgeCallActive = false
+                isOffDeviceTurnInFlight = false
                 responseOverlayManager.updateStreamingText("error: \(error.localizedDescription)")
                 responseOverlayManager.finishStreaming()
                 currentTurnHUDState = .failed(error.localizedDescription)
