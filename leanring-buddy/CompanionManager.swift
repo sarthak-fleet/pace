@@ -276,7 +276,60 @@ final class CompanionManager: ObservableObject {
 
     /// Conversation history so Claude remembers prior exchanges within a session.
     /// Each entry is the user's transcript and Claude's response.
-    private var conversationHistory: [(userTranscript: String, assistantResponse: String)] = []
+    ///
+    /// Thin facade over `threadMemory.verbatimWindow()` when thread
+    /// memory is enabled (the default). Existing unrelated callers
+    /// (smoke tests, debug logs) keep working; the source of truth is
+    /// the verbatim window inside `threadMemory`.
+    private var conversationHistory: [(userTranscript: String, assistantResponse: String)] {
+        return threadMemory.verbatimWindow().map { turnPair in
+            (userTranscript: turnPair.userText, assistantResponse: turnPair.assistantText)
+        }
+    }
+
+    /// Two-tier in-context memory: verbatim window of the last K
+    /// turn pairs + rolling summary of everything older. See PRD
+    /// docs/prds/conversational-thread-memory.md. Configured from
+    /// `PaceUserPreferencesStore` so the picker controls in Settings
+    /// can change the window size / idle threshold without a relaunch.
+    private lazy var threadMemory: PaceThreadMemory = {
+        let isEnabled = PaceUserPreferencesStore.bool(.isThreadMemoryEnabled, default: true)
+        let configuredVerbatimWindowSize = PaceUserPreferencesStore.clampedInt(
+            .threadMemoryVerbatimWindowSize,
+            default: 4,
+            in: 1...8
+        )
+        let configuredIdleMinutes = PaceUserPreferencesStore.clampedInt(
+            .threadMemoryIdleMinutes,
+            default: 20,
+            in: 5...60
+        )
+        // When the master switch is off we still construct the module
+        // (so the facade `conversationHistory` keeps working) but with
+        // a window size of 1 so nothing leaks into the planner beyond
+        // the immediate prior turn. Toggling back on just requires a
+        // relaunch — the next `start()` reads the preference fresh.
+        let effectiveWindowSize = isEnabled ? configuredVerbatimWindowSize : 1
+        return PaceThreadMemory(
+            configuration: PaceThreadMemoryConfiguration(
+                verbatimWindowSize: effectiveWindowSize,
+                sessionIdleThreshold: TimeInterval(configuredIdleMinutes) * 60,
+                summaryMaxTokenEstimate: PaceThreadMemoryConfiguration.default.summaryMaxTokenEstimate
+            )
+        )
+    }()
+
+    /// Detached FM call producing the next rolling summary. Lazy so
+    /// the FM session is created only when the first turn falls off
+    /// the verbatim window. See PRD section "Latency budget detail
+    /// (the race)" for the version-snapshot contract.
+    private lazy var threadSummarizerClient: PaceThreadSummarizerClient = {
+        PaceThreadSummarizerClientFactory.makeDefault()
+    }()
+
+    /// Low-frequency idle sweep so the menu-bar surface can drop
+    /// "session live" indicators without needing a new user turn.
+    private var threadMemoryIdleSweepTimer: Timer?
 
     /// Per-screen VLM analysis cache keyed by screen label (e.g.
     /// "primary focus", "screen 2"). Hash of the screenshot's JPEG
@@ -953,14 +1006,18 @@ You can turn this off at any time in Settings → Cloud bridge.
         userTranscript: String,
         assistantResponse: String
     ) {
-        conversationHistory.append((
-            userTranscript: userTranscript,
-            assistantResponse: assistantResponse
-        ))
+        let recordedAt = Date()
+        let stableTurnId = "turn-\(Int(recordedAt.timeIntervalSince1970))-\(abs(userTranscript.hashValue))"
 
-        if conversationHistory.count > 1 {
-            conversationHistory.removeFirst(conversationHistory.count - 1)
-        }
+        // Push the turn into the verbatim window. If the window
+        // overflowed, the displaced pair is what feeds the next
+        // detached summarizer call.
+        let displacedTurnPair = threadMemory.record(
+            userTurn: userTranscript,
+            assistantTurn: assistantResponse,
+            turnId: stableTurnId,
+            now: recordedAt
+        )
 
         localRetriever.recordPaceHistory(
             userTranscript: userTranscript,
@@ -970,10 +1027,105 @@ You can turn this off at any time in Settings → Cloud bridge.
             from: userTranscript,
             assistantText: assistantResponse,
             frontmostApplicationName: NSWorkspace.shared.frontmostApplication?.localizedName,
-            sourceTurnId: "turn-\(abs(userTranscript.hashValue))"
+            sourceTurnId: stableTurnId
         )
         localRetriever.recordEpisodicFacts(extractedFacts)
         refreshLocalRetrievalPublishedState()
+
+        guard let displacedTurnPair else { return }
+        scheduleDetachedThreadSummarizationCall(
+            displacedTurnPair: displacedTurnPair,
+            recordedAt: recordedAt
+        )
+    }
+
+    /// Mirrors the existing detached episodic-fact-extractor pattern:
+    /// summarization is fire-and-forget on a utility-priority detached
+    /// task. The user-facing planner turn NEVER awaits this. The
+    /// version snapshot captured BEFORE the FM call lets
+    /// `PaceThreadMemory.applySummaryUpdate` drop out-of-order arrivals
+    /// when the user fires multiple turns faster than the summarizer
+    /// completes.
+    private func scheduleDetachedThreadSummarizationCall(
+        displacedTurnPair: PaceThreadTurnPair,
+        recordedAt: Date
+    ) {
+        let priorSummaryForCall = threadMemory.currentSummaryText()
+        let reservedSummaryVersion = threadMemory.reserveNextSummaryVersion()
+        let summarizerInput = PaceThreadSummarizerInput(
+            priorSummary: priorSummaryForCall,
+            displacedTurnPair: displacedTurnPair,
+            sessionStartedAt: recordedAt,
+            frontmostApplicationName: NSWorkspace.shared.frontmostApplication?.localizedName
+        )
+        let summarizerForThisCall = threadSummarizerClient
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                let updatedSummaryText = try await summarizerForThisCall.updatedSummary(
+                    for: summarizerInput
+                )
+                await MainActor.run {
+                    self?.threadMemory.applySummaryUpdate(
+                        summary: updatedSummaryText,
+                        summaryVersion: reservedSummaryVersion,
+                        updatedAt: Date()
+                    )
+                }
+            } catch {
+                // Summarizer failure leaves the prior summary in
+                // place. No retry storm — the next turn will trigger
+                // a fresh call with the next displaced pair.
+                print("⚠️ Thread summarizer call failed: \(error)")
+            }
+        }
+    }
+
+    /// Drops state if the idle threshold elapsed AND journals one
+    /// line into `paceHistory` so "what did we talk about earlier?"
+    /// can recall via the existing keyword retriever. The summary
+    /// text itself is NEVER journaled — only the session id and the
+    /// lifecycle cause.
+    private func evaluateThreadIdleAndResetIfNeeded(now: Date) {
+        guard let sessionEndCause = threadMemory.sessionDidIdle(now: now) else {
+            return
+        }
+        let endingSessionId = threadMemory.currentSessionId
+        threadMemory.resetSession(cause: sessionEndCause, now: now)
+        let causeDisplayName: String
+        switch sessionEndCause {
+        case .idleTimeout:
+            causeDisplayName = "idleTimeout"
+        case .userReset:
+            causeDisplayName = "userReset"
+        }
+        localRetriever.recordPaceHistory(
+            userTranscript: "session ended (cause: \(causeDisplayName))",
+            assistantResponse: "session \(endingSessionId) ended",
+            now: now
+        )
+        refreshLocalRetrievalPublishedState()
+    }
+
+    /// Public surface for the Settings "Reset thread now" button.
+    func resetThreadMemoryNow() {
+        let now = Date()
+        let endingSessionId = threadMemory.currentSessionId
+        threadMemory.resetSession(cause: .userReset, now: now)
+        localRetriever.recordPaceHistory(
+            userTranscript: "session ended (cause: userReset)",
+            assistantResponse: "session \(endingSessionId) ended",
+            now: now
+        )
+        refreshLocalRetrievalPublishedState()
+    }
+
+    /// Settings debug surface: returns the raw summary text + version
+    /// counter so the user can audit what the planner is being told.
+    func currentThreadMemorySummarySnapshot() -> (summaryText: String?, summaryVersion: Int) {
+        return (
+            summaryText: threadMemory.currentSummaryText(),
+            summaryVersion: threadMemory.currentSummaryVersionValue()
+        )
     }
 
     private func appendLocalRetrievalContext(
@@ -1669,6 +1821,25 @@ You can turn this off at any time in Settings → Cloud bridge.
         // Screen Time indexes at launch — the read either works (Full Disk
         // Access granted) or reports a skipped status; never a prompt.
         refreshScreenTimeRetrievalDocumentsIfAllowed()
+
+        startThreadMemoryIdleSweepTimer()
+    }
+
+    /// 5-minute idle sweep that drops thread-memory state when the
+    /// session has gone quiet. Running this off a timer means the
+    /// menu-bar surface can show "session ended" without waiting for
+    /// the user's next turn to roll the gate.
+    private func startThreadMemoryIdleSweepTimer() {
+        threadMemoryIdleSweepTimer?.invalidate()
+        let lowFrequencySweepIntervalSeconds: TimeInterval = 5 * 60
+        threadMemoryIdleSweepTimer = Timer.scheduledTimer(
+            withTimeInterval: lowFrequencySweepIntervalSeconds,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.evaluateThreadIdleAndResetIfNeeded(now: Date())
+            }
+        }
     }
 
     func clearDetectedElementLocation() {
@@ -1700,6 +1871,8 @@ You can turn this off at any time in Settings → Cloud bridge.
         contactsRetrievalRefreshTask = nil
         fileRetrievalRefreshTask?.cancel()
         fileRetrievalRefreshTask = nil
+        threadMemoryIdleSweepTimer?.invalidate()
+        threadMemoryIdleSweepTimer = nil
     }
 
     func refreshAllPermissions() {
@@ -2342,9 +2515,12 @@ You can turn this off at any time in Settings → Cloud bridge.
                     route: .answerDirectly
                 )
 
+                let threadSummaryInjectionForTurn = threadMemory.injectionPrefix()
                 let (fullResponseText, _) = try await plannerForTextOnlyTurn.generateResponseStreaming(
                     images: [],
-                    systemPrompt: CompanionSystemPrompt.buildTextOnly(),
+                    systemPrompt: CompanionSystemPrompt.buildTextOnly(
+                        threadSummaryInjection: threadSummaryInjectionForTurn
+                    ),
                     conversationHistory: historyForPlanner,
                     userPrompt: userPromptForPlanner,
                     onTextChunk: { [weak self] accumulatedPlannerText in
@@ -2535,6 +2711,14 @@ You can turn this off at any time in Settings → Cloud bridge.
         currentResponseTask?.cancel()
         ttsClient.stopPlayback()
         pendingIntentClarification = nil
+
+        // Idle gate: if the thread sat quiet past the configured
+        // threshold, drop the verbatim window + summary and journal
+        // a "session ended" line. The next turn starts a fresh
+        // session. Runs synchronously here AND from a low-frequency
+        // sweep timer so the menu-bar surface drops "session live"
+        // indicators without needing a new turn.
+        evaluateThreadIdleAndResetIfNeeded(now: Date())
 
         // Tell the planner this is a fresh user turn. Stateful conformers
         // (Apple Foundation Models) wipe their cross-call session state
@@ -2763,9 +2947,13 @@ You can turn this off at any time in Settings → Cloud bridge.
                         || plannerClient is CloudBridgePlannerClient {
                         isOffDeviceTurnInFlight = true
                     }
+                    let threadSummaryInjectionForTurn = threadMemory.injectionPrefix()
                     let (fullResponseText, _) = try await plannerClient.generateResponseStreaming(
                         images: imagesForPlanner,
-                        systemPrompt: CompanionSystemPrompt.build(includeAgentMode: isAgentModeEnabled),
+                        systemPrompt: CompanionSystemPrompt.build(
+                            includeAgentMode: isAgentModeEnabled,
+                            threadSummaryInjection: threadSummaryInjectionForTurn
+                        ),
                         conversationHistory: historyForPlanner,
                         userPrompt: userPromptForPlanner,
                         onTextChunk: { [weak self] accumulatedPlannerText in

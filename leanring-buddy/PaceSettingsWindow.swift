@@ -97,6 +97,31 @@ struct PaceSettingsWindowView: View {
     /// Keychain. Refreshed on view appear and after every save/delete.
     @State private var providersWithStoredDirectAPIKeys: Set<PaceDirectAPIProvider> = []
 
+    // MARK: - Thread memory state
+    //
+    // These mirror `PaceUserPreferencesStore` values so the picker /
+    // toggles can update immediately. The `setX` calls write through
+    // to UserDefaults; the new value takes effect on the next
+    // `CompanionManager.start()` (which is fine for an end-of-PRD-V1
+    // surface — the picker is a setup-time control, not a per-turn
+    // control).
+
+    @State private var isThreadMemoryEnabledForSettings: Bool = PaceUserPreferencesStore
+        .bool(.isThreadMemoryEnabled, default: true)
+    @State private var threadMemoryVerbatimWindowSizeForSettings: Int = PaceUserPreferencesStore
+        .clampedInt(.threadMemoryVerbatimWindowSize, default: 4, in: 1...8)
+    @State private var threadMemoryIdleMinutesForSettings: Int = PaceUserPreferencesStore
+        .clampedInt(.threadMemoryIdleMinutes, default: 20, in: 5...60)
+    @State private var isThreadMemoryDebugViewEnabledForSettings: Bool = PaceUserPreferencesStore
+        .bool(.isThreadMemoryDebugViewEnabled, default: false)
+    @State private var isThreadEndingEpisodicHandoffEnabledForSettings: Bool = PaceUserPreferencesStore
+        .bool(.isThreadEndingEpisodicHandoffEnabled, default: false)
+    /// Tick value used to force a redraw of the debug summary text
+    /// when the user clicks "Reset thread now". The summary itself is
+    /// pulled from `companionManager.currentThreadMemorySummarySnapshot()`
+    /// on each render.
+    @State private var threadMemoryRefreshTick: Int = 0
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -972,8 +997,124 @@ struct PaceSettingsWindowView: View {
         }
     }
 
+    /// Thread summary subsection. Rendered ABOVE the existing
+    /// episodic / local memory subsection per PRD. Defaults are ON
+    /// for the master switch, OFF for the debug view + the episodic
+    /// handoff. The handoff stays default-OFF because the summarizer
+    /// is loose; the episodic extractor is precise; coupling them
+    /// risks low-confidence facts.
+    private var threadSummarySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Thread summary")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(DS.Colors.textSecondary)
+
+            Text("Pace keeps the last few turns verbatim and rolls everything older into a one-paragraph summary so it stays coherent across a long conversation. This conversation only — never saved to disk.")
+                .font(.system(size: 12))
+                .foregroundColor(DS.Colors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: $isThreadMemoryEnabledForSettings) {
+                Text("Remember this conversation")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textPrimary)
+            }
+            .toggleStyle(.switch)
+            .onChange(of: isThreadMemoryEnabledForSettings) { _, newValue in
+                PaceUserPreferencesStore.setBool(newValue, for: .isThreadMemoryEnabled)
+                if !newValue {
+                    companionManager.resetThreadMemoryNow()
+                    threadMemoryRefreshTick &+= 1
+                }
+            }
+
+            HStack(spacing: 12) {
+                Text("Verbatim window")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textSecondary)
+                Picker("", selection: $threadMemoryVerbatimWindowSizeForSettings) {
+                    ForEach(1...8, id: \.self) { turnPairCount in
+                        Text("\(turnPairCount) turn pair\(turnPairCount == 1 ? "" : "s")")
+                            .tag(turnPairCount)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                .onChange(of: threadMemoryVerbatimWindowSizeForSettings) { _, newValue in
+                    PaceUserPreferencesStore.setInt(newValue, for: .threadMemoryVerbatimWindowSize)
+                }
+            }
+            .help("How much exact context the planner sees before falling back to a summary.")
+
+            HStack(spacing: 12) {
+                Text("Idle threshold")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textSecondary)
+                Picker("", selection: $threadMemoryIdleMinutesForSettings) {
+                    ForEach([5, 10, 15, 20, 30, 45, 60], id: \.self) { idleMinutes in
+                        Text("\(idleMinutes) minutes").tag(idleMinutes)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                .onChange(of: threadMemoryIdleMinutesForSettings) { _, newValue in
+                    PaceUserPreferencesStore.setInt(newValue, for: .threadMemoryIdleMinutes)
+                }
+            }
+
+            settingsButton("Reset thread now", systemName: "arrow.counterclockwise") {
+                companionManager.resetThreadMemoryNow()
+                threadMemoryRefreshTick &+= 1
+            }
+
+            Toggle(isOn: $isThreadMemoryDebugViewEnabledForSettings) {
+                Text("Show current summary")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textPrimary)
+            }
+            .toggleStyle(.switch)
+            .onChange(of: isThreadMemoryDebugViewEnabledForSettings) { _, newValue in
+                PaceUserPreferencesStore.setBool(newValue, for: .isThreadMemoryDebugViewEnabled)
+            }
+
+            if isThreadMemoryDebugViewEnabledForSettings {
+                let snapshot = companionManager.currentThreadMemorySummarySnapshot()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Summary version: \(snapshot.summaryVersion)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(DS.Colors.textTertiary)
+                    Text(snapshot.summaryText ?? "(no summary yet — verbatim window covers the whole session)")
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(threadMemoryRefreshTick)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(DS.Colors.borderSubtle.opacity(0.25))
+                .cornerRadius(6)
+            }
+
+            Toggle(isOn: $isThreadEndingEpisodicHandoffEnabledForSettings) {
+                Text("On session end, share summary with episodic memory")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textPrimary)
+            }
+            .toggleStyle(.switch)
+            .onChange(of: isThreadEndingEpisodicHandoffEnabledForSettings) { _, newValue in
+                PaceUserPreferencesStore.setBool(newValue, for: .isThreadEndingEpisodicHandoffEnabled)
+            }
+            .help("Default off. When on, the final summary is offered to the episodic extractor — the extractor decides whether anything is durable enough to keep.")
+        }
+    }
+
     private var activityContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            threadSummarySection
+
+            Divider()
+                .background(DS.Colors.borderSubtle)
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Local memory")
                     .font(.system(size: 13, weight: .semibold))

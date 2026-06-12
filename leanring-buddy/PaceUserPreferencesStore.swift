@@ -30,6 +30,24 @@ enum PaceUserPreferenceKey: String {
     case areFocusFatigueNudgesEnabled
     case areCalendarNudgesEnabled
     case areWatchObservationNudgesEnabled
+    /// Master switch for the rolling-summary + verbatim-window in-
+    /// context memory. Default ON — see PRD
+    /// docs/prds/conversational-thread-memory.md.
+    case isThreadMemoryEnabled
+    /// How many turn pairs the planner sees verbatim before older
+    /// turns get folded into the rolling summary. Clamped 1...8.
+    case threadMemoryVerbatimWindowSize
+    /// How long the thread can stay quiet before its summary +
+    /// verbatim window are dropped. Clamped 5...60 minutes.
+    case threadMemoryIdleMinutes
+    /// Reveals the live summary text in Settings for transparency /
+    /// debugging. Default OFF — the summary is never user-facing.
+    case isThreadMemoryDebugViewEnabled
+    /// Opt-in handoff: when a thread session ends, feed the final
+    /// rolling summary to the episodic-fact extractor. Default OFF
+    /// because the summarizer is loose; the episodic extractor is
+    /// precise. Coupling them risks low-confidence facts.
+    case isThreadEndingEpisodicHandoffEnabled
 }
 
 enum PaceUserPreferencesStore {
@@ -61,6 +79,27 @@ enum PaceUserPreferencesStore {
     }
 
     static func setBool(_ value: Bool, for key: PaceUserPreferenceKey) {
+        UserDefaults.standard.set(value, forKey: key.rawValue)
+    }
+
+    /// Read an integer preference clamped to an inclusive range.
+    /// Returns `defaultValue` (also clamped) if the key was never
+    /// written. Used by the thread-memory picker controls so a bad
+    /// UserDefaults value can never push the verbatim window above
+    /// 8 or below 1.
+    static func clampedInt(
+        _ key: PaceUserPreferenceKey,
+        default defaultValue: Int,
+        in clampingRange: ClosedRange<Int>
+    ) -> Int {
+        let clampedDefault = min(max(defaultValue, clampingRange.lowerBound), clampingRange.upperBound)
+        guard let storedRawValue = UserDefaults.standard.object(forKey: key.rawValue) as? Int else {
+            return clampedDefault
+        }
+        return min(max(storedRawValue, clampingRange.lowerBound), clampingRange.upperBound)
+    }
+
+    static func setInt(_ value: Int, for key: PaceUserPreferenceKey) {
         UserDefaults.standard.set(value, forKey: key.rawValue)
     }
 }
