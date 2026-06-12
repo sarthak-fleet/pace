@@ -30,6 +30,9 @@ scope, test gates, and acceptance criteria.
 | `chat-interface.md` | ready-to-implement | Text input + live transcript inside the existing PaceMainWindow Conversations tab; shares `paceHistory` retrieval with voice. Notch stays voice-first. |
 | `conversational-thread-memory.md` | ready-to-implement | Two-tier in-context memory: last K turns verbatim plus a detached rolling summary of older turns, injected as `<conversation_so_far>` on every planner call. Session-scoped, ephemeral, on-device. Sits between literal-recent-window and episodic facts. |
 | `planner-tier-picker.md` | ready-to-implement | User-facing planner tier picker (Local / CLI bridge / Direct API BYO / Apple FM only) in Settings → Planner. Adds `DirectAPIPlannerClient` plus Keychain-backed key storage (`PaceKeychainStore`) and an off-device audit log; preserves Local as the upgrade default and tints the menu-bar capsule amber for every non-Local turn. |
+| `first-run-experience.md` | ready-to-implement | Makes a fresh Pace install actually work without LM Studio installed: Apple FM is the default planner, starter prompts in the notch panel for the first 24h, and a Skills tab in PaceMainWindow listing every tool with an example utterance. Closes the #1 "works for the builder, not for anyone else" gap. |
+| `trust-and-failures.md` | ready-to-implement | Visible undo banner after every reversible action, 30-second replay button for the last spoken reply, and plain-language failure narration for planner-offline / missing-permission / click-missed / sidecar-fallback. Turns Pace from "feels scary" to "feels reliable." |
+| `inclusivity-surface.md` | ready-to-implement | `cmd+shift+P` opens a chat input directly in the notch panel, Settings ships a one-tap install catalog for 6 popular MCP servers, and PaceMainWindow gets a Privacy dashboard showing zero-bytes-sent + the off-device audit log. Includes typists, unlocks integrations, makes the on-device claim visible. |
 
 ## Ordering
 
