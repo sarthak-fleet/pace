@@ -28,6 +28,7 @@ scope, test gates, and acceptance criteria.
 | `morning-triage.md` | ready-to-implement | At a user-set weekday time, Pace speaks a calm 30-second brief assembled from Calendar/Mail/Reminders/app-usage/watch-journal sources. Closes the biggest gap to Del-style "AI exec assistant" positioning. Bundled recipe JSONs ship under `leanring-buddy/Resources/recipes/`. |
 | `recipe-library.md` | ready-to-implement | Five bundled installable `PaceFlow` recipes (morning standup, weekly review, inbox triage, focus mode, end-of-day shutdown). Multiplier on the flow-replay PRD. Maps to Poke's Recipes. |
 | `chat-interface.md` | ready-to-implement | Text input + live transcript inside the existing PaceMainWindow Conversations tab; shares `paceHistory` retrieval with voice. Notch stays voice-first. |
+| `conversational-thread-memory.md` | ready-to-implement | Two-tier in-context memory: last K turns verbatim plus a detached rolling summary of older turns, injected as `<conversation_so_far>` on every planner call. Session-scoped, ephemeral, on-device. Sits between literal-recent-window and episodic facts. |
 
 ## Ordering
 
