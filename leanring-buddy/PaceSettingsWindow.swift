@@ -316,6 +316,92 @@ struct PaceSettingsWindowView: View {
                 }
                 .padding(.top, 6)
             }
+
+            morningBriefSubsection
+                .padding(.top, 18)
+        }
+    }
+
+    // MARK: - Morning brief subsection
+
+    /// Settings → General → Morning brief. Toggle + hour/minute pickers
+    /// + a "Send it now" preview button. The toggle is opt-in (default
+    /// OFF in `PaceUserPreferencesStore`); the preview button always
+    /// works so users can tune brief content before committing to a
+    /// daily fire time.
+    private var morningBriefSubsection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Morning brief")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(DS.Colors.textSecondary)
+                .padding(.bottom, 6)
+
+            settingsToggleRow(
+                title: "Daily morning brief",
+                subtitle: "Calm 30-second spoken brief at the configured weekday time. Gated by the same active-call rules as other proactive features.",
+                isOn: Binding(
+                    get: { companionManager.isMorningTriageEnabled },
+                    set: { companionManager.setMorningTriageEnabled($0) }
+                )
+            )
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Fire time")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("Local time, weekdays only. Saturday and Sunday are skipped.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+                Spacer()
+                Picker(
+                    "Hour",
+                    selection: Binding(
+                        get: { companionManager.morningTriageHourOfDay },
+                        set: { companionManager.setMorningTriageHourOfDay($0) }
+                    )
+                ) {
+                    ForEach(0..<24, id: \.self) { hourOfDayCandidate in
+                        Text(String(format: "%02d", hourOfDayCandidate))
+                            .tag(hourOfDayCandidate)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 60)
+
+                Text(":")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(DS.Colors.textTertiary)
+
+                Picker(
+                    "Minute",
+                    selection: Binding(
+                        get: { companionManager.morningTriageMinuteOfHour },
+                        set: { companionManager.setMorningTriageMinuteOfHour($0) }
+                    )
+                ) {
+                    ForEach(0..<60, id: \.self) { minuteOfHourCandidate in
+                        Text(String(format: "%02d", minuteOfHourCandidate))
+                            .tag(minuteOfHourCandidate)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 60)
+            }
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) {
+                Divider()
+                    .background(DS.Colors.borderSubtle)
+            }
+
+            HStack {
+                Spacer()
+                settingsButton("Send it now", systemName: "paperplane") {
+                    companionManager.deliverMorningBriefPreviewNow()
+                }
+            }
+            .padding(.top, 8)
         }
     }
 

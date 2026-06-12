@@ -28,6 +28,9 @@ struct CompanionPanelView: View {
                 Spacer()
                     .frame(height: 12)
 
+                morningBriefCardSection
+                    .padding(.horizontal, 16)
+
                 turnHUDSection
                     .padding(.horizontal, 16)
 
@@ -183,6 +186,69 @@ struct CompanionPanelView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    // MARK: - Morning brief card
+
+    /// Calm full-width card pinned to the top of the panel whenever the
+    /// morning-brief scheduler has a queued brief waiting for the user.
+    /// Renders nothing when there is no pending card so the panel stays
+    /// quiet on a normal day.
+    @ViewBuilder
+    private var morningBriefCardSection: some View {
+        if let pendingMorningBriefCard = companionManager.morningTriageScheduler.pendingMorningBriefCard {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 6) {
+                    Text("Morning brief")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(DS.Colors.textSecondary)
+
+                    Spacer(minLength: 0)
+
+                    Button(action: {
+                        companionManager.playPendingMorningBrief()
+                    }) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(DS.Colors.textSecondary)
+                            .frame(width: 20, height: 20)
+                            .background(
+                                Circle().fill(Color.white.opacity(0.07))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .pointerCursor()
+                    .help("Speak the brief now")
+
+                    Button(action: {
+                        companionManager.morningTriageScheduler.dismissPendingCard()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(DS.Colors.textTertiary)
+                            .frame(width: 20, height: 20)
+                            .background(
+                                Circle().fill(Color.white.opacity(0.05))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .pointerCursor()
+                    .help("Dismiss")
+                }
+
+                Text(pendingMorningBriefCard)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+            )
+            .padding(.bottom, 8)
+        }
     }
 
     // MARK: - Permissions Copy

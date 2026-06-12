@@ -48,6 +48,15 @@ enum PaceUserPreferenceKey: String {
     /// because the summarizer is loose; the episodic extractor is
     /// precise. Coupling them risks low-confidence facts.
     case isThreadEndingEpisodicHandoffEnabled
+    /// Master switch for the daily morning brief proactive feature.
+    /// Default OFF — see PRD docs/prds/morning-triage.md.
+    case isMorningTriageEnabled
+    /// Hour-of-day component (0...23) at which the morning brief
+    /// fires on weekdays. Clamped on read.
+    case morningTriageHourOfDay
+    /// Minute-of-hour component (0...59) at which the morning brief
+    /// fires on weekdays. Clamped on read.
+    case morningTriageMinuteOfHour
 }
 
 enum PaceUserPreferencesStore {

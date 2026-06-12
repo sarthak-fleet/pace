@@ -859,6 +859,14 @@ final class PaceLocalRetriever: PaceRetriever {
         store.upsertDocuments(documents)
     }
 
+    /// Returns the indexed documents for a given source. Exposed so the
+    /// morning-brief composer can inspect calendar / mail / reminders /
+    /// app-usage / watch-history documents directly without going
+    /// through lexical search.
+    func documents(forSource source: PaceRetrievalSource) -> [PaceRetrievalDocument] {
+        store.documents(withSource: source)
+    }
+
     func setSourceEnabled(_ isEnabled: Bool, for source: PaceRetrievalSource) {
         PaceRetrievalSourcePreferences.setEnabled(isEnabled, for: source)
         store.setSourceEnabled(isEnabled, for: source)
