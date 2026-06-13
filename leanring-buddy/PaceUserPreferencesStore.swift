@@ -63,6 +63,12 @@ enum PaceUserPreferenceKey: String {
     /// `.balanced`. Default `.balanced` matches the original PRD
     /// cooldown values. See PRD docs/prds/restraint-and-proactivity.md.
     case proactivityProfile
+    /// Opt-in: include sensitive-topic episodic facts (#health,
+    /// #finance, #relationship) in the LOCAL CONTEXT block injected
+    /// into the planner prompt. Default OFF — sensitive facts are
+    /// still stored, just not surfaced into prompts until the user
+    /// flips this in Settings → Memory. See PRD episodic-memory.md.
+    case injectSensitiveEpisodicTopics
 }
 
 enum PaceUserPreferencesStore {

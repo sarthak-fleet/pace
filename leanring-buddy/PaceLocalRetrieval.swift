@@ -990,7 +990,18 @@ final class PaceLocalRetriever: PaceRetriever {
 
     func recordEpisodicFacts(_ facts: [PaceEpisodicFact]) {
         guard isSourceEnabled(.episodicMemory), !facts.isEmpty else { return }
-        store.upsertDocuments(facts.map(PaceEpisodicFactExtractor.retrievalDocument(for:)))
+        store.upsertDocuments(facts.map(PaceEpisodicPatternFactExtractor.retrievalDocument(for:)))
+    }
+
+    /// Removes the retrieval document for a fact the user just
+    /// tombstoned in the Settings → Memory tab. The store-level
+    /// tombstone in `PaceEpisodicFactStore` is what gates
+    /// re-extraction; this call just clears the visible row.
+    func removeEpisodicFactDocument(withId factDocumentId: String) {
+        let allEpisodicDocuments = store.documents(withSource: .episodicMemory)
+        let survivingDocuments = allEpisodicDocuments.filter { $0.id != factDocumentId }
+        store.removeDocuments(withSource: .episodicMemory)
+        store.upsertDocuments(survivingDocuments)
     }
 
     func localContextBlock(for query: PaceRetrievalQuery) -> String? {
@@ -1029,7 +1040,33 @@ final class PaceLocalRetriever: PaceRetriever {
             maximumResultCount: query.maximumResultCount * 3,
             maximumSnippetCharacters: query.maximumSnippetCharacters
         )
-        return filterSelfEchoMatches(store.search(candidatePoolQuery), queryText: query.text)
+        let rawMatches = filterSelfEchoMatches(store.search(candidatePoolQuery), queryText: query.text)
+        return filterSensitiveEpisodicMatches(rawMatches)
+    }
+
+    /// Drops episodic-memory matches that carry the sensitive
+    /// `permissionScope` (#health / #finance / #relationship facts)
+    /// unless the user opted in via `injectSensitiveEpisodicTopics`.
+    /// Sensitive facts STAY in the store — only the planner-prompt
+    /// injection path is gated. Lookup is by document ID against the
+    /// episodic-memory bucket; the cost is O(episodic) which is
+    /// bounded by `PaceEpisodicMemoryLimits.maximumStoredFactCount`.
+    private func filterSensitiveEpisodicMatches(
+        _ matches: [PaceRetrievalMatch]
+    ) -> [PaceRetrievalMatch] {
+        let userInjectsSensitiveTopics = PaceUserPreferencesStore
+            .bool(.injectSensitiveEpisodicTopics, default: false)
+        guard !userInjectsSensitiveTopics else { return matches }
+        let sensitiveScopedEpisodicDocumentIds: Set<String> = Set(
+            store.documents(withSource: .episodicMemory)
+                .filter { $0.permissionScope == PaceEpisodicSensitiveTopics.sensitivePermissionScope }
+                .map { $0.id }
+        )
+        guard !sensitiveScopedEpisodicDocumentIds.isEmpty else { return matches }
+        return matches.filter { match in
+            guard match.source == .episodicMemory else { return true }
+            return !sensitiveScopedEpisodicDocumentIds.contains(match.documentId)
+        }
     }
 
     /// Drops past Pace turns whose QUESTION was the same as the current

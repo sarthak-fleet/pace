@@ -357,7 +357,7 @@ final class PaceBargeInVADTests: XCTestCase {
 @MainActor
 final class PaceEpisodicMemoryTests: XCTestCase {
     func testDurableHealthFactExtracts() {
-        let extractor = PaceEpisodicFactExtractor(now: { Date(timeIntervalSince1970: 1_700_000_000) })
+        let extractor = PaceEpisodicPatternFactExtractor(now: { Date(timeIntervalSince1970: 1_700_000_000) })
         let facts = extractor.extractFacts(from: "my mom is in the hospital with pneumonia", sourceTurnId: "turn-1")
 
         XCTAssertEqual(facts.count, 1)
@@ -368,13 +368,28 @@ final class PaceEpisodicMemoryTests: XCTestCase {
     }
 
     func testEphemeralAndActionTurnsDoNotExtract() {
-        let extractor = PaceEpisodicFactExtractor()
+        let extractor = PaceEpisodicPatternFactExtractor()
 
         XCTAssertEqual(extractor.extractFacts(from: "I'm hungry"), [])
         XCTAssertEqual(extractor.extractFacts(from: "open Safari"), [])
     }
 
     func testFactsBecomeRetrievableDocuments() {
+        // The #health fact is by policy a sensitive topic — it
+        // stays out of the LOCAL CONTEXT block unless the user
+        // opts in. Flip the opt-in for this test so the retrieval
+        // mechanics get exercised end to end. Restored on teardown
+        // so other tests inherit the default-off behavior.
+        let originalInjectSensitivePreference = PaceUserPreferencesStore
+            .bool(.injectSensitiveEpisodicTopics, default: false)
+        PaceUserPreferencesStore.setBool(true, for: .injectSensitiveEpisodicTopics)
+        defer {
+            PaceUserPreferencesStore.setBool(
+                originalInjectSensitivePreference,
+                for: .injectSensitiveEpisodicTopics
+            )
+        }
+
         let store = PaceInMemoryRetrievalStore()
         let retriever = PaceLocalRetriever(
             store: store,

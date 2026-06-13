@@ -317,7 +317,26 @@ final class CompanionManager: ObservableObject {
     private lazy var actionExecutor: PaceActionExecutor = {
         return PaceActionExecutor()
     }()
-    private let episodicFactExtractor = PaceEpisodicFactExtractor()
+    /// Deterministic v1 pattern extractor. Fires inline because it is
+    /// pure-Swift, sub-millisecond, and catches the obvious preference
+    /// / family-health / work-deadline cases without any model call.
+    private let episodicPatternExtractor = PaceEpisodicPatternFactExtractor()
+    /// LLM-backed extractor (Apple FM preferred, LM Studio fallback)
+    /// for everything the pattern extractor misses. Fires from a
+    /// DETACHED task — never blocks the user-facing turn.
+    private let episodicLLMFactExtractor: PaceEpisodicFactExtractor = PaceEpisodicFactExtractorFactory.makeDefault()
+    /// In-memory store enforcing the dedup, tombstone, and 200-fact
+    /// LRU cap from PRD episodic-memory.md. Both extractors funnel
+    /// here before facts reach the retrieval index, so the same
+    /// gates apply regardless of which extractor produced the fact.
+    let episodicFactStore = PaceEpisodicFactStore()
+    /// Last-seen intent for the turn currently completing. Set from
+    /// the intent classifier site, read by
+    /// `recordConversationTurn` so episodic extraction only fires
+    /// for `.pureKnowledge | .screenDescription | .chitchat` turns
+    /// per the PRD. Defaults to `.unknown` so a missing intent
+    /// classifier doesn't silently disable episodic extraction.
+    var lastIntentRouteForEpisodicExtraction: PaceIntent = .unknown
 
     /// Native macOS OCR. Runs in parallel with the VLM, both pre-warmed
     /// at PTT-press so neither shows up in perceived latency. The VLM
@@ -2032,14 +2051,28 @@ You can turn this off at any time in Settings → Cloud bridge.
             assistantResponse: assistantResponse,
             recordedAt: recordedAt
         )
-        let extractedFacts = episodicFactExtractor.extractFacts(
+        let frontmostAppName = NSWorkspace.shared.frontmostApplication?.localizedName
+        // 1. Fast pattern extractor — inline, sub-millisecond.
+        let patternExtractedFacts = episodicPatternExtractor.extractFacts(
             from: userTranscript,
             assistantText: assistantResponse,
-            frontmostApplicationName: NSWorkspace.shared.frontmostApplication?.localizedName,
+            frontmostApplicationName: frontmostAppName,
             sourceTurnId: stableTurnId
         )
-        localRetriever.recordEpisodicFacts(extractedFacts)
+        recordExtractedEpisodicFacts(patternExtractedFacts, turnId: stableTurnId)
         refreshLocalRetrievalPublishedState()
+
+        // 2. LLM-backed extractor — DETACHED. Never awaited by the
+        //    user-facing pipeline. Apple FM is in-process, ~0 RAM
+        //    delta. LM Studio fallback is loopback-only. Either
+        //    failure is silent — episodic memory is best-effort.
+        scheduleDetachedEpisodicLLMExtractionCall(
+            userTranscript: userTranscript,
+            assistantSpokenText: assistantResponse,
+            frontmostAppName: frontmostAppName,
+            turnId: stableTurnId,
+            intentRoute: lastIntentRouteForEpisodicExtraction
+        )
 
         guard let displacedTurnPair else { return }
         scheduleDetachedThreadSummarizationCall(
@@ -2087,6 +2120,99 @@ You can turn this off at any time in Settings → Cloud bridge.
                 print("⚠️ Thread summarizer call failed: \(error)")
             }
         }
+    }
+
+    /// Passes a batch of newly-extracted facts through the
+    /// `PaceEpisodicFactStore` (dedup + tombstone gates + 200-fact
+    /// LRU cap) and writes the surviving documents into the local
+    /// retrieval index. Confidence threshold ≥0.7 is applied here so
+    /// callers don't have to.
+    func recordExtractedEpisodicFacts(
+        _ rawFacts: [PaceEpisodicFact],
+        turnId: String
+    ) {
+        let highConfidenceFacts = rawFacts.filter { $0.confidence >= 0.7 }
+        guard !highConfidenceFacts.isEmpty else { return }
+        let appliedOutcomes = episodicFactStore.applyBatch(highConfidenceFacts)
+        let survivingFacts = appliedOutcomes.compactMap { (fact, outcome) -> PaceEpisodicFact? in
+            switch outcome {
+            case .inserted, .replaced, .appended:
+                return fact
+            case .skippedBecauseOfTombstone:
+                return nil
+            }
+        }
+        // For replacements, drop the previous fact's retrieval doc
+        // so the store never carries two `(subject, predicate)`
+        // rows when the dedup policy said "replace".
+        for (_, outcome) in appliedOutcomes {
+            if case .replaced(let previousFactId) = outcome {
+                localRetriever.removeEpisodicFactDocument(withId: previousFactId)
+            }
+        }
+        if !survivingFacts.isEmpty {
+            localRetriever.recordEpisodicFacts(survivingFacts)
+        }
+    }
+
+    /// Fires the LLM-backed episodic extractor on a DETACHED utility
+    /// task. The user-facing TTS/planner pipeline NEVER awaits this.
+    /// Apple FM is in-process and adds ~0 RAM delta; LM Studio is
+    /// loopback-only via `PaceLocalEndpointGuard`. Per the PRD only
+    /// `.pureKnowledge | .screenDescription | .chitchat` turns are
+    /// extracted from — `.screenAction` and `.phoneLargeModel` turns
+    /// are commands, not durable facts.
+    private func scheduleDetachedEpisodicLLMExtractionCall(
+        userTranscript: String,
+        assistantSpokenText: String,
+        frontmostAppName: String?,
+        turnId: String,
+        intentRoute: PaceIntent
+    ) {
+        let intentIsEligibleForExtraction: Bool
+        switch intentRoute {
+        case .pureKnowledge, .screenDescription, .chitchat, .unknown:
+            // `.unknown` runs the full pipeline anyway; we let it
+            // through so an unclassified turn doesn't silently drop
+            // an extractable fact.
+            intentIsEligibleForExtraction = true
+        case .screenAction, .phoneLargeModel:
+            intentIsEligibleForExtraction = false
+        }
+        guard intentIsEligibleForExtraction else { return }
+        let extractorForThisCall = episodicLLMFactExtractor
+        Task.detached(priority: .utility) { [weak self] in
+            let extractedFacts = await extractorForThisCall.extract(
+                userTranscript: userTranscript,
+                assistantSpokenText: assistantSpokenText,
+                frontmostAppName: frontmostAppName,
+                turnId: turnId
+            )
+            guard !extractedFacts.isEmpty else { return }
+            await MainActor.run {
+                self?.recordExtractedEpisodicFacts(extractedFacts, turnId: turnId)
+                self?.refreshLocalRetrievalPublishedState()
+            }
+        }
+    }
+
+    /// User-facing API for Settings → Memory → Delete fact. Adds a
+    /// 30-day tombstone (via `PaceEpisodicFactStore`) AND removes
+    /// the retrieval document so the LOCAL CONTEXT block stops
+    /// showing the fact immediately.
+    func deleteEpisodicFact(withIdentifier factId: String) {
+        guard let _ = episodicFactStore.deleteFact(withIdentifier: factId) else { return }
+        localRetriever.removeEpisodicFactDocument(withId: factId)
+        refreshLocalRetrievalPublishedState()
+    }
+
+    /// User-facing API for Settings → Memory → Reset all. Tombstones
+    /// every currently-stored fact for 30 days and clears the
+    /// retrieval bucket.
+    func resetAllEpisodicMemory() {
+        episodicFactStore.resetAll()
+        localRetriever.clearDocuments(forSource: .episodicMemory)
+        refreshLocalRetrievalPublishedState()
     }
 
     /// Drops state if the idle threshold elapsed AND journals one
@@ -4056,6 +4182,7 @@ You can turn this off at any time in Settings → Cloud bridge.
         // enough to return .chitchat (not .unknown). Anything ambiguous
         // falls through to the full pipeline.
         let intentPrediction = await intentClassifier.classify(transcript)
+        lastIntentRouteForEpisodicExtraction = intentPrediction.intent
         currentTurnHUDState = .understanding(routeHUDDetail(for: intentPrediction))
         if let clarification = PaceIntentClarifier.clarification(for: transcript) {
             print("❔ Intent clarification: \(clarification.question)")
