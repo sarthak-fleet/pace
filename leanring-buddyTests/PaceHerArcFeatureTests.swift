@@ -445,6 +445,124 @@ final class PaceProactiveNudgeDecisionTests: XCTestCase {
 
         XCTAssertEqual(utterance?.source, .watchNudge)
     }
+
+    /// Wave 1b: the gate-aware `evaluate(...)` shape returns
+    /// `.queueUntilIdle` (with the utterance forwarded so the
+    /// framework can park it) when the user is on an active call.
+    /// The framework reads `evaluation.utterance` and routes through
+    /// `queueForLater` — never `emit` — so nothing actually speaks
+    /// during a Zoom call. This pins the fix for the original bug
+    /// (proactive nudges emitting BEFORE consulting the gate).
+    func testFocusFatigueGeneratorRespectsRestraintGateActiveCall() {
+        let now = Date()
+        let restraintContext = PaceRestraintContext(
+            now: now,
+            lastProactiveUtteranceAt: nil,
+            lastEpisodicRecallAt: nil,
+            // Last input was 60 seconds ago — the pure helper's
+            // 10-minute input recency check passes so a candidate
+            // utterance forms, letting the gate's active-call check
+            // do the actual work the test is asserting on.
+            lastUserInputAt: now.addingTimeInterval(-60),
+            frontmostAppBundleIdentifier: "us.zoom.xos",
+            isOnActiveCall: true,
+            wakeWordConfidence: nil,
+            intent: .pureKnowledge,
+            proactiveSource: .watchNudge,
+            profile: .balanced
+        )
+
+        let evaluation = PaceFocusFatigueNudgeDecision.evaluate(
+            appName: "Figma",
+            continuousForegroundSeconds: 60 * 60,
+            restraintContext: restraintContext
+        )
+
+        XCTAssertEqual(evaluation.decision, .queueUntilIdle(reason: "active call"))
+        XCTAssertNotNil(evaluation.utterance, "Active call should queue (not drop) so the nudge fires once the call ends")
+    }
+
+    /// Wave 1b: when the user typed within the last three seconds the
+    /// gate returns `.queueUntilIdle` for non-reserved profiles. The
+    /// generator's evaluator must return the utterance alongside the
+    /// queue decision so the framework parks it.
+    func testCalendarPreMeetingGeneratorQueuesWhenInputRecent() {
+        let now = Date()
+        let restraintContext = PaceRestraintContext(
+            now: now,
+            lastProactiveUtteranceAt: nil,
+            lastEpisodicRecallAt: nil,
+            lastUserInputAt: now.addingTimeInterval(-1),
+            frontmostAppBundleIdentifier: nil,
+            isOnActiveCall: false,
+            wakeWordConfidence: nil,
+            intent: .pureKnowledge,
+            proactiveSource: .backgroundReminder,
+            profile: .balanced
+        )
+
+        let evaluation = PaceCalendarPreMeetingNudgeDecision.evaluate(
+            eventTitle: "Design review",
+            startsInSeconds: 240,
+            restraintContext: restraintContext
+        )
+
+        XCTAssertEqual(evaluation.decision, .queueUntilIdle(reason: "recent user input"))
+        XCTAssertEqual(evaluation.utterance?.source, .backgroundReminder)
+    }
+
+    /// Wave 1b: under `.reserved` the same recent-input context
+    /// returns `.stayQuiet` and the utterance is dropped.
+    func testCalendarPreMeetingGeneratorStaysQuietUnderReservedWithRecentInput() {
+        let now = Date()
+        let restraintContext = PaceRestraintContext(
+            now: now,
+            lastProactiveUtteranceAt: nil,
+            lastEpisodicRecallAt: nil,
+            lastUserInputAt: now.addingTimeInterval(-1),
+            frontmostAppBundleIdentifier: nil,
+            isOnActiveCall: false,
+            wakeWordConfidence: nil,
+            intent: .pureKnowledge,
+            proactiveSource: .backgroundReminder,
+            profile: .reserved
+        )
+
+        let evaluation = PaceCalendarPreMeetingNudgeDecision.evaluate(
+            eventTitle: "Design review",
+            startsInSeconds: 240,
+            restraintContext: restraintContext
+        )
+
+        XCTAssertEqual(evaluation.decision, .stayQuiet(reason: "recent user input"))
+        XCTAssertNil(evaluation.utterance)
+    }
+
+    /// Watch-mode generator: gate `.speak` path returns the utterance
+    /// for the framework to forward to TTS.
+    func testWatchModeObservationGeneratorSpeaksWhenGateAllows() {
+        let restraintContext = PaceRestraintContext(
+            now: Date(),
+            lastProactiveUtteranceAt: nil,
+            lastEpisodicRecallAt: nil,
+            lastUserInputAt: nil,
+            frontmostAppBundleIdentifier: nil,
+            isOnActiveCall: false,
+            wakeWordConfidence: nil,
+            intent: .screenDescription,
+            proactiveSource: .watchNudge,
+            profile: .balanced
+        )
+
+        let evaluation = PaceWatchModeObservationNudgeDecision.evaluate(
+            screenDescription: "terminal with build failed",
+            ocrText: "",
+            restraintContext: restraintContext
+        )
+
+        XCTAssertEqual(evaluation.decision, .speak)
+        XCTAssertEqual(evaluation.utterance?.source, .watchNudge)
+    }
 }
 
 final class PaceFlowReplayTests: XCTestCase {

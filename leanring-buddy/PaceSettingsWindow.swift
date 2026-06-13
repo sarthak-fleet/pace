@@ -816,8 +816,57 @@ struct PaceSettingsWindowView: View {
                 }
             }
 
+            Divider()
+                .background(DS.Colors.borderSubtle)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Nudge surfaces")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+                Text("Each surface defaults off. Even when on, Pace routes every nudge through the restraint gate — nothing speaks during a Zoom call or while you're typing.")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(
+                    "Focus fatigue nudges",
+                    isOn: Binding(
+                        get: { companionManager.areFocusFatigueNudgesEnabled },
+                        set: { companionManager.setFocusFatigueNudgesEnabled($0) }
+                    )
+                )
+                Text("After 45 minutes on the same app, Pace can suggest a short break.")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(
+                    "Calendar pre-meeting nudges",
+                    isOn: Binding(
+                        get: { companionManager.areCalendarNudgesEnabled },
+                        set: { companionManager.setCalendarNudgesEnabled($0) }
+                    )
+                )
+                Text("Five-minute heads-up before meetings on your calendar.")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(
+                    "Watch-mode observation nudges",
+                    isOn: Binding(
+                        get: { companionManager.areWatchObservationNudgesEnabled },
+                        set: { companionManager.setWatchObservationNudgesEnabled($0) }
+                    )
+                )
+                Text("When watch mode spots an error or failed build on screen, Pace can offer to help.")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Spacer()
-            // Wave 1b adds nudge toggles here, Wave 2 adds always-listening + episodic memory access
+            // Wave 2 adds always-listening + episodic memory access
         }
     }
 

@@ -7,6 +7,7 @@
 //  and emit only meaningful visual changes.
 //
 
+import Combine
 import Foundation
 
 struct PaceScreenWatchConfiguration {
@@ -121,6 +122,12 @@ final class PaceScreenWatchModeController {
     private var changeDetector: PaceScreenWatchChangeDetector
     private let configuration: PaceScreenWatchConfiguration
 
+    /// Combine multiplex of meaningful watch events. Sibling consumers
+    /// like the proactive nudge generator subscribe here so the
+    /// callback-based `startWatching(onMeaningfulChange:)` consumer
+    /// keeps its single-handler shape unchanged.
+    let eventPublisher = PassthroughSubject<PaceScreenWatchEvent, Never>()
+
     init(configuration: PaceScreenWatchConfiguration = .default) {
         self.configuration = configuration
         self.changeDetector = PaceScreenWatchChangeDetector(configuration: configuration)
@@ -151,6 +158,7 @@ final class PaceScreenWatchModeController {
                     let captures = try await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()
                     let events = self.changeDetector.meaningfulChanges(in: captures)
                     for event in events {
+                        self.eventPublisher.send(event)
                         await onMeaningfulChange(event)
                     }
                 } catch {
@@ -169,5 +177,12 @@ final class PaceScreenWatchModeController {
         watchTask?.cancel()
         watchTask = nil
         changeDetector.reset()
+    }
+
+    /// Test seam: publishes a synthetic watch event through the same
+    /// Combine publisher live subscribers use. Lets unit tests verify
+    /// generator wiring without running a real screen capture loop.
+    func publishEventForTesting(_ event: PaceScreenWatchEvent) {
+        eventPublisher.send(event)
     }
 }

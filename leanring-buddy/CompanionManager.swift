@@ -839,6 +839,10 @@ You can turn this off at any time in Settings → Cloud bridge.
     func setFocusFatigueNudgesEnabled(_ enabled: Bool) {
         areFocusFatigueNudgesEnabled = enabled
         PaceUserPreferencesStore.setBool(enabled, for: .areFocusFatigueNudgesEnabled)
+        applyProactiveNudgeGeneratorEnablement(
+            identifier: focusFatigueNudgeGenerator.identifier,
+            enabled: enabled
+        )
     }
 
     @Published var areCalendarNudgesEnabled: Bool = PaceUserPreferencesStore
@@ -847,6 +851,10 @@ You can turn this off at any time in Settings → Cloud bridge.
     func setCalendarNudgesEnabled(_ enabled: Bool) {
         areCalendarNudgesEnabled = enabled
         PaceUserPreferencesStore.setBool(enabled, for: .areCalendarNudgesEnabled)
+        applyProactiveNudgeGeneratorEnablement(
+            identifier: calendarPreMeetingNudgeGenerator.identifier,
+            enabled: enabled
+        )
     }
 
     @Published var areWatchObservationNudgesEnabled: Bool = PaceUserPreferencesStore
@@ -855,6 +863,31 @@ You can turn this off at any time in Settings → Cloud bridge.
     func setWatchObservationNudgesEnabled(_ enabled: Bool) {
         areWatchObservationNudgesEnabled = enabled
         PaceUserPreferencesStore.setBool(enabled, for: .areWatchObservationNudgesEnabled)
+        applyProactiveNudgeGeneratorEnablement(
+            identifier: watchModeObservationNudgeGenerator.identifier,
+            enabled: enabled
+        )
+    }
+
+    /// Routes a per-generator enable/disable through the orchestrator
+    /// without tearing down the rest. Closures match what `start()`
+    /// passes to `proactiveNudgeOrchestrator.start(...)` — the
+    /// orchestrator stores them per-start, so the user can flip
+    /// individual toggles after launch without restarting Pace.
+    private func applyProactiveNudgeGeneratorEnablement(
+        identifier: String,
+        enabled: Bool
+    ) {
+        proactiveNudgeOrchestrator.setGeneratorEnabled(
+            identifier: identifier,
+            enabled: enabled,
+            emit: { [weak self] utterance in
+                self?.speakProactiveNudge(utterance)
+            },
+            queueForLater: { [weak self] utterance in
+                self?.enqueueProactiveUtterance(utterance)
+            }
+        )
     }
 
     // MARK: - Proactivity profile
@@ -956,6 +989,206 @@ You can turn this off at any time in Settings → Cloud bridge.
             Task { @MainActor [weak self] in
                 self?.drainProactiveQueueIfIdle()
             }
+        }
+    }
+
+    // MARK: - Proactive nudge orchestration (Wave 1b)
+    //
+    // Three generators, each subscribed to an already-running source,
+    // route their decisions through `PaceRestraintGate.decide(...)`
+    // BEFORE reaching the TTS layer. CompanionManager owns the
+    // orchestrator but lazy-builds it so the generators see the live
+    // restraint context closure (which reads `lastUserInputAt`,
+    // `isOnActiveCall`, `proactivityProfile`, etc.). All three
+    // generators default OFF — `start()` only kicks the ones whose
+    // user preference is on.
+
+    private lazy var focusFatigueNudgeGenerator: PaceFocusFatigueNudgeGenerator = {
+        return PaceFocusFatigueNudgeGenerator(
+            restraintContextProvider: { [weak self] in
+                self?.buildProactiveRestraintContextForGenerators() ?? PaceRestraintContext(
+                    now: Date(),
+                    lastProactiveUtteranceAt: nil,
+                    lastEpisodicRecallAt: nil,
+                    lastUserInputAt: nil,
+                    frontmostAppBundleIdentifier: nil,
+                    isOnActiveCall: false,
+                    wakeWordConfidence: nil,
+                    intent: .pureKnowledge,
+                    proactiveSource: .watchNudge,
+                    profile: .balanced
+                )
+            }
+        )
+    }()
+
+    private lazy var calendarPreMeetingNudgeGenerator: PaceCalendarPreMeetingNudgeGenerator = {
+        return PaceCalendarPreMeetingNudgeGenerator(
+            restraintContextProvider: { [weak self] in
+                self?.buildProactiveRestraintContextForGenerators() ?? PaceRestraintContext(
+                    now: Date(),
+                    lastProactiveUtteranceAt: nil,
+                    lastEpisodicRecallAt: nil,
+                    lastUserInputAt: nil,
+                    frontmostAppBundleIdentifier: nil,
+                    isOnActiveCall: false,
+                    wakeWordConfidence: nil,
+                    intent: .pureKnowledge,
+                    proactiveSource: .backgroundReminder,
+                    profile: .balanced
+                )
+            },
+            calendarConnector: calendarRetrievalConnector
+        )
+    }()
+
+    private lazy var watchModeObservationNudgeGenerator: PaceWatchModeObservationNudgeGenerator = {
+        return PaceWatchModeObservationNudgeGenerator(
+            restraintContextProvider: { [weak self] in
+                self?.buildProactiveRestraintContextForGenerators() ?? PaceRestraintContext(
+                    now: Date(),
+                    lastProactiveUtteranceAt: nil,
+                    lastEpisodicRecallAt: nil,
+                    lastUserInputAt: nil,
+                    frontmostAppBundleIdentifier: nil,
+                    isOnActiveCall: false,
+                    wakeWordConfidence: nil,
+                    intent: .screenDescription,
+                    proactiveSource: .watchNudge,
+                    profile: .balanced
+                )
+            },
+            watchEventPublisher: screenWatchModeController.eventPublisher.eraseToAnyPublisher(),
+            screenDescriptionProvider: { [weak self] screenLabel in
+                self?.cachedScreenDescriptionForNudgeGenerator(screenLabel: screenLabel)
+            }
+        )
+    }()
+
+    private lazy var proactiveNudgeOrchestrator: PaceProactiveNudgeOrchestrator = {
+        return PaceProactiveNudgeOrchestrator(
+            restraintContextProvider: { [weak self] in
+                self?.buildProactiveRestraintContextForGenerators() ?? PaceRestraintContext(
+                    now: Date(),
+                    lastProactiveUtteranceAt: nil,
+                    lastEpisodicRecallAt: nil,
+                    lastUserInputAt: nil,
+                    frontmostAppBundleIdentifier: nil,
+                    isOnActiveCall: false,
+                    wakeWordConfidence: nil,
+                    intent: .pureKnowledge,
+                    proactiveSource: .watchNudge,
+                    profile: .balanced
+                )
+            },
+            generators: [
+                focusFatigueNudgeGenerator,
+                calendarPreMeetingNudgeGenerator,
+                watchModeObservationNudgeGenerator,
+            ]
+        )
+    }()
+
+    /// Built by every nudge generator on every gate decision. Reads
+    /// the live `userInputActivityMonitor` / `activeCallDetector` /
+    /// `proactivityProfile` so a profile change or a Zoom launch
+    /// affects the next decision instantly.
+    private func buildProactiveRestraintContextForGenerators(
+        proactiveSource: PaceProactiveSource = .watchNudge,
+        intent: PaceIntent = .pureKnowledge
+    ) -> PaceRestraintContext {
+        let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        return PaceRestraintContext(
+            now: Date(),
+            lastProactiveUtteranceAt: lastProactiveUtteranceAt,
+            lastEpisodicRecallAt: nil,
+            lastUserInputAt: userInputActivityMonitor.lastUserInputAt,
+            frontmostAppBundleIdentifier: frontmostBundleIdentifier,
+            isOnActiveCall: activeCallDetector.isOnActiveCall,
+            wakeWordConfidence: nil,
+            intent: intent,
+            proactiveSource: proactiveSource,
+            profile: proactivityProfile
+        )
+    }
+
+    /// Pulls the most-recent per-screen VLM/OCR description out of
+    /// `perScreenAnalysisCache` for the watch-mode nudge generator.
+    /// Stale entries (>2 minutes) return nil so the generator does
+    /// not fire on a description that no longer matches what's on
+    /// screen. This is the SAME freshness gate
+    /// `recordWatchModeEventInJournal` already uses.
+    private func cachedScreenDescriptionForNudgeGenerator(screenLabel: String) -> String? {
+        guard let cachedScreenAnalysis = perScreenAnalysisCache[screenLabel] else { return nil }
+        guard Date().timeIntervalSince(cachedScreenAnalysis.capturedAt) <= 120 else { return nil }
+        let cachedDescription = cachedScreenAnalysis.analysis.description
+        return cachedDescription.isEmpty ? nil : cachedDescription
+    }
+
+    /// Updated whenever a proactive nudge or the morning brief speaks.
+    /// Feeds the gate's cooldown check so back-to-back nudges respect
+    /// the user's profile (talkative / balanced / reserved).
+    private var lastProactiveUtteranceAt: Date?
+
+    /// Speaks a proactive utterance through TTS and stamps the cooldown
+    /// clock. Used by the orchestrator's `emit` closure; tests that
+    /// don't want real audio call `enqueueProactiveUtterance` directly.
+    private func speakProactiveNudge(_ utterance: PaceProactiveUtterance) {
+        lastProactiveUtteranceAt = Date()
+        // Journal the nudge so paceHistory can recall it later. Pre-
+        // existing journal-style retrieval surface, no new index.
+        localRetriever.recordPaceHistory(
+            userTranscript: "(system) proactive nudge",
+            assistantResponse: utterance.spokenText
+        )
+        refreshLocalRetrievalPublishedState()
+        Task { @MainActor in
+            do {
+                try await ttsClient.speakText(utterance.spokenText)
+            } catch {
+                print("⚠️ Proactive nudge TTS failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Starts whichever subset of generators the user has enabled.
+    /// Called from `start()` after the input/call monitors come up.
+    private func startProactiveNudgeOrchestrator() {
+        let emitClosure: (PaceProactiveUtterance) -> Void = { [weak self] utterance in
+            self?.speakProactiveNudge(utterance)
+        }
+        let queueClosure: (PaceProactiveUtterance) -> Void = { [weak self] utterance in
+            self?.enqueueProactiveUtterance(utterance)
+        }
+
+        proactiveNudgeOrchestrator.start(emit: emitClosure, queueForLater: queueClosure)
+        // Initial fan-out: stop generators whose preference is off.
+        // `start()` on the orchestrator brought ALL generators up;
+        // honoring the per-source toggles here keeps the default
+        // behavior (all off) intact.
+        if !areFocusFatigueNudgesEnabled {
+            proactiveNudgeOrchestrator.setGeneratorEnabled(
+                identifier: focusFatigueNudgeGenerator.identifier,
+                enabled: false,
+                emit: emitClosure,
+                queueForLater: queueClosure
+            )
+        }
+        if !areCalendarNudgesEnabled {
+            proactiveNudgeOrchestrator.setGeneratorEnabled(
+                identifier: calendarPreMeetingNudgeGenerator.identifier,
+                enabled: false,
+                emit: emitClosure,
+                queueForLater: queueClosure
+            )
+        }
+        if !areWatchObservationNudgesEnabled {
+            proactiveNudgeOrchestrator.setGeneratorEnabled(
+                identifier: watchModeObservationNudgeGenerator.identifier,
+                enabled: false,
+                emit: emitClosure,
+                queueForLater: queueClosure
+            )
         }
     }
 
@@ -2700,6 +2933,13 @@ You can turn this off at any time in Settings → Cloud bridge.
         // churn TTS, short enough that a paused-for-30-seconds break
         // doesn't feel stale.
         startProactiveQueueDrainTimer()
+
+        // Wave 1b: bring up the proactive nudge orchestrator. Each
+        // generator routes through PaceRestraintGate so a Zoom call
+        // or recent typing silences/queues the nudge — fixing the
+        // pre-Wave-1b bug where PaceProactiveNudges.swift emitted
+        // utterances without consulting the gate.
+        startProactiveNudgeOrchestrator()
     }
 
     /// 5-minute idle sweep that drops thread-memory state when the
@@ -2758,6 +2998,7 @@ You can turn this off at any time in Settings → Cloud bridge.
         activeCallDetector.stop()
         proactiveQueueDrainTimer?.invalidate()
         proactiveQueueDrainTimer = nil
+        proactiveNudgeOrchestrator.stop()
     }
 
     func refreshAllPermissions() {

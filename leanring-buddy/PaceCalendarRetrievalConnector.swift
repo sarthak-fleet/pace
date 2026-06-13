@@ -118,6 +118,31 @@ struct PaceCalendarRetrievalConnector {
         )
     }
 
+    /// Fetches events whose start time is within `lookaheadSeconds`
+    /// of `now`. Used by the calendar pre-meeting nudge generator;
+    /// reads through the same permission gate `loadDocuments` does
+    /// so no permission prompt is ever triggered from this call.
+    func upcomingEventSnapshots(
+        lookaheadSeconds: TimeInterval
+    ) -> [PaceCalendarRetrievalEventSnapshot] {
+        let authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard Self.canReadCalendarEvents(authorizationStatus) else { return [] }
+
+        let now = nowProvider()
+        let endDate = now.addingTimeInterval(max(0, lookaheadSeconds))
+        let eventPredicate = eventStore.predicateForEvents(
+            withStart: now,
+            end: endDate,
+            calendars: nil
+        )
+        return eventStore
+            .events(matching: eventPredicate)
+            .sorted { firstEvent, secondEvent in
+                (firstEvent.startDate ?? .distantFuture) < (secondEvent.startDate ?? .distantFuture)
+            }
+            .map(PaceCalendarRetrievalEventSnapshot.init(event:))
+    }
+
     static func document(from eventSnapshot: PaceCalendarRetrievalEventSnapshot) -> PaceRetrievalDocument {
         var lines = [
             "Title: \(eventSnapshot.title)",
