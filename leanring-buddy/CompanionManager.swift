@@ -103,6 +103,15 @@ final class CompanionManager: ObservableObject {
     private var lastSidecarTTSOfflineNarratedAt: Date?
 
     private var pendingIntentClarification: PacePendingIntentClarification?
+
+    /// Set when the executor's click-candidate scoring found multiple
+    /// near-tied, distinguishable targets and Pace paused to ask one
+    /// short HUD question instead of guessing (PRD
+    /// docs/prds/hud-intent-disambiguator.md). Holds the original
+    /// candidate set + screen captures so resolving an option clicks the
+    /// chosen target directly — it never re-runs the planner.
+    private var pendingClickTargetClarification: PacePendingClickTargetClarification?
+
     let activeTTSVoiceSummary: PaceTTSVoiceSummary = PaceTTSVoiceSummary.current()
 
     /// True when the configured LM Studio (or compatible) HTTP server
@@ -3908,6 +3917,15 @@ You can turn this off at any time in Settings → Cloud bridge.
     }
 
     func resolveClarification(option: String) {
+        // A pending click-target clarification carries an exact target the
+        // user just chose, so it takes precedence over the transcript-rewrite
+        // path: resolving it clicks the chosen candidate directly instead of
+        // re-running the planner (which could re-rank into a different set).
+        if pendingClickTargetClarification != nil {
+            resolveClickTargetClarification(selectedOptionLabel: option)
+            return
+        }
+
         guard let pendingIntentClarification else {
             currentTurnHUDState = .failed("Clarification expired")
             return
@@ -3930,6 +3948,147 @@ You can turn this off at any time in Settings → Cloud bridge.
         responseOverlayManager.finishStreaming()
         currentTurnHUDState = .understanding("using \(option.lowercased())")
         sendTranscriptToPlannerWithScreenshot(transcript: clarifiedTranscript)
+    }
+
+    /// Visual-target ambiguity raise (PRD
+    /// docs/prds/hud-intent-disambiguator.md). When the parsed plan is a
+    /// single click whose candidate set has near-tied distinguishable
+    /// labels, set the HUD into the same clarification state the
+    /// edit/destructive path uses (so the panel renders option chips with
+    /// no new view code), store the candidate set + screen captures, and
+    /// return true to tell the agent loop to pause. Returns false when
+    /// there's a clear winner — the common, zero-friction case.
+    ///
+    /// Only fires for genuine click-candidate plans. Coordinate-only
+    /// `[CLICK:x,y]` planner output never reaches here because it parses
+    /// to `.click`, not `.clickCandidates` — when the planner gives exact
+    /// coordinates we trust them.
+    private func raiseClickTargetClarificationIfAmbiguous(
+        actionExecutionPlan: PaceActionExecutionPlan,
+        screenCaptures: [CompanionScreenCapture]
+    ) -> Bool {
+        // Only a single, lone click-candidates action qualifies. A
+        // multi-action plan (e.g. click then type) is the planner driving a
+        // sequence — interrupting it mid-stream would strand the rest.
+        let flattenedActions = actionExecutionPlan.flattenedActions
+        guard flattenedActions.count == 1,
+              case .clickCandidates(let clickCandidateSet) = flattenedActions[0] else {
+            return false
+        }
+
+        guard let offeredCandidates = PaceClickCandidateAmbiguity.isAmbiguous(clickCandidateSet),
+              let clarification = PaceClickTargetClarificationBuilder.makeClarification(
+                  offeredCandidates: offeredCandidates,
+                  in: clickCandidateSet
+              ) else {
+            return false
+        }
+
+        let optionLabels = clarification.options.map(\.label)
+        pendingClickTargetClarification = PacePendingClickTargetClarification(
+            prompt: clarification.prompt,
+            options: clarification.options,
+            candidateSet: clickCandidateSet,
+            screenCaptures: screenCaptures
+        )
+        currentTurnHUDState = .clarification(
+            question: clarification.prompt,
+            options: optionLabels
+        )
+        appendActionResult(PaceActionRunRecord(
+            status: .skipped,
+            title: "Which target?",
+            detail: optionLabels.joined(separator: " / ")
+        ))
+        print("❔ Click-target clarification: \(optionLabels.joined(separator: " / "))")
+        return true
+    }
+
+    /// Resolves a pending click-target clarification by clicking the
+    /// candidate the user tapped. Executes the chosen target directly via
+    /// a one-candidate plan — does NOT re-run the planner. Falls back to
+    /// the executor's existing top-candidate auto-click when the option
+    /// can't be matched, so a stray tap never strands the turn.
+    private func resolveClickTargetClarification(selectedOptionLabel: String) {
+        guard let pendingClickTargetClarification else {
+            currentTurnHUDState = .failed("Clarification expired")
+            return
+        }
+        self.pendingClickTargetClarification = nil
+
+        let screenCaptures = pendingClickTargetClarification.screenCaptures
+        let chosenCandidate = pendingClickTargetClarification
+            .candidate(forSelectedOptionLabel: selectedOptionLabel)
+
+        // The chosen candidate becomes the sole candidate of a fresh
+        // single-target plan. When the option can't be matched, fall back
+        // to the full original set so the executor's top-candidate
+        // auto-click still runs — never strand the turn.
+        let resolvedCandidateSet: PaceClickCandidateSet
+        if let chosenCandidate {
+            resolvedCandidateSet = PaceClickCandidateSet(
+                candidates: [chosenCandidate],
+                clickCount: pendingClickTargetClarification.candidateSet.clickCount
+            )
+        } else {
+            resolvedCandidateSet = pendingClickTargetClarification.candidateSet
+        }
+
+        currentTurnHUDState = .acting("clicking \(selectedOptionLabel)")
+        let clickPlan = PaceActionExecutionPlan.serial(
+            actions: [.clickCandidates(resolvedCandidateSet)]
+        )
+
+        currentResponseTask = Task { @MainActor in
+            let toolObservations = await actionExecutor.executeActionPlan(
+                clickPlan,
+                screenCaptures: screenCaptures
+            )
+            guard !Task.isCancelled else { return }
+            if !toolObservations.isEmpty {
+                appendActionResult(.completed(observations: toolObservations))
+                speakFailureForClickMissedIfApplicable(
+                    observations: toolObservations,
+                    clickTargetLabel: selectedOptionLabel
+                )
+            }
+            if currentTurnHUDState.status == .acting {
+                currentTurnHUDState = .done("clicked \(selectedOptionLabel)")
+            }
+            currentDictationTrigger = .keyboard
+            scheduleTransientHideIfNeeded()
+        }
+    }
+
+    /// Falls back to the executor's existing top-candidate auto-click when
+    /// a pending click-target clarification is dismissed or times out
+    /// without a choice, so an unanswered question never strands the turn.
+    /// Wired to outside-click dismissal / a new turn beginning.
+    func dismissPendingClickTargetClarificationWithAutoClick() {
+        guard let pendingClickTargetClarification else { return }
+        self.pendingClickTargetClarification = nil
+
+        let screenCaptures = pendingClickTargetClarification.screenCaptures
+        let originalCandidateSet = pendingClickTargetClarification.candidateSet
+        currentTurnHUDState = .acting("clicking best match")
+        let clickPlan = PaceActionExecutionPlan.serial(
+            actions: [.clickCandidates(originalCandidateSet)]
+        )
+        currentResponseTask = Task { @MainActor in
+            let toolObservations = await actionExecutor.executeActionPlan(
+                clickPlan,
+                screenCaptures: screenCaptures
+            )
+            guard !Task.isCancelled else { return }
+            if !toolObservations.isEmpty {
+                appendActionResult(.completed(observations: toolObservations))
+            }
+            if currentTurnHUDState.status == .acting {
+                currentTurnHUDState = .done("turn finished")
+            }
+            currentDictationTrigger = .keyboard
+            scheduleTransientHideIfNeeded()
+        }
     }
 
     private func handleUnsupportedTurn(
@@ -4224,6 +4383,10 @@ You can turn this off at any time in Settings → Cloud bridge.
         currentResponseTask?.cancel()
         ttsClient.stopPlayback()
         pendingIntentClarification = nil
+        // A new turn supersedes any unanswered click-target question —
+        // drop it silently rather than auto-clicking, because the user
+        // chose to keep talking instead of answering.
+        pendingClickTargetClarification = nil
 
         // Idle gate: if the thread sat quiet past the configured
         // threshold, drop the verbatim window + summary and journal
@@ -4663,6 +4826,22 @@ You can turn this off at any time in Settings → Cloud bridge.
                             actionExecutionPlan: actionParseResult.executionPlan,
                             preflightIssues: preflightIssues
                         ))
+
+                        // Visual-target ambiguity: if the executor's click
+                        // candidates have near-tied, distinguishable labels,
+                        // ask ONE short HUD question instead of guessing the
+                        // top one. Pauses this turn — resolving an option in
+                        // the panel executes the chosen candidate directly
+                        // (resolveClickTargetClarification), so we break out
+                        // of the agent loop here. See PRD
+                        // docs/prds/hud-intent-disambiguator.md.
+                        if actionExecutor.actionsAreEnabled,
+                           raiseClickTargetClarificationIfAmbiguous(
+                               actionExecutionPlan: actionParseResult.executionPlan,
+                               screenCaptures: screenCaptures
+                           ) {
+                            break agentStepLoop
+                        }
 
                         if actionExecutor.actionsAreEnabled {
                             if requestUserApprovalForActionPlan(

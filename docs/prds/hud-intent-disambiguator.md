@@ -3,19 +3,36 @@
 Status: partial (actionable). Turn HUD state, route feedback,
 clarification handling, action progress, local-only unsupported routing, and
 panel status are wired. Panel option-click clarification resolution is wired
-for the existing edit/destructive clarification types, the cursor overlay and
-notch voice surface now honor macOS Reduce Motion by snapping element pointing
-and suppressing decorative bubble/notch animation, and disabled-by-default
-runtime smoke hooks can synthesize and resolve a clarification after an Xcode
-Debug build. Visual target ambiguity resolution and full manual runtime smoke
-remain queued.
+for the edit/destructive clarification types AND for visual target ambiguity
+(near-tied click candidates surface the same panel option chips), the cursor
+overlay and notch voice surface now honor macOS Reduce Motion by snapping
+element pointing and suppressing decorative bubble/notch animation, and
+disabled-by-default runtime smoke hooks can synthesize and resolve a
+clarification after an Xcode Debug build. Full manual runtime smoke remains
+queued.
 
 Remaining v1 scope:
-- Add a visual target ambiguity clarification path (multi-candidate click
-  scenarios surface a panel option-list, not just the existing edit/destructive
-  clarifications) using the executor's top-K candidate output.
 - Promote the existing runtime smoke hooks into a full manual smoke flow that
   exercises every HUD state once.
+
+Implementation note, 2026-06-13 (visual target ambiguity): when the executor
+produces multiple click candidates whose label-match confidences are near-tied
+(top candidate's lead over the runner-up below 0.12) AND whose labels are
+distinguishable, `PaceClickCandidateAmbiguity.isAmbiguous` returns the 2-3
+candidates to offer; otherwise it returns nil and the existing top-candidate
+auto-click runs unchanged (the common, zero-friction case). `CompanionManager`
+raises this through the SAME `.clarification(question:options:)` HUD state the
+edit/destructive path uses, so `PaceTurnHUDView` renders the candidate-label
+chips with no new view code. The agent loop pauses (`break`); tapping a chip
+routes through `resolveClarification(option:)`, which detects a pending
+click-target clarification and clicks the chosen candidate directly via a
+one-candidate plan — it never re-runs the planner (a re-plan could re-rank into
+a different set). Dismiss/new-turn drops the question; an explicit
+auto-click-fallback entry point re-runs the full original candidate set so a
+stray dismissal never strands the turn. Decision rule + builder + resolver are
+pure and unit-tested in `PaceClickCandidateAmbiguityTests`. The prompt fires
+even when action-approval is OFF: it is the one allowed interruption because it
+prevents a wrong click, and it stays a single tap.
 
 ## Goal
 
@@ -180,10 +197,10 @@ Runtime smoke:
 
 - Route decisions are visible in local state before planner completion.
   Implemented for classifier routes and action progress.
-- Ambiguous commands ask one short question instead of guessing. Partial:
-  ambiguous edit and destructive-pronoun commands are covered and panel option
-  clicks resolve those choices; visual target ambiguity resolution remains
-  queued.
+- Ambiguous commands ask one short question instead of guessing. Implemented
+  for ambiguous edit and destructive-pronoun commands AND for visual target
+  ambiguity (near-tied click candidates); panel option clicks resolve all three,
+  with the click-target path executing the chosen candidate directly.
 - Reduce-motion settings should disable cursor flight and nonessential motion.
   Implemented for the cursor overlay, pointer bubble, welcome animation,
   overlay fade-out path, and notch voice/avatar animation.

@@ -99,6 +99,96 @@ struct PaceIntentClarification: Equatable {
     let options: [String]
 }
 
+/// One offered click target in a visual-target ambiguity clarification
+/// (PRD docs/prds/hud-intent-disambiguator.md). The `label` is the chip
+/// text the panel renders and the user reads/taps; the
+/// `candidateIndex` is the stable index back into the paused click
+/// candidate set so resolving option N executes candidate N's target.
+struct PaceClickTargetOption: Equatable {
+    let label: String
+    let candidateIndex: Int
+}
+
+/// State for a paused click that surfaced a visual-target ambiguity
+/// question. The original click candidate set and the executor screen
+/// captures are held verbatim so resolution can execute the chosen
+/// candidate directly — it must NOT re-run the planner, because a
+/// re-plan could produce a different candidate set than the one the user
+/// just chose from.
+struct PacePendingClickTargetClarification {
+    let prompt: String
+    let options: [PaceClickTargetOption]
+    let candidateSet: PaceClickCandidateSet
+    let screenCaptures: [CompanionScreenCapture]
+
+    /// Maps a tapped option label back to the candidate it represents.
+    /// Matching is case-insensitive and whitespace-trimmed to mirror the
+    /// existing `PaceIntentClarificationResolver` option matching.
+    func candidate(forSelectedOptionLabel selectedOptionLabel: String) -> PaceClickCandidate? {
+        let normalizedSelectedOptionLabel = selectedOptionLabel
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        guard let matchedOption = options.first(where: { option in
+            option.label
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() == normalizedSelectedOptionLabel
+        }) else {
+            return nil
+        }
+
+        guard candidateSet.candidates.indices.contains(matchedOption.candidateIndex) else {
+            return nil
+        }
+        return candidateSet.candidates[matchedOption.candidateIndex]
+    }
+}
+
+/// Pure builder for a visual-target ambiguity clarification from the
+/// candidates the executor's ambiguity check selected. Keeps the prompt
+/// copy + option construction unit-testable without touching
+/// CompanionManager. The candidate→option index mapping is computed
+/// against the FULL candidate set so the held set and the offered
+/// options stay in lockstep.
+enum PaceClickTargetClarificationBuilder {
+    static let defaultPrompt = "Two matches — which one?"
+
+    static func makeClarification(
+        offeredCandidates: [PaceClickCandidate],
+        in candidateSet: PaceClickCandidateSet,
+        prompt: String = defaultPrompt
+    ) -> PacePendingClickTargetClarification? {
+        guard offeredCandidates.count >= 2 else { return nil }
+
+        var options: [PaceClickTargetOption] = []
+        for offeredCandidate in offeredCandidates {
+            guard let trimmedLabel = offeredCandidate.label?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !trimmedLabel.isEmpty else {
+                continue
+            }
+            guard let candidateIndex = candidateSet.candidates.firstIndex(where: { candidate in
+                candidate.label?.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedLabel
+                    && candidate.confidence == offeredCandidate.confidence
+            }) else {
+                continue
+            }
+            options.append(
+                PaceClickTargetOption(label: trimmedLabel, candidateIndex: candidateIndex)
+            )
+        }
+
+        guard options.count >= 2 else { return nil }
+
+        return PacePendingClickTargetClarification(
+            prompt: prompt,
+            options: options,
+            candidateSet: candidateSet,
+            screenCaptures: []
+        )
+    }
+}
+
 struct PacePendingIntentClarification: Equatable {
     let originalTranscript: String
     let clarification: PaceIntentClarification

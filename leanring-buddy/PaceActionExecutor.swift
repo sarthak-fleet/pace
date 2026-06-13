@@ -193,6 +193,95 @@ struct PaceClickCandidateSet {
     }
 }
 
+/// Pure, runtime-free decision rule for the HUD visual-target ambiguity
+/// prompt (PRD docs/prds/hud-intent-disambiguator.md). When the executor
+/// produces several click candidates whose label-match confidences are
+/// near-tied AND whose labels are distinguishable, Pace should ask one
+/// short question ("did you mean Save or Save As?") through the existing
+/// HUD clarification surface instead of guessing the top candidate.
+///
+/// The rule deliberately works off `confidence` alone — the raw
+/// label-match score the VLM/parser already computed — NOT the executor's
+/// cursor-proximity/focus runtime score. Cursor proximity is a tiebreak
+/// for *which* near-tied candidate to auto-click; it is the wrong signal
+/// for *whether the user's words were ambiguous*. Two labels with tied
+/// match confidence are ambiguous regardless of where the cursor happens
+/// to sit, so the question (not a silent guess) is the safe move.
+enum PaceClickCandidateAmbiguity {
+    /// Returns the 2-3 distinguishable candidates to offer the user when
+    /// the top candidate's confidence lead over the runner-up is BELOW
+    /// `confidenceDelta`. Returns `nil` (proceed to the existing
+    /// auto-click) when there's a clear winner, when fewer than
+    /// `minCandidatesToOffer` distinguishable labels exist, or when the
+    /// near-tied candidates share identical labels (offering "Save" vs
+    /// "Save" helps nobody).
+    ///
+    /// The common case — one obviously-best target — must stay
+    /// zero-friction, so a clear winner NEVER produces a prompt.
+    static func isAmbiguous(
+        _ clickCandidateSet: PaceClickCandidateSet,
+        confidenceDelta: Double = 0.12,
+        minCandidatesToOffer: Int = 2,
+        maxCandidatesToOffer: Int = 3
+    ) -> [PaceClickCandidate]? {
+        // Only labelled candidates can be offered as readable chips. A
+        // coordinate-only candidate gives the user nothing to choose
+        // between, so it can't participate in a disambiguation question.
+        let labelledCandidates = clickCandidateSet.candidates
+            .filter { candidate in
+                guard let trimmedLabel = candidate.label?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    return false
+                }
+                return !trimmedLabel.isEmpty
+            }
+            .sorted { $0.confidence > $1.confidence }
+
+        guard labelledCandidates.count >= minCandidatesToOffer else {
+            return nil
+        }
+
+        let topCandidate = labelledCandidates[0]
+        let runnerUpCandidate = labelledCandidates[1]
+
+        // Clear winner: the top candidate's confidence lead is at or above
+        // the threshold. Trust it, never interrupt.
+        let confidenceLead = topCandidate.confidence - runnerUpCandidate.confidence
+        guard confidenceLead < confidenceDelta else {
+            return nil
+        }
+
+        // Collect the near-tied front-runners: every candidate within
+        // `confidenceDelta` of the top one, deduplicated by normalized
+        // label so identical labels collapse to a single offer.
+        var offeredCandidates: [PaceClickCandidate] = []
+        var seenNormalizedLabels: Set<String> = []
+        for candidate in labelledCandidates {
+            guard topCandidate.confidence - candidate.confidence < confidenceDelta else {
+                break
+            }
+            let normalizedLabel = candidate.label?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? ""
+            guard seenNormalizedLabels.insert(normalizedLabel).inserted else {
+                continue
+            }
+            offeredCandidates.append(candidate)
+            if offeredCandidates.count == maxCandidatesToOffer {
+                break
+            }
+        }
+
+        // Identical labels (after dedup, only one distinguishable option
+        // survives) help nobody — fall through to auto-click.
+        guard offeredCandidates.count >= minCandidatesToOffer else {
+            return nil
+        }
+
+        return offeredCandidates
+    }
+}
+
 struct PaceClickStateSnapshot: Equatable {
     let frontmostBundleIdentifier: String?
     let visibleWindowCount: Int
