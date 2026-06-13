@@ -100,18 +100,41 @@ replay), with `pace://` deeplinks for Shortcuts/Raycast parity.
 7. Keep `CompanionManager.swift` decomposition scoped to the documented
    next splits: agent loop body and screen-context service.
 
-## Deferred / Parked (blocked on local-model work)
+## Model supply — no pending Pace work
 
-- Real WhisperKit streaming ASR runtime (scaffold + LocalAgreement already
-  wired; falls back to Apple Speech).
-- In-process CoreML/MLX VLM runtime (falls back to LM Studio HTTP).
-- Trained dictation/voice-edit specialists (rule-backed scaffolds wired).
-- Vector retrieval (bundled embedding model + SQLite-vec); BM25 lexical +
-  best-effort embedding re-ranker ship today.
-- Planner LoRA path (v8+) parked on the TinyGPT side — runtime default is the
-  eval-validated qwen3-30b-a3b MoE via LM Studio.
-- v9 manual latency demo (Pace-side wiring complete).
-- Cloud LLM (default-off CLI bridge + opt-in Direct-API BYO are the
-  user-owned trapdoors; no implicit cloud egress).
-- Running `xcodebuild` from terminal is avoided except via
-  `scripts/test-pace.sh`, which isolates DerivedData to protect TCC grants.
+Pace covers every model role **today** on a qualified provider, and the
+provider scaffolds for in-process swap-in are already wired. Choosing and
+qualifying the model behind each role is the TinyGPT factory's job (see
+`docs/architecture.md` §1), so nothing below is pending Pace engineering —
+each item either was decided against or swaps in when TinyGPT delivers a
+qualified artifact.
+
+**Decided against — not doing it:**
+
+- **Trained 0.6B planner specialist (Pace v8+ LoRA).** TinyGPT's
+  `mac-assistant-judgment` benchmark showed eleven trained 0.6B versions
+  never beat the zero-shot off-the-shelf model. Pace ships the
+  eval-validated **qwen3-30b-a3b** MoE via LM Studio; no trained planner
+  specialist will be pursued.
+
+**Ships today; in-process swap-in waits on a TinyGPT-qualified model (not Pace backlog):**
+
+- **STT** — Apple `SFSpeechRecognizer` ships; the WhisperKit +
+  LocalAgreement provider scaffold swaps in when a streaming WhisperKit
+  build is qualified.
+- **Screen VLM** — LM Studio HTTP (UI-Venus-2B) ships; the in-process
+  CoreML/MLX provider scaffold swaps in when the runtime port lands.
+- **RAG** — BM25 lexical + best-effort embedding re-ranker ship; bundled
+  embedding model + SQLite-vec vector store swap in when the embedding
+  model is qualified.
+- **Dictation / voice-edit** — deterministic rule-backed scaffolds ship;
+  trained specialists swap in only if they beat the scaffold on the eval
+  gate.
+
+**By design — not deferred:**
+
+- **Cloud LLM** — intentionally local-only. The default-off CLI bridge and
+  opt-in Direct-API BYO are user-owned trapdoors; no implicit cloud egress.
+
+Build note: run `xcodebuild` only via `scripts/test-pace.sh`, which isolates
+DerivedData to protect TCC grants.
