@@ -18,37 +18,12 @@ import ScreenCaptureKit
 import Speech
 import SwiftUI
 
-/// Per-screen VLM analysis cached by the analyzer identity plus pixel hash.
-/// As long as the model/runtime/display and screen pixels haven't changed,
-/// repeat questions reuse the cached element map — zero VLM cost.
-private struct ScreenAnalysisCacheIdentity: Equatable {
-    let analyzerDisplayName: String
-    let screenshotWidthInPixels: Int
-    let screenshotHeightInPixels: Int
-    let displayWidthInPoints: Int
-    let displayHeightInPoints: Int
-    let displayFrame: CGRect
-
-    init(
-        analyzerDisplayName: String,
-        capture: CompanionScreenCapture
-    ) {
-        self.analyzerDisplayName = analyzerDisplayName
-        self.screenshotWidthInPixels = capture.screenshotWidthInPixels
-        self.screenshotHeightInPixels = capture.screenshotHeightInPixels
-        self.displayWidthInPoints = capture.displayWidthInPoints
-        self.displayHeightInPoints = capture.displayHeightInPoints
-        self.displayFrame = capture.displayFrame
-    }
-}
-
-private struct CachedScreenAnalysis {
-    let identity: ScreenAnalysisCacheIdentity
-    let pixelHash: String
-    let visualFingerprint: PaceScreenVisualFingerprint?
-    let analysis: LocalVLMScreenAnalysis
-    let capturedAt: Date
-}
+// Per-screen VLM analysis cache key + entry types moved into
+// `PaceScreenContextService.swift` as `PaceScreenAnalysisCacheIdentity`
+// and `PaceCachedScreenAnalysis` during the Wave 7b refactor. The
+// prewarm-task envelope (formerly `PrewarmedScreenContext`) lives
+// there too as `PaceScreenContextPrewarmedSnapshot`. CompanionManager
+// now talks to that service for everything screen-context related.
 
 enum CompanionVoiceState {
     case idle
@@ -384,28 +359,22 @@ final class CompanionManager: ObservableObject {
     /// content with broken AX hints).
     private let axScreenReader = PaceAXScreenReader()
 
-    /// Task started at PTT press that captures the screen and runs the
-    /// VLM + OCR in parallel. By the time the user finishes speaking
-    /// (~2-5s typical), the result is usually ready. The agent loop
-    /// awaits this instead of doing the work serially after the
-    /// transcript arrives. nil when not started or when pre-warm is
-    /// disabled (e.g. "Read My Screen" toggle off).
-    private var prewarmedScreenContextTask: Task<PrewarmedScreenContext?, Never>?
-
-    /// Snapshot returned by the pre-warm task. Held briefly between
-    /// PTT press and transcript arrival; consumed once by the agent
-    /// loop's first step then cleared.
-    private struct PrewarmedScreenContext {
-        let screenCaptures: [CompanionScreenCapture]
-        let enrichedAnalysesByScreenLabel: [String: LocalVLMScreenAnalysis]
-    }
-
-    // Screen-analysis provider (LM Studio HTTP by default) that extracts a
-    // structured element map from screenshots. Only invoked when the
-    // `UseLocalVLMForScreenContext` Info.plist key is set to true.
-    // Always allocated so toggling the key doesn't require restart logic.
-    private lazy var screenAnalysisClient: any PaceScreenAnalysisClient = {
-        PaceScreenAnalysisClientFactory.makeDefaultClient()
+    // Screen-context coordinator: owns the per-screen VLM cache, the
+    // PTT-press prewarm task, and the AX + OCR + VLM merge logic.
+    // Extracted from CompanionManager during Wave 7b — behavior is
+    // byte-identical to the pre-extraction code. The `isReadMyScreenEnabled`
+    // closure reads the live `@Published` value so toggling the
+    // preference in Settings takes effect immediately without a
+    // service restart.
+    private lazy var screenContextService: PaceScreenContextService = {
+        PaceScreenContextService(
+            screenAnalysisClient: PaceScreenAnalysisClientFactory.makeDefaultClient(),
+            visionOCRClient: visionOCRClient,
+            axScreenReader: axScreenReader,
+            isReadMyScreenEnabled: { [weak self] in
+                self?.useLocalVLMForScreenContext ?? false
+            }
+        )
     }()
 
     /// User-facing toggle for "read my screen". Backed by UserDefaults so
@@ -534,14 +503,10 @@ final class CompanionManager: ObservableObject {
     /// "session live" indicators without needing a new user turn.
     private var threadMemoryIdleSweepTimer: Timer?
 
-    /// Per-screen VLM analysis cache keyed by screen label (e.g.
-    /// "primary focus", "screen 2"). Hash of the screenshot's JPEG
-    /// bytes is checked on each turn: hash match → reuse cached
-    /// analysis for free; hash mismatch → re-run VLM only on the
-    /// changed screens, in parallel with the rest. This is the
-    /// performance lever for "always-looking" — most turns hit the
-    /// cache for at least some screens.
-    private var perScreenAnalysisCache: [String: CachedScreenAnalysis] = [:]
+    // Per-screen VLM analysis cache lives inside `screenContextService`
+    // (Wave 7b extraction). All cache reads in CompanionManager go
+    // through `screenContextService.cachedDescriptionIfFresh(...)` or
+    // through the planner-prompt path on the service itself.
 
     /// The currently running AI response task, if any. Cancelled when the user
     /// speaks again so a new response can begin immediately.
@@ -1077,7 +1042,7 @@ You can turn this off at any time in Settings → Cloud bridge.
                 self.refreshLocalRetrievalPublishedState()
             },
             cachedScreenDescriptionProvider: { [weak self] screenLabel in
-                self?.cachedScreenDescriptionForNudgeGenerator(screenLabel: screenLabel)
+                self?.screenContextService.cachedDescriptionIfFresh(screenLabel: screenLabel)
             },
             watchModeEventPublisher: screenWatchModeController.eventPublisher.eraseToAnyPublisher(),
             calendarRetrievalConnector: calendarRetrievalConnector,
@@ -1101,19 +1066,6 @@ You can turn this off at any time in Settings → Cloud bridge.
     /// 10-second timer to fire.
     func drainProactiveQueueIfIdle(now: Date = Date()) {
         proactivityPipeline.drainProactiveQueueIfIdle(now: now)
-    }
-
-    /// Pulls the most-recent per-screen VLM/OCR description out of
-    /// `perScreenAnalysisCache` for the watch-mode nudge generator.
-    /// Stale entries (>2 minutes) return nil so the generator does
-    /// not fire on a description that no longer matches what's on
-    /// screen. This is the SAME freshness gate
-    /// `recordWatchModeEventInJournal` already uses.
-    private func cachedScreenDescriptionForNudgeGenerator(screenLabel: String) -> String? {
-        guard let cachedScreenAnalysis = perScreenAnalysisCache[screenLabel] else { return nil }
-        guard Date().timeIntervalSince(cachedScreenAnalysis.capturedAt) <= 120 else { return nil }
-        let cachedDescription = cachedScreenAnalysis.analysis.description
-        return cachedDescription.isEmpty ? nil : cachedDescription
     }
 
     // MARK: - Morning triage (daily brief)
@@ -1508,14 +1460,11 @@ You can turn this off at any time in Settings → Cloud bridge.
         // Reuse the per-screen VLM cache only while it is fresh enough to
         // still describe roughly what the user is looking at. Never run the
         // VLM from here — journaling must stay free.
-        var freshCachedScreenDescription: String?
-        if let cachedScreenAnalysis = perScreenAnalysisCache[event.screenLabel],
-           event.detectedAt.timeIntervalSince(cachedScreenAnalysis.capturedAt) <= 120 {
-            let cachedDescription = cachedScreenAnalysis.analysis.description
-            if !cachedDescription.isEmpty {
-                freshCachedScreenDescription = cachedDescription
-            }
-        }
+        let freshCachedScreenDescription = screenContextService.cachedDescriptionIfFresh(
+            screenLabel: event.screenLabel,
+            maxAgeSeconds: 120,
+            referenceDate: event.detectedAt
+        )
         localRetriever.recordScreenWatchObservation(
             screenLabel: event.screenLabel,
             categoryDisplayName: event.category.displayName,
@@ -3009,7 +2958,7 @@ You can turn this off at any time in Settings → Cloud bridge.
         // Stamp intent-commit now so TTFSW latency logging stays meaningful
         // for deeplink turns (there is no PTT release to stamp it).
         streamingSentenceTTSPipeline.markIntentCommitted()
-        startScreenContextPrewarmIfEnabled()
+        screenContextService.prewarmScreenContext(reason: .deepLinkChat)
         voiceState = .processing
         sendTranscriptToPlannerWithScreenshot(transcript: transcript)
     }
@@ -3765,7 +3714,7 @@ You can turn this off at any time in Settings → Cloud bridge.
             // VLM + OCR run during the user's natural speech time (~2-5s)
             // and the result is awaited by the agent loop's first step —
             // perceived VLM latency drops to ~0 in the common case.
-            startScreenContextPrewarmIfEnabled()
+            screenContextService.prewarmScreenContext(reason: .pushToTalkPress)
             // Reject the press if the transcription provider's model
             // isn't loaded yet. Apple Speech (default) is always ready
             // on launch; only relevant when the user has switched to
@@ -4422,13 +4371,12 @@ You can turn this off at any time in Settings → Cloud bridge.
                     // analysis, so re-capturing before consuming it just
                     // adds latency to the hot path.
                     let screenCaptureStartedAt = Date()
-                    var prewarmedContextForStep: PrewarmedScreenContext?
+                    var prewarmedContextForStep: PaceScreenContextPrewarmedSnapshot?
                     let screenCaptures: [CompanionScreenCapture]
                     if isFirstStep,
-                       let prewarmedTask = prewarmedScreenContextTask {
+                       screenContextService.hasInFlightPrewarmedTask {
                         print("👁️  Awaiting pre-warm capture for first agent step…")
-                        let prewarmedContext = await prewarmedTask.value
-                        prewarmedScreenContextTask = nil
+                        let prewarmedContext = await screenContextService.consumeInFlightPrewarmedSnapshot()
                         if let prewarmedContext,
                            !prewarmedContext.screenCaptures.isEmpty {
                             prewarmedContextForStep = prewarmedContext
@@ -4463,7 +4411,7 @@ You can turn this off at any time in Settings → Cloud bridge.
                     //    structured element map — cuts perception cost on the
                     //    planner side and is essential when the planner is text-only.
                     let screenContextStartedAt = Date()
-                    let screenContextPrompt = await buildUserPromptWithLocalVLMContextIfEnabled(
+                    let screenContextPrompt = await screenContextService.buildUserPromptWithLocalVLMContextIfEnabled(
                         transcript: currentTurnUserPrompt,
                         screenCaptures: screenCaptures,
                         prewarmedContext: prewarmedContextForStep
@@ -4919,508 +4867,6 @@ You can turn this off at any time in Settings → Cloud bridge.
         print("🔬 Step \(stepIndex) planner sees (top 5 of element map):")
         for line in elementLines {
             print("     \(line)")
-        }
-    }
-
-    ///
-    /// If the VLM is unreachable or errors, returns the raw transcript
-    /// unchanged so the cloud-only path keeps working. Errors are logged
-    /// for debugging but never surfaced to the user.
-    private func buildUserPromptWithLocalVLMContextIfEnabled(
-        transcript: String,
-        screenCaptures: [CompanionScreenCapture],
-        prewarmedContext: PrewarmedScreenContext? = nil
-    ) async -> String {
-        guard useLocalVLMForScreenContext else {
-            print("👁️  VLM skipped — 'Read My Screen' toggle is off")
-            return transcript
-        }
-
-        if let prewarmedContext,
-           !prewarmedContext.screenCaptures.isEmpty {
-            print("👁️  Pre-warm context supplied by first-step capture path")
-            return buildPromptFromEnrichedAnalyses(
-                transcript: transcript,
-                captures: prewarmedContext.screenCaptures,
-                enrichedAnalysesByLabel: prewarmedContext.enrichedAnalysesByScreenLabel
-            )
-        }
-
-        // First try: did the PTT-press pre-warm finish? If yes, we
-        // consume its result and skip the synchronous VLM + OCR work
-        // entirely — perceived VLM latency drops to ~0.
-        if let prewarmedTask = prewarmedScreenContextTask {
-            print("👁️  Awaiting pre-warm result…")
-            let awaitStartedAt = Date()
-            let prewarmed = await prewarmedTask.value
-            prewarmedScreenContextTask = nil
-            let awaitedDuration = Date().timeIntervalSince(awaitStartedAt)
-            if let prewarmed, !prewarmed.screenCaptures.isEmpty {
-                print(String(format: "👁️  Pre-warm consumed in %.2fs", awaitedDuration))
-                return buildPromptFromEnrichedAnalyses(
-                    transcript: transcript,
-                    captures: prewarmed.screenCaptures,
-                    enrichedAnalysesByLabel: prewarmed.enrichedAnalysesByScreenLabel
-                )
-            }
-            print("⚠️ Pre-warm returned nothing — falling back to synchronous VLM")
-        }
-
-        guard !screenCaptures.isEmpty else {
-            print("⚠️ VLM skipped — no screen captures available")
-            return transcript
-        }
-
-        // Synchronous fallback: pre-warm wasn't started or failed.
-        // Cursor-screen-only by design — user is almost always asking
-        // about the screen they're looking at.
-        let orderedCaptures: [CompanionScreenCapture] = {
-            if let cursorScreenCapture = screenCaptures.first(where: { $0.isCursorScreen }) {
-                return [cursorScreenCapture]
-            }
-            if let firstCapture = screenCaptures.first {
-                return [firstCapture]
-            }
-            return []
-        }()
-
-        // Bucket captures into cache hits (free, reuse stored analysis)
-        // and misses (need a fresh VLM call). Hash is SHA256 of the JPEG
-        // bytes — stable across runs, cheap (~5ms for 1MB).
-        var perCaptureCachedAnalysis: [Int: LocalVLMScreenAnalysis] = [:]
-        var capturesToAnalyze: [(captureIndex: Int, capture: CompanionScreenCapture, pixelHash: String, visualFingerprint: PaceScreenVisualFingerprint?)] = []
-
-        for (captureIndex, capture) in orderedCaptures.enumerated() {
-            let pixelHash = Self.computePixelHash(for: capture.imageData)
-            let visualFingerprint = PaceScreenImageDiffer.fingerprint(for: capture.imageData)
-            let cacheIdentity = ScreenAnalysisCacheIdentity(
-                analyzerDisplayName: screenAnalysisClient.displayName,
-                capture: capture
-            )
-            if let cached = perScreenAnalysisCache[capture.label] {
-                guard cached.identity == cacheIdentity else {
-                    print("👁️  Cache MISS for \(capture.label) — analyzer or display changed")
-                    capturesToAnalyze.append((captureIndex, capture, pixelHash, visualFingerprint))
-                    continue
-                }
-                if cached.pixelHash == pixelHash {
-                    perCaptureCachedAnalysis[captureIndex] = cached.analysis
-                    print("👁️  Cache HIT for \(capture.label) — reusing \(cached.analysis.elements.count) elements")
-                    continue
-                }
-
-                if let cachedVisualFingerprint = cached.visualFingerprint,
-                   let visualFingerprint,
-                   let visualDiff = PaceScreenImageDiffer.diff(
-                    from: cachedVisualFingerprint,
-                    to: visualFingerprint
-                   ),
-                   !visualDiff.isMeaningful {
-                    perCaptureCachedAnalysis[captureIndex] = cached.analysis
-                    perScreenAnalysisCache[capture.label] = CachedScreenAnalysis(
-                        identity: cacheIdentity,
-                        pixelHash: pixelHash,
-                        visualFingerprint: visualFingerprint,
-                        analysis: cached.analysis,
-                        capturedAt: Date()
-                    )
-                    print(String(format: "👁️  Visual diff cache HIT for %@ — %.3f changed, %.1f mean delta", capture.label, visualDiff.changedPixelRatio, visualDiff.meanPixelDelta))
-                    continue
-                }
-            }
-
-            capturesToAnalyze.append((captureIndex, capture, pixelHash, visualFingerprint))
-        }
-
-        // Try the AX-tree first on the cursor screen (cheap, ~50ms);
-        // if it returns elements we skip the VLM for this in-loop
-        // re-analysis the same way the PTT-press pre-warm does. The
-        // 2B VLM was failing on every in-loop call last test run,
-        // leaving the planner with no screen context and looping on
-        // useless scrolls — AX fixes that.
-        var capturesStillNeedingVLM: [(captureIndex: Int, capture: CompanionScreenCapture, pixelHash: String, visualFingerprint: PaceScreenVisualFingerprint?)] = []
-        var freshAnalysesByCaptureIndex: [Int: LocalVLMScreenAnalysis] = [:]
-        if !capturesToAnalyze.isEmpty {
-            let axScreenReaderForLoopBody = self.axScreenReader
-            for (captureIndex, capture, pixelHash, visualFingerprint) in capturesToAnalyze {
-                let axElements = axScreenReaderForLoopBody.readFocusedWindow(
-                    scalingToScreenshot: capture
-                )
-                if !axElements.isEmpty {
-                    let ocrBoxes = (try? await visionOCRClient.recognizeText(
-                        in: capture.imageData,
-                        screenshotWidthInPixels: capture.screenshotWidthInPixels,
-                        screenshotHeightInPixels: capture.screenshotHeightInPixels
-                    )) ?? []
-                    let axBackedAnalysis = PaceScreenContextMerger.enrich(
-                        vlmAnalysis: LocalVLMScreenAnalysis(elements: axElements, description: ""),
-                        with: ocrBoxes
-                    )
-                    print("👁️  In-loop AX HIT for \(capture.label): \(axElements.count) elements + \(ocrBoxes.count) OCR boxes — skipping VLM")
-                    freshAnalysesByCaptureIndex[captureIndex] = axBackedAnalysis
-                    perScreenAnalysisCache[capture.label] = CachedScreenAnalysis(
-                        identity: ScreenAnalysisCacheIdentity(
-                            analyzerDisplayName: screenAnalysisClient.displayName,
-                            capture: capture
-                        ),
-                        pixelHash: pixelHash,
-                        visualFingerprint: visualFingerprint,
-                        analysis: axBackedAnalysis,
-                        capturedAt: Date()
-                    )
-                } else {
-                    capturesStillNeedingVLM.append((captureIndex, capture, pixelHash, visualFingerprint))
-                }
-            }
-        }
-
-        // Anything AX couldn't see falls back to the VLM. With the
-        // FM planner this is rarely hit; the LM Studio VLM path
-        // stays around for Electron / games / broken-AX apps.
-        if !capturesStillNeedingVLM.isEmpty {
-            print("👁️  Running VLM + OCR on \(capturesStillNeedingVLM.count) screen(s) (AX missed)…")
-            let analyses = await withTaskGroup(
-                of: (Int, String, LocalVLMScreenAnalysis?, String, PaceScreenVisualFingerprint?).self
-            ) { taskGroup in
-                for (captureIndex, capture, pixelHash, visualFingerprint) in capturesStillNeedingVLM {
-                    taskGroup.addTask { [screenAnalysisClient, visionOCRClient] in
-                        // VLM + OCR concurrent. OCR finishes much faster
-                        // (~100-200ms); we wait on the VLM and then merge.
-                        async let vlmAnalysisFuture = screenAnalysisClient.analyzeScreenshot(
-                            screenshotImageData: capture.imageData,
-                            userIntent: transcript
-                        )
-                        async let ocrBoxesFuture = visionOCRClient.recognizeText(
-                            in: capture.imageData,
-                            screenshotWidthInPixels: capture.screenshotWidthInPixels,
-                            screenshotHeightInPixels: capture.screenshotHeightInPixels
-                        )
-                        do {
-                            let vlmAnalysis = try await vlmAnalysisFuture
-                            let ocrBoxes = (try? await ocrBoxesFuture) ?? []
-                            let enriched = PaceScreenContextMerger.enrich(
-                                vlmAnalysis: vlmAnalysis,
-                                with: ocrBoxes
-                            )
-                            return (captureIndex, capture.label, enriched, pixelHash, visualFingerprint)
-                        } catch {
-                            print("⚠️ VLM failed for \(capture.label): \(error.localizedDescription)")
-                            return (captureIndex, capture.label, nil, pixelHash, visualFingerprint)
-                        }
-                    }
-                }
-                var collected: [(Int, String, LocalVLMScreenAnalysis?, String, PaceScreenVisualFingerprint?)] = []
-                for await result in taskGroup {
-                    collected.append(result)
-                }
-                return collected
-            }
-            for (captureIndex, label, maybeAnalysis, pixelHash, visualFingerprint) in analyses {
-                guard let analysis = maybeAnalysis else { continue }
-                freshAnalysesByCaptureIndex[captureIndex] = analysis
-                perScreenAnalysisCache[label] = CachedScreenAnalysis(
-                    identity: ScreenAnalysisCacheIdentity(
-                        analyzerDisplayName: screenAnalysisClient.displayName,
-                        capture: orderedCaptures[captureIndex]
-                    ),
-                    pixelHash: pixelHash,
-                    visualFingerprint: visualFingerprint,
-                    analysis: analysis,
-                    capturedAt: Date()
-                )
-                print("👁️  VLM analysed \(label): \(analysis.elements.count) elements")
-            }
-        }
-
-        // Merge cached + fresh analyses back into the original capture order.
-        var perScreenPromptSections: [String] = []
-        for (captureIndex, capture) in orderedCaptures.enumerated() {
-            let analysis = perCaptureCachedAnalysis[captureIndex]
-                ?? freshAnalysesByCaptureIndex[captureIndex]
-            guard let analysis else { continue }
-            perScreenPromptSections.append(Self.formatScreenAnalysisForPrompt(
-                screenLabel: capture.label,
-                analysis: analysis
-            ))
-        }
-
-        if perScreenPromptSections.isEmpty {
-            print("⚠️ All VLM calls failed — falling back to raw transcript")
-            return transcript
-        }
-
-        let joinedScreenSections = perScreenPromptSections.joined(separator: "\n\n")
-        return """
-        On-device screen analysis (auto-extracted by a local vision model on each connected display):
-
-        \(joinedScreenSections)
-
-        User said: \(transcript)
-        """
-    }
-
-    /// Build the planner prompt from already-enriched analyses (the
-    /// pre-warm path). Same formatting as the synchronous path so the
-    /// planner can't tell whether it's reading a pre-warmed or fresh
-    /// analysis — keeps prompt-engineering work consistent.
-    private func buildPromptFromEnrichedAnalyses(
-        transcript: String,
-        captures: [CompanionScreenCapture],
-        enrichedAnalysesByLabel: [String: LocalVLMScreenAnalysis]
-    ) -> String {
-        let perScreenPromptSections: [String] = captures.compactMap { capture in
-            guard let analysis = enrichedAnalysesByLabel[capture.label] else { return nil }
-            return Self.formatScreenAnalysisForPrompt(
-                screenLabel: capture.label,
-                analysis: analysis
-            )
-        }
-        guard !perScreenPromptSections.isEmpty else { return transcript }
-        return """
-        On-device screen analysis (auto-extracted by a local vision model + native OCR):
-
-        \(perScreenPromptSections.joined(separator: "\n\n"))
-
-        User said: \(transcript)
-        """
-    }
-
-    /// Render one screen's element map into the planner-prompt block.
-    /// Compact format: one element per line as `role|x,y|label|text`.
-    /// Cap reduced to 15 (down from 25) because Apple Foundation
-    /// Models' 4K context window busts on bigger element lists once
-    /// the system prompt + agent rules + history are added. 30-char
-    /// text cap (down from 60) keeps headings and button labels
-    /// intact while shedding the bulk of verbose OCR runs.
-    private static func formatScreenAnalysisForPrompt(
-        screenLabel: String,
-        analysis: LocalVLMScreenAnalysis
-    ) -> String {
-        let maxElementsRendered = 15
-        let maxTextCharsPerElement = 30
-        let elementSummaryLines = analysis.elements
-            .prefix(maxElementsRendered)
-            .enumerated()
-            .map { elementIndex, element -> String in
-                // Bbox CENTER, not top-left — Click landed half-element
-                // off when we sent corners.
-                let coordinateText = element.bbox.count == 4
-                    ? "\(element.bbox[0] + element.bbox[2] / 2),\(element.bbox[1] + element.bbox[3] / 2)"
-                    : "?,?"
-                let textSuffix = element.text.flatMap { text -> String? in
-                    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmedText.isEmpty else { return nil }
-                    let truncatedText = trimmedText.count > maxTextCharsPerElement
-                        ? String(trimmedText.prefix(maxTextCharsPerElement)) + "…"
-                        : trimmedText
-                    return "|\(truncatedText)"
-                } ?? ""
-                // Numeric ID prefix lets the FM @Generable planner
-                // emit element IDs instead of free-text coords. The
-                // ID space is local to this turn; the planner client
-                // re-parses these lines to map ID → (x, y) on output.
-                return "[\(elementIndex)] \(element.role)|\(coordinateText)|\(element.label)\(textSuffix)"
-            }
-        let elementSummaryText = elementSummaryLines.joined(separator: "\n")
-        let elementCountSummary = analysis.elements.count > maxElementsRendered
-            ? "top \(maxElementsRendered) of \(analysis.elements.count)"
-            : "\(analysis.elements.count)"
-        let trimmedDescription = analysis.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let descriptionLine = trimmedDescription.isEmpty
-            ? ""
-            : "\nsummary: \(trimmedDescription)"
-        return """
-        === \(screenLabel) (\(elementCountSummary) elements) ===\(descriptionLine)
-        \(elementSummaryText)
-        """
-    }
-
-    /// SHA256 of the JPEG byte stream. Stable across runs, ~5ms for a
-    /// 1 MB capture on Apple Silicon. Used as the cache key for the
-    /// per-screen VLM analysis — if the pixels didn't change, the
-    /// element map didn't either.
-    nonisolated private static func computePixelHash(for jpegData: Data) -> String {
-        let digest = SHA256.hash(data: jpegData)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Kicks off the screen-context pre-warm at PTT press. By the time
-    /// the user releases (~2-5s of speech), the VLM + OCR have usually
-    /// finished — so the planner can start immediately without waiting.
-    /// Cancellable: a quick press-release replaces the task with a new
-    /// one or nil.
-    private func startScreenContextPrewarmIfEnabled() {
-        prewarmedScreenContextTask?.cancel()
-        guard useLocalVLMForScreenContext else {
-            prewarmedScreenContextTask = nil
-            print("👁️  Skipping prewarm — Read My Screen is off")
-            return
-        }
-        // Snapshot the dependencies so the detached task doesn't have
-        // to hop back to MainActor for them.
-        let vlmClient = screenAnalysisClient
-        let ocrClient = visionOCRClient
-        prewarmedScreenContextTask = Task { [weak self] in
-            do {
-                let screenCaptures = try await CompanionScreenCaptureUtility.captureAllScreensAsJPEG()
-                guard let cursorScreenCapture = screenCaptures.first(where: { $0.isCursorScreen })
-                    ?? screenCaptures.first else {
-                    return nil
-                }
-
-                // Hash check — reuse cached analysis if the screen
-                // hasn't changed since last turn. Cache lookups are
-                // MainActor-bound so we hop briefly.
-                let pixelHash = Self.computePixelHash(for: cursorScreenCapture.imageData)
-                let visualFingerprint = PaceScreenImageDiffer.fingerprint(for: cursorScreenCapture.imageData)
-                let cacheIdentity = ScreenAnalysisCacheIdentity(
-                    analyzerDisplayName: vlmClient.displayName,
-                    capture: cursorScreenCapture
-                )
-                let cachedAnalysis = await MainActor.run { () -> LocalVLMScreenAnalysis? in
-                    guard let self else { return nil }
-                    guard let cached = self.perScreenAnalysisCache[cursorScreenCapture.label] else {
-                        return nil
-                    }
-                    guard cached.identity == cacheIdentity else {
-                        print("👁️  Prewarm cache MISS for \(cursorScreenCapture.label) — analyzer or display changed")
-                        return nil
-                    }
-                    if cached.pixelHash == pixelHash {
-                        print("👁️  Prewarm cache HIT for \(cursorScreenCapture.label)")
-                        return cached.analysis
-                    }
-                    if let cachedVisualFingerprint = cached.visualFingerprint,
-                       let visualFingerprint,
-                       let visualDiff = PaceScreenImageDiffer.diff(
-                        from: cachedVisualFingerprint,
-                        to: visualFingerprint
-                       ),
-                       !visualDiff.isMeaningful {
-                        self.perScreenAnalysisCache[cursorScreenCapture.label] = CachedScreenAnalysis(
-                            identity: cacheIdentity,
-                            pixelHash: pixelHash,
-                            visualFingerprint: visualFingerprint,
-                            analysis: cached.analysis,
-                            capturedAt: Date()
-                        )
-                        print(String(format: "👁️  Prewarm visual diff cache HIT for %@ — %.3f changed, %.1f mean delta", cursorScreenCapture.label, visualDiff.changedPixelRatio, visualDiff.meanPixelDelta))
-                        return cached.analysis
-                    }
-                    return nil
-                }
-
-                if let cachedAnalysis {
-                    return PrewarmedScreenContext(
-                        screenCaptures: [cursorScreenCapture],
-                        enrichedAnalysesByScreenLabel: [cursorScreenCapture.label: cachedAnalysis]
-                    )
-                }
-
-                // Fast tier: try the AX tree of the focused window
-                // before standing up the VLM. AX is 10-100x faster
-                // than the VLM and covers most AppKit / SwiftUI /
-                // Catalyst apps cleanly. Fires in parallel with OCR
-                // so we still get verbatim text enrichment.
-                // Scaled to the cursor screen's actual screenshot
-                // dimensions so the planner sees coordinates in the
-                // same pixel space the executor uses for clicks
-                // (downsampled to maxDimension=1280, not Retina-native).
-                async let axElementsFuture: [LocalVLMScreenElement] = MainActor.run { [weak self] in
-                    self?.axScreenReader.readFocusedWindow(scalingToScreenshot: cursorScreenCapture) ?? []
-                }
-                async let earlyOCRBoxesFuture = ocrClient.recognizeText(
-                    in: cursorScreenCapture.imageData,
-                    screenshotWidthInPixels: cursorScreenCapture.screenshotWidthInPixels,
-                    screenshotHeightInPixels: cursorScreenCapture.screenshotHeightInPixels
-                )
-                let axElements = await axElementsFuture
-                if !axElements.isEmpty {
-                    let earlyOCRBoxes = (try? await earlyOCRBoxesFuture) ?? []
-                    let synthesizedAnalysisFromAX = LocalVLMScreenAnalysis(
-                        elements: axElements,
-                        description: ""
-                    )
-                    let enrichedFromAX = PaceScreenContextMerger.enrich(
-                        vlmAnalysis: synthesizedAnalysisFromAX,
-                        with: earlyOCRBoxes
-                    )
-                    print("👁️  Prewarm AX HIT: \(axElements.count) elements + \(earlyOCRBoxes.count) OCR boxes — skipping VLM")
-                    await MainActor.run { [weak self] in
-                        self?.perScreenAnalysisCache[cursorScreenCapture.label] = CachedScreenAnalysis(
-                            identity: cacheIdentity,
-                            pixelHash: pixelHash,
-                            visualFingerprint: visualFingerprint,
-                            analysis: enrichedFromAX,
-                            capturedAt: Date()
-                        )
-                    }
-                    return PrewarmedScreenContext(
-                        screenCaptures: [cursorScreenCapture],
-                        enrichedAnalysesByScreenLabel: [cursorScreenCapture.label: enrichedFromAX]
-                    )
-                }
-
-                print("👁️  Prewarm AX returned nothing — falling back to VLM + OCR…")
-                // Reuse the OCR future from the AX attempt above —
-                // it's been running concurrently and we don't want to
-                // double-spend on the same screenshot.
-                async let vlmAnalysisFuture = vlmClient.analyzeScreenshot(
-                    screenshotImageData: cursorScreenCapture.imageData,
-                    userIntent: "general screen analysis"
-                )
-
-                let vlmAnalysis: LocalVLMScreenAnalysis
-                do {
-                    vlmAnalysis = try await vlmAnalysisFuture
-                } catch {
-                    print("⚠️ Prewarm VLM failed: \(error.localizedDescription)")
-                    // Fall back to OCR-only context
-                    let ocrBoxesFallback = (try? await earlyOCRBoxesFuture) ?? []
-                    let descriptionFromOCR = ocrBoxesFallback.prefix(8)
-                        .map { $0.text }
-                        .joined(separator: " · ")
-                    let ocrOnlyAnalysis = LocalVLMScreenAnalysis(
-                        elements: PaceScreenContextMerger.enrich(
-                            vlmAnalysis: LocalVLMScreenAnalysis(elements: [], description: ""),
-                            with: ocrBoxesFallback
-                        ).elements,
-                        description: descriptionFromOCR.isEmpty
-                            ? "VLM failed; OCR text only."
-                            : "VLM failed. OCR text snippets: \(descriptionFromOCR)"
-                    )
-                    return PrewarmedScreenContext(
-                        screenCaptures: [cursorScreenCapture],
-                        enrichedAnalysesByScreenLabel: [cursorScreenCapture.label: ocrOnlyAnalysis]
-                    )
-                }
-
-                let ocrBoxes = (try? await earlyOCRBoxesFuture) ?? []
-                let enriched = PaceScreenContextMerger.enrich(
-                    vlmAnalysis: vlmAnalysis,
-                    with: ocrBoxes
-                )
-
-                // Update cache for next turn.
-                await MainActor.run { [weak self] in
-                    self?.perScreenAnalysisCache[cursorScreenCapture.label] = CachedScreenAnalysis(
-                        identity: cacheIdentity,
-                        pixelHash: pixelHash,
-                        visualFingerprint: visualFingerprint,
-                        analysis: enriched,
-                        capturedAt: Date()
-                    )
-                }
-                print("👁️  Prewarm complete: \(enriched.elements.count) elements (\(ocrBoxes.count) OCR boxes merged)")
-
-                return PrewarmedScreenContext(
-                    screenCaptures: [cursorScreenCapture],
-                    enrichedAnalysesByScreenLabel: [cursorScreenCapture.label: enriched]
-                )
-            } catch {
-                print("⚠️ Prewarm failed: \(error.localizedDescription)")
-                return nil
-            }
         }
     }
 
