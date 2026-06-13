@@ -1,0 +1,72 @@
+<svg width="480" height="420" viewBox="0 0 480 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pace mascot — the menu-bar notch come alive, peeking with glowing blue eyes and a wave">
+  <title>Pace — the notch, alive</title>
+  <defs>
+    <!-- Near-black notch body, matching DS background #101211 -->
+    <linearGradient id="notchBody" x1="240" y1="0" x2="240" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1D1C"/>
+      <stop offset="0.55" stop-color="#101211"/>
+      <stop offset="1" stop-color="#070807"/>
+    </linearGradient>
+    <!-- Brand-blue eye glow: #3380FF overlay cursor → #2563EB accent -->
+    <radialGradient id="eyeGlow" cx="0.4" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#BFD9FF"/>
+      <stop offset="0.4" stop-color="#3380FF"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </radialGradient>
+    <!-- Arm/hand gradient, same family as the in-app avatar body -->
+    <linearGradient id="armGrad" x1="350" y1="120" x2="420" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="0.55" stop-color="#3380FF"/>
+      <stop offset="1" stop-color="#9EC7FF"/>
+    </linearGradient>
+    <!-- Soft blue presence halo behind the notch -->
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3380FF" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#2563EB" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <!-- Presence halo -->
+  <ellipse cx="240" cy="150" rx="220" ry="180" fill="url(#halo)"/>
+
+  <!-- Voice waves on the left: Pace is listening / speaking -->
+  <g stroke="#3380FF" stroke-linecap="round" fill="none">
+    <path d="M150 96 A 34 34 0 0 0 150 168" stroke-width="7" opacity="0.75"/>
+    <path d="M132 84 A 54 54 0 0 0 132 180" stroke-width="6" opacity="0.45"/>
+    <path d="M114 72 A 74 74 0 0 0 114 192" stroke-width="5" opacity="0.22"/>
+  </g>
+
+  <!-- The notch capsule — Pace's own menu-bar/notch surface, descending from the top edge -->
+  <path d="M130 0 L130 178 Q130 230 182 230 L298 230 Q350 230 350 178 L350 0 Z" fill="url(#notchBody)"/>
+  <!-- top sheen -->
+  <path d="M146 6 L334 6 Q322 26 240 26 Q158 26 146 6 Z" fill="#FFFFFF" opacity="0.05"/>
+  <!-- subtle blue rim light along the rounded chin -->
+  <path d="M134 150 Q134 226 182 226 L298 226 Q346 226 346 150" stroke="#3380FF" stroke-width="2.5" fill="none" opacity="0.35"/>
+
+  <!-- Waving arm (right) -->
+  <path d="M346 112 Q404 104 410 50" stroke="url(#armGrad)" stroke-width="26" stroke-linecap="round" fill="none"/>
+  <circle cx="411" cy="44" r="22" fill="url(#armGrad)"/>
+  <ellipse cx="404" cy="36" rx="7" ry="5" fill="#FFFFFF" opacity="0.7"/>
+  <!-- wave motion ticks -->
+  <g stroke="#9EC7FF" stroke-width="4.5" stroke-linecap="round" opacity="0.8">
+    <path d="M440 30 q9 -4 13 -12"/>
+    <path d="M444 50 q11 -1 18 -6"/>
+  </g>
+
+  <!-- Eyes — glowing, friendly -->
+  <g filter="url(#soft)" opacity="0.9">
+    <rect x="190" y="98" width="34" height="52" rx="17" fill="#3380FF"/>
+    <rect x="256" y="98" width="34" height="52" rx="17" fill="#3380FF"/>
+  </g>
+  <rect x="192" y="100" width="30" height="48" rx="15" fill="url(#eyeGlow)"/>
+  <rect x="258" y="100" width="30" height="48" rx="15" fill="url(#eyeGlow)"/>
+  <ellipse cx="201" cy="113" rx="6" ry="8" fill="#FFFFFF" opacity="0.92"/>
+  <ellipse cx="267" cy="113" rx="6" ry="8" fill="#FFFFFF" opacity="0.92"/>
+
+  <!-- Smile -->
+  <path d="M212 172 Q240 200 268 172" stroke="#9EC7FF" stroke-width="9" stroke-linecap="round" fill="none"/>
+</svg>

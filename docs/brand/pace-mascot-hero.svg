@@ -1,0 +1,90 @@
+<svg width="1200" height="600" viewBox="0 0 1200 600" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pace — your Mac, listening. Fully on-device. The mascot is the menu-bar notch come alive, peeking and waving.">
+  <title>Pace — your Mac, listening</title>
+  <defs>
+    <linearGradient id="hNotchBody" x1="600" y1="0" x2="600" y2="234" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1D1C"/>
+      <stop offset="0.55" stop-color="#101211"/>
+      <stop offset="1" stop-color="#070807"/>
+    </linearGradient>
+    <radialGradient id="hEyeGlow" cx="0.4" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#BFD9FF"/>
+      <stop offset="0.4" stop-color="#3380FF"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </radialGradient>
+    <linearGradient id="hArmGrad" x1="720" y1="120" x2="800" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="0.55" stop-color="#3380FF"/>
+      <stop offset="1" stop-color="#9EC7FF"/>
+    </linearGradient>
+    <radialGradient id="hHalo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3380FF" stop-opacity="0.40"/>
+      <stop offset="0.6" stop-color="#2563EB" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="hSoft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <!-- Dark card = the top of your Mac screen -->
+  <rect x="0" y="0" width="1200" height="600" rx="32" fill="#0E100F"/>
+  <rect x="1" y="1" width="1198" height="598" rx="31" fill="none" stroke="#1E2422" stroke-width="2"/>
+
+  <!-- Menu-bar context, top-right: time + wifi + battery in muted gray -->
+  <g fill="#9AA3A0" opacity="0.85" font-family="-apple-system, SF Pro Text, Helvetica, Arial, sans-serif">
+    <text x="1012" y="42" font-size="24" font-weight="600">9:41</text>
+    <!-- wifi -->
+    <g transform="translate(1066,22)" fill="none" stroke="#9AA3A0" stroke-width="3" stroke-linecap="round" opacity="0.85">
+      <path d="M0 8 Q14 -4 28 8"/>
+      <path d="M6 14 Q14 6 22 14"/>
+    </g>
+    <circle cx="1080" cy="33" r="2.4" fill="#9AA3A0"/>
+    <!-- battery -->
+    <rect x="1108" y="22" width="40" height="20" rx="5" fill="none" stroke="#9AA3A0" stroke-width="2.4"/>
+    <rect x="1111" y="25" width="28" height="14" rx="2.5" fill="#34D399"/>
+    <rect x="1150" y="28" width="3.5" height="8" rx="1.6" fill="#9AA3A0"/>
+  </g>
+
+  <!-- Presence halo -->
+  <ellipse cx="600" cy="150" rx="300" ry="210" fill="url(#hHalo)"/>
+
+  <!-- Voice waves (left) -->
+  <g stroke="#3380FF" stroke-linecap="round" fill="none">
+    <path d="M495 92 A 36 36 0 0 0 495 164" stroke-width="7" opacity="0.75"/>
+    <path d="M475 78 A 58 58 0 0 0 475 178" stroke-width="6" opacity="0.45"/>
+    <path d="M455 64 A 80 80 0 0 0 455 192" stroke-width="5" opacity="0.22"/>
+  </g>
+
+  <!-- Notch capsule -->
+  <path d="M475 0 L475 178 Q475 232 529 232 L671 232 Q725 232 725 178 L725 0 Z" fill="url(#hNotchBody)"/>
+  <path d="M492 6 L708 6 Q694 28 600 28 Q506 28 492 6 Z" fill="#FFFFFF" opacity="0.05"/>
+  <path d="M479 150 Q479 228 529 228 L671 228 Q721 228 721 150" stroke="#3380FF" stroke-width="2.5" fill="none" opacity="0.35"/>
+
+  <!-- Waving arm (right) -->
+  <path d="M721 116 Q786 106 794 48" stroke="url(#hArmGrad)" stroke-width="28" stroke-linecap="round" fill="none"/>
+  <circle cx="795" cy="42" r="24" fill="url(#hArmGrad)"/>
+  <ellipse cx="787" cy="33" rx="8" ry="5.5" fill="#FFFFFF" opacity="0.7"/>
+  <g stroke="#9EC7FF" stroke-width="5" stroke-linecap="round" opacity="0.8">
+    <path d="M826 27 q10 -4 14 -13"/>
+    <path d="M831 49 q12 -1 19 -7"/>
+  </g>
+
+  <!-- Eyes -->
+  <g filter="url(#hSoft)" opacity="0.9">
+    <rect x="538" y="96" width="36" height="56" rx="18" fill="#3380FF"/>
+    <rect x="626" y="96" width="36" height="56" rx="18" fill="#3380FF"/>
+  </g>
+  <rect x="540" y="98" width="32" height="52" rx="16" fill="url(#hEyeGlow)"/>
+  <rect x="628" y="98" width="32" height="52" rx="16" fill="url(#hEyeGlow)"/>
+  <ellipse cx="550" cy="113" rx="6.5" ry="8.5" fill="#FFFFFF" opacity="0.92"/>
+  <ellipse cx="638" cy="113" rx="6.5" ry="8.5" fill="#FFFFFF" opacity="0.92"/>
+
+  <!-- Smile -->
+  <path d="M560 176 Q600 208 640 176" stroke="#9EC7FF" stroke-width="10" stroke-linecap="round" fill="none"/>
+
+  <!-- Wordmark + tagline -->
+  <g font-family="-apple-system, SF Pro Display, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <text x="600" y="386" font-size="112" font-weight="700" fill="#ECEEED" letter-spacing="-2">Pace</text>
+    <text x="600" y="436" font-size="27" font-weight="500" fill="#ADB5B2">your Mac, listening — fully on-device</text>
+  </g>
+</svg>
