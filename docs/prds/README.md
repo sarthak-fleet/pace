@@ -27,7 +27,7 @@ scope, test gates, and acceptance criteria.
 | `pace-planner-v10-parameterized-actions.md` | partial (actionable) | Typed v10 envelope parsing, registry/artifact validation, deterministic schema fixture evals, local planner-output envelope/action rejection, legacy compatibility, and `Mail.draft` streaming are wired; grammar-constrained model-output gate and runtime-default model switch remain queued. |
 | `pace-executor-surface.md` | partial (actionable) | Local dispatcher surface, v1 action mappings, destructive-only approval, `Shortcut.run` installed-name checks, Mail streaming with AX-first body writing, and AX mutation/undo scaffolds are wired; real-app/performance smokes remain queued. |
 | `click-executor-improvements.md` | partial (actionable) | Improve click accuracy with midpoint targeting, foreground/window-aware top-K tiebreaks, recency hints, verification, and all-fail observations; manual ambiguity evals remain queued. |
-| `hud-intent-disambiguator.md` | partial (actionable) | HUD route/progress state, panel option-click clarification resolution, local-only unsupported routing, and Reduce Motion cursor-overlay fallback are wired; visual target ambiguity and runtime smoke remain queued. |
+| `hud-intent-disambiguator.md` | shipped (v0.3.13) | HUD route/progress state, panel option-click clarification resolution, visual-target ambiguity chips, local-only unsupported routing, and Reduce Motion cursor-overlay fallback are wired; the runtime smoke flow passes 7/7 (`scripts/smoke-runtime-hooks.sh`, 2026-06-13). |
 | `whisperkit-streaming-asr.md` | deferred (model-work track) | Selectable WhisperKit provider scaffold with Apple Speech fallback, ASR status, contextual phrases, and runtime-wired LocalAgreement partial stabilization are wired; real WhisperKit streaming runtime remains queued. |
 | `local-rag-layer.md` | deferred (model-work track) | JSON-backed BM25-style lexical retrieval over preferences/Pace history, built-in competitive research (Minimi, Dayflow, voice-assistant category), screen-watch + app-usage journals for time recall, Settings-selected explicit-root Spotlight files, and permission-aware Calendar/Reminders/Contacts/Notes/Mail data; vector store + bundled embedding model remain queued. |
 | `local-vlm-runtime-port.md` | deferred (model-work track) | Screen-analysis provider abstraction and in-process placeholder are wired; real CoreML/MLX runtime remains queued. |
@@ -48,8 +48,6 @@ slice across them. The backlog now splits into exactly two buckets:
   the interactive app's TCC grants):
   - `click-executor-improvements.md` — scorer/recency unit suite landed
     (`PaceClickCandidateScorerTests`); only the all-fail-path runtime smoke remains.
-  - `hud-intent-disambiguator.md` — all HUD states + visual-target ambiguity
-    wired; only the full manual HUD-state smoke remains.
   - `pace-executor-surface.md` — dispatcher + handlers wired; only the real-app
     AX + performance smokes remain.
   - `pace-planner-v10-parameterized-actions.md` — typed envelope + schema-reject

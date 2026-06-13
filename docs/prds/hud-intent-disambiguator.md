@@ -1,6 +1,6 @@
 # HUD and intent disambiguator
 
-Status: partial (actionable). Turn HUD state, route feedback,
+Status: shipped (v0.3.13). Turn HUD state, route feedback,
 clarification handling, action progress, local-only unsupported routing, and
 panel status are wired. Panel option-click clarification resolution is wired
 for the edit/destructive clarification types AND for visual target ambiguity
@@ -8,12 +8,18 @@ for the edit/destructive clarification types AND for visual target ambiguity
 overlay and notch voice surface now honor macOS Reduce Motion by snapping
 element pointing and suppressing decorative bubble/notch animation, and
 disabled-by-default runtime smoke hooks can synthesize and resolve a
-clarification after an Xcode Debug build. Full manual runtime smoke remains
-queued.
+clarification after an Xcode Debug build. The full runtime smoke flow now
+**passes 7/7** (verified 2026-06-13 via `scripts/smoke-runtime-hooks.sh`
+against a Debug build): app-ready, panel show, panel hide, cursor annotations
+off, cursor annotations on, clarification shown, clarification resolved to the
+expected transcript, and approval-popup cancellation. The approval-cancel step
+requires `requiresActionApproval=1`; under the user's auto-approve config the
+synthetic plan correctly resolves to "allowed" with no dialog.
 
 Remaining v1 scope:
-- Promote the existing runtime smoke hooks into a full manual smoke flow that
-  exercises every HUD state once.
+- ~~Promote the existing runtime smoke hooks into a full manual smoke flow that
+  exercises every HUD state once.~~ **Done** (2026-06-13): `scripts/smoke-runtime-hooks.sh`
+  drives and verifies every HUD state and passes 7/7 against a Debug build.
 
 Implementation note, 2026-06-13 (visual target ambiguity): when the executor
 produces multiple click candidates whose label-match confidences are near-tied
