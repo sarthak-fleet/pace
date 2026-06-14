@@ -25,7 +25,7 @@ struct PaceFMIntentClassification {
     @Guide(description: """
     The single best route for handling the user's turn.
     - chitchat: greetings, thanks, goodbyes, mic checks like "can you hear me", "are you there".
-    - pureKnowledge: factual or self-history questions answerable WITHOUT looking at the current screen ("what is HTML", "what apps did I use today").
+    - pureKnowledge: any question that wants a spoken answer WITHOUT looking at the current screen — factual questions ("what is HTML"), self-history ("what apps did I use today"), AND questions about you (Pace) yourself: what you can do, your features, who you are, how you work ("what can you do", "what all can you do", "who are you").
     - screenDescription: user wants Pace to look at and describe the current screen ("what's on the screen", "what am I looking at").
     - screenAction: user wants Pace to DO something via the action layer — click, type, open, launch, play, pause, create, draft, etc.
     - phoneLargeModel: user explicitly asked for a bigger/stronger model ("phone a large model", "hard mode", "use the big model").
@@ -60,7 +60,7 @@ enum PaceFMIntentRoute: String {
 @MainActor
 final class PaceFMIntentClassifier {
     private static let routingInstructions = """
-    You classify a single user voice turn into ONE routing category for Pace, a macOS voice companion. Pick the cheapest accurate route. When in doubt, prefer unknown over a wrong specific route — unknown triggers the full pipeline so nothing breaks.
+    You classify a single user voice turn into ONE routing category for Pace, a macOS voice companion. Pick the most accurate route. A turn that asks a question and wants a spoken answer — including questions about Pace itself ("what can you do") — is pureKnowledge, NOT unknown. Reserve unknown only for turns you genuinely cannot categorize; a clear question or a clear action is never unknown.
     """
 
     private var session: LanguageModelSession?
