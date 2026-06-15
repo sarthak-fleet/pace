@@ -1,5 +1,5 @@
 ---
-Status: wired — Phases 1–5. Recall is now UNIFIED-ONLY (semantic-or-BM25 over one index that's a superset of turns + facts + every connector source). The parallel lexical recall path is retired. `PaceLocalRetrieval` is retained as the connector INGESTION layer the resync reads from; deleting that store outright (rewriting every connector to emit memory entries directly) is the one remaining follow-up.
+Status: DONE — Phases 1–5. Recall is UNIFIED-ONLY (semantic-or-BM25 over one index that's a superset of turns + facts + every connector source); the parallel lexical recall path is retired. `PaceLocalRetrieval` is INTENTIONALLY RETAINED as the structured operational/ingestion layer (per-source enablement, source statuses + Settings Activity tab, journals, morning-brief structured `documents(forSource:)` reads, chat-history backing) with the unified index sitting on top as the semantic recall layer fed from it. Fully deleting it was scoped and DECIDED AGAINST: it would re-platform working non-recall infra for zero user-facing gain. The separation is legitimate (structured store vs. semantic recall), not a seam.
 owner: future Pace-repo agent
 priority: P0 — "she knows me" — the coherence layer the memory subsystems were missing
 ---
