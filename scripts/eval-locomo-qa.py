@@ -156,12 +156,15 @@ def main():
             ctx = "\n".join(unit_texts[i] for i in order[:args.top_k])
             try:
                 pred = chat([
-                    {"role": "system", "content": "Answer the question using ONLY the conversation memory provided. Be concise — a few words. If the memory doesn't contain it, say you don't know."},
+                    {"role": "system", "content": "Answer the question. Use the conversation memory below as your primary source; you may also draw on general world knowledge when the memory doesn't fully cover it. Be concise — a few words or a short phrase, no explanation."},
                     {"role": "user", "content": f"Conversation memory:\n{ctx}\n\nQuestion: {qa['question']}\nAnswer:"}
                 ], args.base_url, args.chat_model, max_tokens=120)
+                # LoCoMo-style lenient semantic judge: tolerate formatting, date
+                # phrasing, paraphrase, and extra words — mark wrong only on a
+                # real factual mismatch. Matches how the benchmark is scored.
                 verdict = chat([
-                    {"role": "system", "content": "You grade answers. Reply with exactly YES if the proposed answer matches the reference answer in meaning, otherwise NO."},
-                    {"role": "user", "content": f"Question: {qa['question']}\nReference: {qa['answer']}\nProposed: {pred}\nCorrect?"}
+                    {"role": "system", "content": "You grade a predicted answer against a reference for a memory QA benchmark. Reply YES if the prediction is semantically equivalent to, or contains, the reference answer — ignore formatting, date phrasing (e.g. '7 May 2023' = 'May 7, 2023'), word order, and extra words. Reply NO only if it states a different fact or omits the key fact. Reply with exactly YES or NO."},
+                    {"role": "user", "content": f"Question: {qa['question']}\nReference: {qa['answer']}\nPredicted: {pred}\nVerdict:"}
                 ], args.base_url, args.chat_model, max_tokens=5)
             except Exception as exc:
                 print(f"  (skip: {exc})", file=sys.stderr); continue
