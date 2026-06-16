@@ -153,6 +153,28 @@ protocol PaceScreenAnalysisClient: AnyObject, Sendable {
         screenshotImageData: Data,
         userIntent: String
     ) async throws -> LocalVLMScreenAnalysis
+
+    /// Set-of-Mark grounding: given a screenshot already overlaid with numbered
+    /// marks (0…markCount-1) and a description of what to click, return the mark
+    /// number on the matching element, or nil when none matches / not supported.
+    /// See PRD docs/prds/set-of-mark-click-recovery.md.
+    func groundMarkedClickTarget(
+        markedImageData: Data,
+        targetDescription: String,
+        markCount: Int
+    ) async throws -> Int?
+}
+
+extension PaceScreenAnalysisClient {
+    /// Default: grounding unsupported (e.g. the in-process placeholder). The
+    /// loopback HTTP client overrides this with a real VLM round-trip.
+    func groundMarkedClickTarget(
+        markedImageData: Data,
+        targetDescription: String,
+        markCount: Int
+    ) async throws -> Int? {
+        nil
+    }
 }
 
 enum PaceScreenAnalysisClientFactory {
@@ -399,6 +421,73 @@ final class LocalVLMClient: PaceScreenAnalysisClient, @unchecked Sendable {
             auditVLMCall(outcome: "decode_error", detail: String(error.localizedDescription.prefix(160)))
             throw error
         }
+    }
+
+    func groundMarkedClickTarget(
+        markedImageData: Data,
+        targetDescription: String,
+        markCount: Int
+    ) async throws -> Int? {
+        guard markCount > 0 else { return nil }
+
+        let chatCompletionsURL = baseURL.appendingPathComponent("chat/completions")
+        var request = URLRequest(url: chatCompletionsURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer lm-studio", forHTTPHeaderField: "Authorization")
+
+        let mediaType = Self.detectImageMediaType(for: markedImageData)
+        let imageDataURL = "data:\(mediaType);base64,\(markedImageData.base64EncodedString())"
+
+        let systemInstruction = """
+        You are a UI grounding model. The screenshot has numbered magenta marks \
+        on its UI elements, numbered 0 to \(markCount - 1). Reply with ONLY the \
+        single integer mark number drawn on the element that matches the target. \
+        Reply -1 if no mark is on a matching element. Output the number alone — \
+        no words, no punctuation, no JSON.
+        """
+        let userMessage: [[String: Any]] = [
+            ["type": "text", "text": "Target to click: \"\(targetDescription)\". Which mark number is on that element?"],
+            ["type": "image_url", "image_url": ["url": imageDataURL]]
+        ]
+        let requestBody: [String: Any] = [
+            "model": modelIdentifier,
+            "messages": [
+                ["role": "system", "content": systemInstruction],
+                ["role": "user", "content": userMessage]
+            ],
+            "temperature": 0,
+            "max_tokens": 16
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+
+        let (responseData, urlResponse) = try await urlSession.data(for: request)
+        guard let httpResponse = urlResponse as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            return nil
+        }
+        return Self.parseGroundedMarkNumber(fromResponseBody: responseData, markCount: markCount)
+    }
+
+    /// Pull the chosen mark integer out of the model's terse reply. Returns nil
+    /// for -1, out-of-range, or unparseable output so the caller drops recovery.
+    nonisolated static func parseGroundedMarkNumber(fromResponseBody responseData: Data, markCount: Int) -> Int? {
+        guard
+            let topLevel = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+            let choices = topLevel["choices"] as? [[String: Any]],
+            let message = choices.first?["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else {
+            return nil
+        }
+        // First signed integer anywhere in the reply (handles "7", "**7**",
+        // "mark 7", or "-1").
+        guard let match = content.range(of: "-?\\d+", options: .regularExpression),
+              let parsed = Int(content[match]) else {
+            return nil
+        }
+        guard parsed >= 0, parsed < markCount else { return nil }
+        return parsed
     }
 
     // MARK: - Response parsing

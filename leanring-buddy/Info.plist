@@ -29,6 +29,8 @@
 	<string>claude</string>
 	<key>EnableActions</key>
 	<string>true</string>
+	<key>EnableSetOfMarkClickRecovery</key>
+	<string>true</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>LocalPlannerBaseURL</key>

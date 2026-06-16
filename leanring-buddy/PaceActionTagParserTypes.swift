@@ -14,9 +14,36 @@ import Foundation
 
 // MARK: - Parsed action types
 
+/// Carried on an all-fail click observation so the agent loop can attempt
+/// Set-of-Mark recovery: render numbered marks on the screenshot and let the
+/// VLM visually re-pick the intended element. See PRD
+/// docs/prds/set-of-mark-click-recovery.md.
+nonisolated struct PaceSetOfMarkRecoveryRequest {
+    /// What the planner tried to click (the top candidate's label), used as the
+    /// VLM grounding instruction. Empty string when no label was available.
+    let targetDescription: String
+    /// The screenshot/display the failed click targeted, if known. Lets the
+    /// loop pick the matching capture + cached element map.
+    let screenNumber: Int?
+}
+
 nonisolated struct PaceActionExecutionObservation {
     let toolName: String
     let summary: String
+    /// Non-nil only on an all-fail click, to request Set-of-Mark recovery.
+    let setOfMarkRecovery: PaceSetOfMarkRecoveryRequest?
+
+    /// Explicit init (a defaulted `let` is excluded from the synthesized
+    /// memberwise init), so the recovery field is optional at every call site.
+    init(
+        toolName: String,
+        summary: String,
+        setOfMarkRecovery: PaceSetOfMarkRecoveryRequest? = nil
+    ) {
+        self.toolName = toolName
+        self.summary = summary
+        self.setOfMarkRecovery = setOfMarkRecovery
+    }
 
     static func formatForPlanner(_ observations: [PaceActionExecutionObservation]) -> String {
         observations

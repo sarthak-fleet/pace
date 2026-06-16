@@ -603,6 +603,35 @@ final class PaceScreenContextService {
         return cachedDescription.isEmpty ? nil : cachedDescription
     }
 
+    /// The full cached element map for a screen, if recent enough. Used by
+    /// Set-of-Mark click recovery to re-mark the same screenshot the failed
+    /// click was planned against. See PRD docs/prds/set-of-mark-click-recovery.md.
+    func cachedAnalysisIfFresh(
+        screenLabel: String,
+        maxAgeSeconds: TimeInterval = 120,
+        referenceDate: Date = Date()
+    ) -> LocalVLMScreenAnalysis? {
+        guard let cachedScreenAnalysis = perScreenAnalysisCache[screenLabel] else { return nil }
+        guard referenceDate.timeIntervalSince(cachedScreenAnalysis.capturedAt) <= maxAgeSeconds else {
+            return nil
+        }
+        return cachedScreenAnalysis.analysis
+    }
+
+    /// Set-of-Mark grounding passthrough to the loaded VLM. Best-effort: any
+    /// transport/parse error returns nil so the caller drops recovery.
+    func groundMarkedClickTarget(
+        markedImageData: Data,
+        targetDescription: String,
+        markCount: Int
+    ) async -> Int? {
+        try? await screenAnalysisClient.groundMarkedClickTarget(
+            markedImageData: markedImageData,
+            targetDescription: targetDescription,
+            markCount: markCount
+        )
+    }
+
     /// Drops every cached entry. Intended for analyzer-identity or
     /// display-set changes that should invalidate everything in one
     /// shot. Logs the reason so audit trails make the why visible.

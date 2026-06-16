@@ -4483,6 +4483,89 @@ You can turn this off at any time in Settings → Cloud bridge.
         return true
     }
 
+    /// Set-of-Mark click recovery: for any observation flagged as an all-fail
+    /// click, render numbered marks on the same screenshot the click was planned
+    /// against, ask the VLM which mark is the intended element, and re-click. On
+    /// success the failure observation is replaced with a recovery success; on
+    /// failure the original observation stands and the planner re-plans as
+    /// before. Only fires on a miss — the happy path is untouched. See PRD
+    /// docs/prds/set-of-mark-click-recovery.md.
+    private func attemptSetOfMarkClickRecovery(
+        observations: [PaceActionExecutionObservation],
+        screenCaptures: [CompanionScreenCapture]
+    ) async -> [PaceActionExecutionObservation] {
+        guard PaceUserPreferencesStore.boolWithInfoPlistSeed(
+            .enableSetOfMarkClickRecovery,
+            infoPlistKey: "EnableSetOfMarkClickRecovery"
+        ) else {
+            return observations
+        }
+        guard !screenCaptures.isEmpty else { return observations }
+
+        var updatedObservations = observations
+        for (observationIndex, observation) in observations.enumerated() {
+            guard let recoveryRequest = observation.setOfMarkRecovery else { continue }
+
+            // Pick the capture the failed click targeted: its screen number,
+            // else the cursor screen, else the first capture.
+            let targetCapture: CompanionScreenCapture
+            if let screenNumber = recoveryRequest.screenNumber,
+               screenNumber >= 1, screenNumber <= screenCaptures.count {
+                targetCapture = screenCaptures[screenNumber - 1]
+            } else if let cursorCapture = screenCaptures.first(where: { $0.isCursorScreen }) {
+                targetCapture = cursorCapture
+            } else {
+                targetCapture = screenCaptures[0]
+            }
+
+            // Reuse the element map built for the failed click; if it has aged
+            // out, skip recovery and let the original failure stand.
+            guard let cachedAnalysis = screenContextService.cachedAnalysisIfFresh(
+                screenLabel: targetCapture.label
+            ) else {
+                continue
+            }
+
+            let targetDescription = recoveryRequest.targetDescription.isEmpty
+                ? "the element the user asked to click"
+                : recoveryRequest.targetDescription
+
+            let resolvedLocation = await PaceSetOfMarkClickRecovery.resolve(
+                inputs: PaceSetOfMarkClickRecovery.Inputs(
+                    screenshotImageData: targetCapture.imageData,
+                    elements: cachedAnalysis.elements,
+                    targetDescription: targetDescription,
+                    screenNumber: recoveryRequest.screenNumber
+                ),
+                renderMarks: { imageData, boxes in
+                    PaceSetOfMarkRenderer.drawMarks(onJPEG: imageData, boxes: boxes)
+                },
+                groundMark: { [weak self] markedImageData, target, markCount in
+                    await self?.screenContextService.groundMarkedClickTarget(
+                        markedImageData: markedImageData,
+                        targetDescription: target,
+                        markCount: markCount
+                    ) ?? nil
+                }
+            )
+
+            guard let resolvedLocation else { continue }
+
+            let didRecover = await actionExecutor.executeRecoveredClick(
+                at: resolvedLocation,
+                screenCaptures: screenCaptures
+            )
+            if didRecover {
+                print("🎯 Set-of-Mark recovery succeeded for \"\(targetDescription)\"")
+                updatedObservations[observationIndex] = PaceActionExecutionObservation(
+                    toolName: "click_candidates",
+                    summary: "Recovered the missed click via on-screen marks: clicked \"\(targetDescription)\"."
+                )
+            }
+        }
+        return updatedObservations
+    }
+
     /// Resolves a pending click-target clarification by clicking the
     /// candidate the user tapped. Executes the chosen target directly via
     /// a one-candidate plan — does NOT re-run the planner. Falls back to
@@ -5473,6 +5556,13 @@ You can turn this off at any time in Settings → Cloud bridge.
                                         screenCaptures: screenCaptures
                                     )
                                 }
+                                // Set-of-Mark recovery: if any click missed,
+                                // re-mark the screenshot and let the VLM re-pick
+                                // before reporting failure. PRD set-of-mark-click-recovery.
+                                toolObservations = await attemptSetOfMarkClickRecovery(
+                                    observations: toolObservations,
+                                    screenCaptures: screenCaptures
+                                )
                                 if !toolObservations.isEmpty {
                                     print("🧰 Tool observations:\n\(PaceActionExecutionObservation.formatForPlanner(toolObservations))")
                                     appendActionResult(.completed(observations: toolObservations))

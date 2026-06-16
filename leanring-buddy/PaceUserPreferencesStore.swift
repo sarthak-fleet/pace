@@ -84,6 +84,11 @@ enum PaceUserPreferenceKey: String {
     /// safe because it degrades to lexical-only when embeddings are
     /// unavailable. Users can turn it off in Settings → Memory.
     case useUnifiedMemoryRecall
+    /// When ON, a click that misses (all candidates fail) triggers Set-of-Mark
+    /// recovery: numbered marks are drawn on the screenshot and the VLM picks
+    /// the right mark for a re-click. Default ON — it only fires on a miss, so
+    /// the happy path is unaffected. See PRD docs/prds/set-of-mark-click-recovery.md.
+    case enableSetOfMarkClickRecovery
 }
 
 enum PaceUserPreferencesStore {

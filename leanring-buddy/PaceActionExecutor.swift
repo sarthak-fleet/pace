@@ -1027,10 +1027,43 @@ final class PaceActionExecutor {
         let skippedCandidateText = skippedCandidateCount > 0
             ? " \(skippedCandidateCount) lower-ranked candidate\(skippedCandidateCount == 1 ? " was" : "s were") not tried."
             : ""
+        // Attach a Set-of-Mark recovery request: the top candidate carries the
+        // intended target (its label) and which screen the click aimed at, so
+        // the agent loop can render numbered marks and let the VLM visually
+        // re-pick. See PRD docs/prds/set-of-mark-click-recovery.md.
+        let topCandidate = orderedCandidates.first
+        let recoveryRequest = PaceSetOfMarkRecoveryRequest(
+            targetDescription: topCandidate?.label ?? "",
+            screenNumber: topCandidate?.location?.screenNumber
+        )
         return PaceActionExecutionObservation(
             toolName: "click_candidates",
-            summary: "Click failed after trying \(attemptedCandidates.count) of \(orderedCandidates.count) candidate\(orderedCandidates.count == 1 ? "" : "s"): \(attemptedCandidateSummary).\(skippedCandidateText)"
+            summary: "Click failed after trying \(attemptedCandidates.count) of \(orderedCandidates.count) candidate\(orderedCandidates.count == 1 ? "" : "s"): \(attemptedCandidateSummary).\(skippedCandidateText)",
+            setOfMarkRecovery: recoveryRequest
         )
+    }
+
+    /// Re-attempt a single click at a location recovered via Set-of-Mark.
+    /// Returns true when the click produces an observable state change (i.e. the
+    /// recovery worked). See PRD docs/prds/set-of-mark-click-recovery.md.
+    func executeRecoveredClick(
+        at location: ScreenshotPixelLocation,
+        screenCaptures: [CompanionScreenCapture]
+    ) async -> Bool {
+        let candidateSet = PaceClickCandidateSet(
+            candidates: [
+                PaceClickCandidate(
+                    location: location,
+                    label: nil,
+                    confidence: 1.0,
+                    expectStateChange: true
+                )
+            ],
+            clickCount: 1
+        )
+        // clickBestCandidate returns nil on an observable state change (success)
+        // and a failure observation when nothing changed.
+        return await clickBestCandidate(candidateSet, screenCaptures: screenCaptures) == nil
     }
 
     private func clickCandidate(
