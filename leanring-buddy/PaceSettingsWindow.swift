@@ -47,6 +47,7 @@ final class PaceSettingsWindowManager {
 private enum PaceSettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
     case planner = "Planner"
+    case research = "Research"
     case proactive = "Proactive"
     case mcp = "MCP"
     case permissions = "Permissions"
@@ -66,6 +67,8 @@ private enum PaceSettingsTab: String, CaseIterable, Identifiable {
             return "switch.2"
         case .planner:
             return "brain.head.profile"
+        case .research:
+            return "magnifyingglass.circle"
         case .proactive:
             return "bell.badge"
         case .mcp:
@@ -155,6 +158,8 @@ struct PaceSettingsWindowView: View {
                     PaceGeneralSettingsTab(companionManager: companionManager)
                 case .planner:
                     PacePlannerSettingsTab(companionManager: companionManager)
+                case .research:
+                    PaceResearchSettingsTab(companionManager: companionManager)
                 case .proactive:
                     PaceProactiveSettingsTab(companionManager: companionManager)
                 case .mcp:

@@ -346,7 +346,11 @@ enum PaceRetrievalContextPolicy {
         switch route {
         case .chitchatFastPath, .phoneLargeModel:
             return false
-        case .answerDirectly, .executeTool, .fullPipeline:
+        case .answerDirectly, .executeTool, .fullPipeline, .research:
+            // Research turns benefit from the same lexical retrieval
+            // pass — local notes / past pace turns / journal entries
+            // are exactly the kind of grounding a research prompt
+            // wants to lean on.
             return containsOffscreenContextReference(normalizedTranscript)
         case .readScreen:
             return containsExplicitComparisonToLocalContext(normalizedTranscript)

@@ -194,6 +194,15 @@ final class DirectAPIPlannerClient: BuddyPlannerClient {
 
         var accumulatedResponseText = ""
         var hasLoggedTimeToFirstToken = false
+        // Provider-reported token counts. We parse `usage` blocks from
+        // wherever they appear in the SSE stream (OpenAI surfaces them
+        // in the final chunk when `stream_options.include_usage=true`;
+        // Anthropic's native API exposes them in `message_start` and
+        // `message_delta` events). Stays nil when the upstream doesn't
+        // surface usage info — that's acceptable; the dashboard's
+        // cost badge degrades gracefully.
+        var providerReportedInputTokenCount: Int?
+        var providerReportedOutputTokenCount: Int?
 
         for try await rawSSELine in byteStream.lines {
             guard rawSSELine.hasPrefix("data: ") else { continue }
@@ -206,6 +215,19 @@ final class DirectAPIPlannerClient: BuddyPlannerClient {
                     throw PaceDirectAPIError.malformedSSEPayload(rawLine: rawSSELine)
                 }
                 continue
+            }
+
+            // Pick up usage info wherever it shows up: top-level for
+            // OpenAI's include_usage final chunk; under `message` for
+            // Anthropic's message_start; sometimes nested inside the
+            // payload for the message_delta event.
+            if let usageDictionary = Self.extractUsageDictionary(from: payloadDictionary) {
+                if let inputTokens = Self.firstIntValue(in: usageDictionary, forKeys: ["input_tokens", "prompt_tokens"]) {
+                    providerReportedInputTokenCount = inputTokens
+                }
+                if let outputTokens = Self.firstIntValue(in: usageDictionary, forKeys: ["output_tokens", "completion_tokens"]) {
+                    providerReportedOutputTokenCount = outputTokens
+                }
             }
 
             guard let choices = payloadDictionary["choices"] as? [[String: Any]],
@@ -239,9 +261,47 @@ final class DirectAPIPlannerClient: BuddyPlannerClient {
             outcome: "ok",
             inputCharacterCount: estimatedInputCharacterCount,
             outputCharacterCount: strippedFinalText.count,
-            detail: "tier=directAPI provider=\(provider.rawValue)"
+            detail: "tier=directAPI provider=\(provider.rawValue)",
+            inputTokenCount: providerReportedInputTokenCount,
+            outputTokenCount: providerReportedOutputTokenCount
         )
         return (text: strippedFinalText, duration: duration)
+    }
+
+    /// Pulls a `usage` dictionary out of a payload dictionary, looking
+    /// at three places upstreams put it:
+    ///   - Top-level `usage` (OpenAI include_usage final chunk).
+    ///   - `message.usage` (Anthropic message_start event shape).
+    ///   - Nested under any "usage" key one level deep.
+    nonisolated private static func extractUsageDictionary(
+        from payloadDictionary: [String: Any]
+    ) -> [String: Any]? {
+        if let topLevelUsage = payloadDictionary["usage"] as? [String: Any] {
+            return topLevelUsage
+        }
+        if let messageDictionary = payloadDictionary["message"] as? [String: Any],
+           let nestedUsage = messageDictionary["usage"] as? [String: Any] {
+            return nestedUsage
+        }
+        return nil
+    }
+
+    /// First integer value for the first matching key in `keys`. Used
+    /// to fold OpenAI's `prompt_tokens`/`completion_tokens` and
+    /// Anthropic's `input_tokens`/`output_tokens` into the same lookup.
+    nonisolated private static func firstIntValue(
+        in dictionary: [String: Any],
+        forKeys keys: [String]
+    ) -> Int? {
+        for key in keys {
+            if let intValue = dictionary[key] as? Int {
+                return intValue
+            }
+            if let doubleValue = dictionary[key] as? Double {
+                return Int(doubleValue)
+            }
+        }
+        return nil
     }
 
     /// Builds the URLRequest that `generateResponseStreaming` would fire,

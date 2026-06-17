@@ -27,6 +27,45 @@ nonisolated struct PaceAPIAuditEntry: Codable, Equatable {
     let inputCharacterCount: Int?
     let outputCharacterCount: Int?
     let detail: String?
+    /// Provider-reported input token count (Anthropic `usage.input_tokens`
+    /// or OpenAI `usage.prompt_tokens`). Nil when the call site doesn't
+    /// have the usage data (e.g. local planner). Used by the Privacy
+    /// Dashboard to render a per-turn cost badge for Direct-API
+    /// research turns.
+    let inputTokenCount: Int?
+    /// Provider-reported output token count (Anthropic
+    /// `usage.output_tokens` / OpenAI `usage.completion_tokens`).
+    let outputTokenCount: Int?
+
+    /// Backwards-compatible decoder: older audit lines on disk don't
+    /// carry the token fields. They decode to nil.
+    init(
+        at: Date,
+        turnId: String?,
+        subsystem: String,
+        operation: String,
+        target: String,
+        durationMilliseconds: Int,
+        outcome: String,
+        inputCharacterCount: Int? = nil,
+        outputCharacterCount: Int? = nil,
+        detail: String? = nil,
+        inputTokenCount: Int? = nil,
+        outputTokenCount: Int? = nil
+    ) {
+        self.at = at
+        self.turnId = turnId
+        self.subsystem = subsystem
+        self.operation = operation
+        self.target = target
+        self.durationMilliseconds = durationMilliseconds
+        self.outcome = outcome
+        self.inputCharacterCount = inputCharacterCount
+        self.outputCharacterCount = outputCharacterCount
+        self.detail = detail
+        self.inputTokenCount = inputTokenCount
+        self.outputTokenCount = outputTokenCount
+    }
 }
 
 nonisolated final class PaceAPIAuditLog: @unchecked Sendable {
@@ -84,6 +123,8 @@ nonisolated final class PaceAPIAuditLog: @unchecked Sendable {
         inputCharacterCount: Int? = nil,
         outputCharacterCount: Int? = nil,
         detail: String? = nil,
+        inputTokenCount: Int? = nil,
+        outputTokenCount: Int? = nil,
         at timestamp: Date = Date()
     ) {
         let entry = PaceAPIAuditEntry(
@@ -96,7 +137,9 @@ nonisolated final class PaceAPIAuditLog: @unchecked Sendable {
             outcome: outcome,
             inputCharacterCount: inputCharacterCount,
             outputCharacterCount: outputCharacterCount,
-            detail: detail
+            detail: detail,
+            inputTokenCount: inputTokenCount,
+            outputTokenCount: outputTokenCount
         )
         queue.async { [weak self] in
             self?.append(entry)

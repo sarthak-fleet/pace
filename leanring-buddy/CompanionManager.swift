@@ -472,7 +472,10 @@ final class CompanionManager: ObservableObject {
         switch intent {
         case .screenAction, .screenDescription:
             return true
-        case .pureKnowledge, .chitchat, .phoneLargeModel, .unknown:
+        case .pureKnowledge, .chitchat, .phoneLargeModel, .research, .unknown:
+            // Research turns drive a heavyweight planner with a
+            // larger step budget; the speculative race over a local
+            // Apple FM lite path isn't relevant to them.
             return false
         }
     }
@@ -2243,6 +2246,8 @@ You can turn this off at any time in Settings → Cloud bridge.
             return "planning local action"
         case .phoneLargeModel:
             return "local-only fallback"
+        case .research:
+            return "researching"
         case .fullPipeline:
             return "checking screen and tools"
         }
@@ -2429,10 +2434,11 @@ You can turn this off at any time in Settings → Cloud bridge.
     ) {
         let intentIsEligibleForExtraction: Bool
         switch intentRoute {
-        case .pureKnowledge, .screenDescription, .chitchat, .unknown:
+        case .pureKnowledge, .screenDescription, .chitchat, .unknown, .research:
             // `.unknown` runs the full pipeline anyway; we let it
             // through so an unclassified turn doesn't silently drop
-            // an extractable fact.
+            // an extractable fact. Research turns are knowledge-style
+            // so their summarized output is fact-extractable too.
             intentIsEligibleForExtraction = true
         case .screenAction, .phoneLargeModel:
             intentIsEligibleForExtraction = false
@@ -5051,6 +5057,24 @@ You can turn this off at any time in Settings → Cloud bridge.
             return
         }
 
+        // Research-cancel fast path: when a research turn is in flight,
+        // "stop researching" / "cancel research" cancels the running
+        // task without burning a planner round-trip. When NO research
+        // turn is active, the parse still matches but the cancel is a
+        // safe no-op — same shape as the clear-annotations fast path.
+        if PaceResearchCancelCommandParser.parse(transcript) != nil {
+            print("🛑 Research-cancel voice command")
+            currentResponseTask?.cancel()
+            currentResponseTask = nil
+            isOffDeviceTurnInFlight = false
+            voiceState = .idle
+            currentTurnHUDState = .done("stopped researching")
+            Task { [weak self] in
+                try? await self?.ttsClient.speakText("Stopped.")
+            }
+            return
+        }
+
         if let alwaysListeningCommand = PaceAlwaysListeningCommandParser.parse(transcript) {
             print("🎙️ Always-listening voice command: \(alwaysListeningCommand)")
             handleAlwaysListeningCommand(alwaysListeningCommand, transcript: transcript)
@@ -5111,10 +5135,83 @@ You can turn this off at any time in Settings → Cloud bridge.
             handleClarificationTurn(transcript: transcript, clarification: clarification)
             return
         }
+        // Research escalation route — "research X" / "look into Y" /
+        // "compare A vs B" type turns. Per-turn planner override
+        // pulled from PaceResearchTierStore (CLI bridge to Claude
+        // Code, OR Direct API to Anthropic Opus, OR off → fall
+        // through to the .phoneLargeModel route below). The override
+        // lives in `researchTurnPlannerOverride` (declared just before
+        // the agent loop so the loop picks it up). When the user
+        // hasn't configured a research tier yet, downgrade the route
+        // to .phoneLargeModel so the existing cloud-bridge path still
+        // works. Setting researchTurnMaxAgentSteps higher than
+        // AgentMaxSteps gives the research loop room to fetch + read
+        // + synthesize across MCP tool calls.
+        var researchTurnPlannerOverride: (any BuddyPlannerClient)?
+        var researchTurnMaxAgentSteps: Int?
+        var researchTurnConfiguration: PaceResearchTierConfiguration?
+        var mutableIntentPrediction = intentPrediction
+        if mutableIntentPrediction.route == .research {
+            let loadedResearchConfiguration = PaceResearchTierStore.loadConfiguration()
+            researchTurnConfiguration = loadedResearchConfiguration
+            switch loadedResearchConfiguration.tier {
+            case .off:
+                print("🔬 Research intent but tier is OFF — falling back to phoneLargeModel route")
+                mutableIntentPrediction = PaceIntentPrediction(
+                    intent: .phoneLargeModel,
+                    confidence: intentPrediction.confidence
+                )
+            case .cliBridge:
+                let cliBridgeBaseURL = URL(string: "http://localhost:3456") ?? URL(fileURLWithPath: "/")
+                researchTurnPlannerOverride = CloudBridgePlannerClient(
+                    bridgeBaseURL: cliBridgeBaseURL,
+                    upstreamProvider: loadedResearchConfiguration.cliBridgeUpstream,
+                    modelIdentifier: loadedResearchConfiguration.cliBridgeModel
+                )
+                researchTurnMaxAgentSteps = loadedResearchConfiguration.maximumAgentSteps
+                isOffDeviceTurnInFlight = true
+                let upstreamLabel = loadedResearchConfiguration.cliBridgeUpstream.displayLabel.lowercased()
+                currentTurnHUDState = .understanding("researching with \(upstreamLabel) opus…")
+                print("🔬 Routing research turn to CLI bridge (\(upstreamLabel))")
+                Task { [weak self] in
+                    try? await self?.ttsClient.speakText(
+                        "Researching that — give me a minute."
+                    )
+                }
+            case .directAPI:
+                let resolvedEndpointURLString = PaceResearchTierStore
+                    .resolvedDirectAPIEndpointURLString(for: loadedResearchConfiguration)
+                if let resolvedEndpointURL = URL(string: resolvedEndpointURLString),
+                   !resolvedEndpointURLString.isEmpty {
+                    researchTurnPlannerOverride = DirectAPIPlannerClient(
+                        provider: loadedResearchConfiguration.directAPIProvider,
+                        endpointURL: resolvedEndpointURL,
+                        modelIdentifier: loadedResearchConfiguration.directAPIModelIdentifier
+                    )
+                    researchTurnMaxAgentSteps = loadedResearchConfiguration.maximumAgentSteps
+                    isOffDeviceTurnInFlight = true
+                    let providerLabel = loadedResearchConfiguration.directAPIProvider.displayLabel.lowercased()
+                    currentTurnHUDState = .understanding("researching with \(providerLabel) \(loadedResearchConfiguration.directAPIModelIdentifier)…")
+                    print("🔬 Routing research turn to Direct API (\(providerLabel)/\(loadedResearchConfiguration.directAPIModelIdentifier))")
+                    Task { [weak self] in
+                        try? await self?.ttsClient.speakText(
+                            "Researching that — give me a minute."
+                        )
+                    }
+                } else {
+                    print("⚠️ Research Direct-API endpoint URL is empty/invalid; falling back to phoneLargeModel route")
+                    mutableIntentPrediction = PaceIntentPrediction(
+                        intent: .phoneLargeModel,
+                        confidence: intentPrediction.confidence
+                    )
+                }
+            }
+        }
+
         // When the intent is phoneLargeModel and the user has set up the cloud bridge,
         // route the turn through the bridge instead of refusing it with a local-only message.
         // This is the one intentional break of the no-cloud-LLM principle — consent-gated.
-        if intentPrediction.route == .phoneLargeModel {
+        if mutableIntentPrediction.route == .phoneLargeModel {
             let currentBridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
             let bridgeIsActiveForThisTurn = currentBridgeConfiguration.hasUserAcceptedConsent
                 && (currentBridgeConfiguration.mode == .hybrid
@@ -5150,7 +5247,7 @@ You can turn this off at any time in Settings → Cloud bridge.
                 // Bridge is off or consent not given — keep the existing local-only message.
                 if let unsupportedResponse = PaceIntentUnsupportedDetector.unsupportedResponse(
                     for: transcript,
-                    prediction: intentPrediction
+                    prediction: mutableIntentPrediction
                 ) {
                     print("🚫 Unsupported intent: \(unsupportedResponse.reason)")
                     handleUnsupportedTurn(transcript: transcript, unsupportedResponse: unsupportedResponse)
@@ -5159,23 +5256,27 @@ You can turn this off at any time in Settings → Cloud bridge.
             }
         } else if let unsupportedResponse = PaceIntentUnsupportedDetector.unsupportedResponse(
             for: transcript,
-            prediction: intentPrediction
+            prediction: mutableIntentPrediction
         ) {
             print("🚫 Unsupported intent: \(unsupportedResponse.reason)")
             handleUnsupportedTurn(transcript: transcript, unsupportedResponse: unsupportedResponse)
             return
         }
-        if intentPrediction.intent == .chitchat {
-            print("🎯 Intent: chitchat (confidence \(String(format: "%.2f", intentPrediction.confidence))) — fast-path")
+        if mutableIntentPrediction.intent == .chitchat {
+            print("🎯 Intent: chitchat (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — fast-path")
             handleChitchatFastPath(transcript: transcript)
             return
         }
-        if intentPrediction.route == .answerDirectly {
-            print("🎯 Intent: pureKnowledge (confidence \(String(format: "%.2f", intentPrediction.confidence))) — text-only planner")
+        if mutableIntentPrediction.route == .answerDirectly {
+            print("🎯 Intent: pureKnowledge (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — text-only planner")
             handleTextOnlyPlannerFastPath(transcript: transcript)
             return
         }
-        if let fastActionParseResult = PaceFastActionCommandParser.parse(transcript: transcript) {
+        // Fast local-action path is skipped for research turns —
+        // research wants the heavyweight planner, not a deterministic
+        // "open Music" shortcut.
+        if researchTurnPlannerOverride == nil,
+           let fastActionParseResult = PaceFastActionCommandParser.parse(transcript: transcript) {
             print("🎯 Intent: fastLocalAction — skipping screenshot, VLM, and planner")
             handleFastLocalActionPath(
                 transcript: transcript,
@@ -5183,14 +5284,30 @@ You can turn this off at any time in Settings → Cloud bridge.
             )
             return
         }
-        print("🎯 Intent: \(intentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", intentPrediction.confidence))) — \(intentPrediction.route.rawValue)")
-        currentTurnHUDState = .understanding(routeHUDDetail(for: intentPrediction))
+        print("🎯 Intent: \(mutableIntentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — \(mutableIntentPrediction.route.rawValue)")
+        currentTurnHUDState = .understanding(routeHUDDetail(for: mutableIntentPrediction))
+
+        // Capture for the Task closure: a Sendable bundle of the
+        // per-turn planner override + step ceiling so the agent loop
+        // body doesn't have to read CompanionManager state for them.
+        let plannerClientForThisTurn: any BuddyPlannerClient = researchTurnPlannerOverride ?? plannerClient
+        let capturedResearchConfiguration = researchTurnConfiguration
 
         currentResponseTask = Task {
             voiceState = .processing
 
             let turnStartedAt = Date()
-            let maxAgentStepCount = PaceTagParsers.readMaxAgentStepCount()
+            // Research turns get a larger step ceiling from
+            // PaceResearchTierStore so the planner can fetch + read +
+            // synthesize across multiple MCP calls. Other turns use
+            // the existing Info.plist AgentMaxSteps default.
+            let maxAgentStepCount = researchTurnMaxAgentSteps
+                ?? PaceTagParsers.readMaxAgentStepCount()
+            // Cumulative coarse output-token estimate across the turn.
+            // When non-nil, the loop bails once it crosses the
+            // research config's perTurnTokenBudgetCap so a runaway
+            // loop can't blow the user's bill.
+            var cumulativeOutputTokenEstimate = 0
             var stepIndex = 0
             var currentTurnUserPrompt = transcript
             var pendingPostActionFeedbackText: String?
@@ -5253,8 +5370,12 @@ You can turn this off at any time in Settings → Cloud bridge.
                     // Mark this turn as off-device for the amber-tint
                     // capsule when the active planner is anything other
                     // than the on-device tiers (DirectAPI, alwaysBridge).
-                    if plannerClient is DirectAPIPlannerClient
-                        || plannerClient is CloudBridgePlannerClient {
+                    // `plannerClientForThisTurn` covers both the normal
+                    // configured planner and the per-turn research
+                    // override that may have swapped in Cloud Bridge or
+                    // Direct API just for this turn.
+                    if plannerClientForThisTurn is DirectAPIPlannerClient
+                        || plannerClientForThisTurn is CloudBridgePlannerClient {
                         isOffDeviceTurnInFlight = true
                     }
 
@@ -5353,10 +5474,13 @@ You can turn this off at any time in Settings → Cloud bridge.
                         // 5. Run the planner. Text-only planners get an empty
                         //    images list; the VLM element-map text inside
                         //    userPromptForPlanner is their only view of the screen.
+                        //    `plannerClientForThisTurn` is the per-turn planner
+                        //    override (research tier swap) when set, else the
+                        //    standard `plannerClient` Pace was constructed with.
                         let imagesForPlanner: [(data: Data, label: String)] =
-                            plannerClient.supportsImageInput ? labeledImages : []
+                            plannerClientForThisTurn.supportsImageInput ? labeledImages : []
 
-                        let (singlePlannerResponseText, _) = try await plannerClient.generateResponseStreaming(
+                        let (singlePlannerResponseText, _) = try await plannerClientForThisTurn.generateResponseStreaming(
                             images: imagesForPlanner,
                             systemPrompt: systemPromptForTurn,
                             conversationHistory: historyForPlanner,
@@ -5725,15 +5849,30 @@ You can turn this off at any time in Settings → Cloud bridge.
                     // invent spurious follow-ups (it dictated the user's own
                     // command on an 8-step runaway). Multi-action sequences
                     // ride in one envelope via payload.calls instead.
+                    // Token-budget backstop for research turns. Coarse
+                    // chars→tokens estimate (chars / 4) is precise
+                    // enough for a "your bill is about to balloon"
+                    // ceiling. Skipped when no research configuration
+                    // is in play.
+                    if let researchConfiguration = capturedResearchConfiguration {
+                        cumulativeOutputTokenEstimate += fullResponseText.count / 4
+                        if cumulativeOutputTokenEstimate >= researchConfiguration.perTurnTokenBudgetCap {
+                            print("⛔ Research turn hit token budget cap (~\(cumulativeOutputTokenEstimate) tokens / ceiling \(researchConfiguration.perTurnTokenBudgetCap)) — bailing")
+                            await MainActor.run {
+                                self.currentTurnHUDState = .done("hit token budget")
+                            }
+                            break agentStepLoop
+                        }
+                    }
                     let exitLoop = plannerSignaledDone
                         || actionParseResult.actions.isEmpty
                         || !actionExecutor.actionsAreEnabled
                         || userDeniedActionApproval
-                        || plannerClient.usesStructuredActionOutput
+                        || plannerClientForThisTurn.usesStructuredActionOutput
                     if exitLoop {
                         if plannerSignaledDone {
                             print("✅ Agent loop: planner signaled [DONE] at step \(stepIndex)")
-                        } else if plannerClient.usesStructuredActionOutput {
+                        } else if plannerClientForThisTurn.usesStructuredActionOutput {
                             print("✅ Agent loop: structured-output turn is single-shot — stopping after step \(stepIndex)")
                         }
                         break agentStepLoop

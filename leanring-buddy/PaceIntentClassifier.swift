@@ -47,6 +47,15 @@ enum PaceIntent: String, CaseIterable {
     /// behind one switch without retraining the classifier.
     case phoneLargeModel
 
+    /// Research-class turn ("research X", "look into Y", "compare A vs
+    /// B", "investigate Z"). Routed through `PaceResearchTierStore`'s
+    /// configured tier — Anthropic Opus via Direct API, or Claude Opus
+    /// via CLI bridge — with a larger step budget so the planner can
+    /// fetch + read + synthesize across many MCP calls. Falls back to
+    /// `.phoneLargeModel` when the user hasn't opted into a research
+    /// tier yet.
+    case research
+
     /// Classifier could not confidently assign one of the above. The
     /// caller MUST treat this as "run the full pipeline" — never skip
     /// the VLM or planner on an unknown intent.
@@ -72,6 +81,8 @@ struct PaceIntentPrediction: Equatable {
             return .executeTool
         case .phoneLargeModel:
             return .phoneLargeModel
+        case .research:
+            return .research
         case .unknown:
             return .fullPipeline
         }
@@ -84,6 +95,7 @@ enum PaceIntentRoute: String, Equatable {
     case readScreen
     case executeTool
     case phoneLargeModel
+    case research
     case fullPipeline
 }
 
@@ -243,7 +255,37 @@ final class PaceIntentClassifier {
     private static let largeModelHints: [String] = [
         "phone a large model", "ask the big model", "use the big model",
         "use a large model", "call the large model", "hard mode",
-        "think deeply", "deep research this", "stronger model",
+        "think deeply", "stronger model",
+    ]
+
+    /// Research-class triggers — phrases that suggest the user wants
+    /// Pace to take a long, multi-step research turn (fetch + read +
+    /// synthesize) against the configured research-tier model. Checked
+    /// BEFORE the action-verb heuristic so "research X" routes to
+    /// `.research` instead of being mis-classified as a tool action.
+    /// Single-word "research" without trailing context is intentionally
+    /// missing — "I researched HTML yesterday" should NOT trip the
+    /// research lane.
+    private static let researchHints: [String] = [
+        "research ",
+        "do research on",
+        "do some research on",
+        "research the ",
+        "deep research",
+        "look into ",
+        "dig into ",
+        "investigate ",
+        "find sources ",
+        "find me sources ",
+        "summarize sources",
+        "summarise sources",
+        "what's the latest on",
+        "whats the latest on",
+        "give me a writeup on",
+        "give me a write-up on",
+        "compare ",
+        " vs ",
+        " versus ",
     ]
 
     private func ruleBasedClassify(_ transcript: String) -> PaceIntentPrediction {
@@ -259,6 +301,15 @@ final class PaceIntentClassifier {
             if punctuationTrimmedTranscript == chitchatPhrase
                 || lowercaseTranscript.hasPrefix(chitchatPhrase + " ") {
                 return PaceIntentPrediction(intent: .chitchat, confidence: 0.95)
+            }
+        }
+
+        // Research keywords checked BEFORE phoneLargeModel because
+        // "deep research this" used to route to phoneLargeModel and we
+        // want it to land on the more-specific research lane now.
+        for researchHint in Self.researchHints {
+            if lowercaseTranscript.contains(researchHint) {
+                return PaceIntentPrediction(intent: .research, confidence: 0.92)
             }
         }
 
