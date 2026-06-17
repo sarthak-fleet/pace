@@ -28,13 +28,26 @@ enum DS {
 
         // ── Backgrounds ──────────────────────────────────────────────
 
-        /// The deepest background — used for the main app window fill.
-        static let background = Color(hex: "#101211")
+        /// The deepest background — pure black. Sets a premium,
+        /// contrast-forward dark surface that lets the accent blue
+        /// and any white-opacity-elevated cards pop without the
+        /// "off-black gray" muddiness lighter values introduce.
+        static let background = Color.black
+
+        /// Card / panel surface that sits one elevation above the
+        /// base background. Pure-black main surface means cards need
+        /// their OWN tint (rather than the previous "opacity over
+        /// off-black gray" trick) so they read as elevated. Very dark
+        /// neutral with a near-imperceptible warmth so the UI doesn't
+        /// feel like a flat OLED test pattern.
+        static let surfaceElevated = Color(hex: "#0B0B0D")
 
         // ── Borders ──────────────────────────────────────────────────
 
-        /// Subtle border — used for card outlines, dividers, input field borders.
-        static let borderSubtle = Color(hex: "#373B39")
+        /// Subtle border — used for card outlines, dividers, input
+        /// field borders. Slightly cooler now so dividers stay
+        /// visible against pure black without feeling industrial.
+        static let borderSubtle = Color(hex: "#2A2D31")
 
         // ── Text ─────────────────────────────────────────────────────
 
