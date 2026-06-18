@@ -32,6 +32,35 @@ final class PaceVisionOCRClient {
     /// inside the user's natural speech window so we use it.
     private let recognitionLevel: VNRequestTextRecognitionLevel = .accurate
 
+    /// Recognition languages Vision should bias toward, derived from
+    /// the user's `Locale.preferredLanguages` and intersected with the
+    /// tags Vision supports on this OS. Stolen from auge — gives
+    /// non-English UIs first-class OCR instead of mis-recognising
+    /// umlauts/CJK as garbled ASCII. Computed once at init (Vision's
+    /// supported-language query is the slow part), then handed to
+    /// every request.
+    private let resolvedRecognitionLanguages: [String]
+
+    init() {
+        let supportedTagsFromVision: [String]
+        do {
+            // Default revision picks the current OS's best model. We
+            // bias by `recognitionLevel` so the supported-set matches
+            // what Vision will actually use at request time.
+            let probeRequest = VNRecognizeTextRequest()
+            probeRequest.recognitionLevel = .accurate
+            supportedTagsFromVision = try probeRequest.supportedRecognitionLanguages()
+        } catch {
+            print("⚠️  Vision supported-language query failed: \(error). Falling back to en-US only.")
+            supportedTagsFromVision = ["en-US"]
+        }
+        self.resolvedRecognitionLanguages = PaceVisionOCRLanguageResolver.resolveRecognitionLanguages(
+            preferredLanguagesFromLocale: Locale.preferredLanguages,
+            supportedLanguagesFromVision: supportedTagsFromVision
+        )
+        print("👁️  OCR recognition languages: \(resolvedRecognitionLanguages.joined(separator: ", "))")
+    }
+
     /// Recognise text in a screenshot. JPEG (or PNG) bytes go in,
     /// the list of detected text + bboxes comes out. Throws on hard
     /// decoder errors; an empty result on a blank screen is normal.
@@ -76,8 +105,13 @@ final class PaceVisionOCRClient {
                             * CGFloat(screenshotHeightInPixels)
                     )
 
+                    // NFC-normalise each box so downstream string
+                    // matching compares apples to apples (composed
+                    // diacritics vs. decomposed). Cheap to do once
+                    // here; expensive to debug later when "é" looks
+                    // identical but compares unequal.
                     return RecognizedTextBox(
-                        text: trimmedText,
+                        text: PaceOCRPostProcessor.normalizeUnicodeForOCRComparison(trimmedText),
                         pixelBoundingBox: [pixelX, pixelY, pixelW, pixelH]
                     )
                 }
@@ -86,6 +120,14 @@ final class PaceVisionOCRClient {
             }
             request.recognitionLevel = recognitionLevel
             request.usesLanguageCorrection = true
+            request.recognitionLanguages = resolvedRecognitionLanguages
+            // macOS 13+ — Vision detects which language each text block
+            // is in and routes accordingly. Lets a mixed-language UI
+            // (English app chrome + German document body) get both
+            // halves right without us pre-classifying.
+            if #available(macOS 13.0, *) {
+                request.automaticallyDetectsLanguage = true
+            }
 
             let imageRequestHandler = VNImageRequestHandler(
                 data: screenshotImageData,
@@ -146,10 +188,14 @@ enum PaceScreenContextMerger {
 
             guard !overlappingOCRTexts.isEmpty else { return vlmElement }
 
-            let orderedText = overlappingOCRTexts
+            // Top-to-bottom-then-left-to-right reading order, then
+            // dehyphenated join — soft-wrap hyphens at end-of-line
+            // collapse into the next line so a wrapped paragraph reads
+            // as one sentence instead of "exam- ple sentence".
+            let orderedSingleLineTexts = overlappingOCRTexts
                 .sorted { $0.1 < $1.1 }
                 .map { $0.0 }
-                .joined(separator: " ")
+            let orderedText = PaceOCRPostProcessor.joinSingleLineTextsDehyphenated(orderedSingleLineTexts)
 
             return LocalVLMScreenElement(
                 label: vlmElement.label,
