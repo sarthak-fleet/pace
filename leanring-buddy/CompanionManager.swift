@@ -587,7 +587,7 @@ final class CompanionManager: ObservableObject {
     /// opt-in live so a Settings change takes effect without relaunch.
     private lazy var memoryRetriever = PaceMemoryRetriever(
         memoryIndex: memoryIndex,
-        embeddingClient: LMStudioEmbeddingClient(),
+        embeddingClient: PaceChainedTextEmbeddingClient.makePaceDefault(),
         shouldInjectSensitiveTopics: {
             PaceUserPreferencesStore.bool(.injectSensitiveEpisodicTopics, default: false)
         }
@@ -688,7 +688,7 @@ final class CompanionManager: ObservableObject {
         let entryIds = entryIdsAndTexts.map { $0.id }
         let entryTexts = entryIdsAndTexts.map { $0.text }
         Task.detached(priority: .utility) { [weak self] in
-            let embeddingClient = LMStudioEmbeddingClient()
+            let embeddingClient = PaceChainedTextEmbeddingClient.makePaceDefault()
             guard
                 let embeddingVectors = try? await embeddingClient.embed(entryTexts),
                 embeddingVectors.count == entryIds.count
