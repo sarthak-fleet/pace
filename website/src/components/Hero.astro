@@ -1,124 +1,496 @@
 ---
-// Fleet landing standard pins this section's job:
-//   - Sell from the hero alone (80% don't scroll)
-//   - Headline under 10 words, fifth-grader parseable
-//   - One specific number (no adjectives like "fast" / "powerful")
-//   - One primary CTA, label describes the action
-//   - Demo above the fold (we use a CSS-only animated mock — no
-//     video file to ship, no waiting on a recording session)
-//   - No weak words: powerful, seamless, robust, amazing
+// "Pace lives inside this Mac" hero. A near-full-bleed faux-macOS
+// desktop frame becomes the showpiece: visitors see Pace's actual
+// menu-bar capsule + cursor + plan-then-execute response bubble
+// inside a recognisable Mac scene, not floating in a void.
+//
+// Nothing here is photographic — the whole desktop is composed in
+// HTML + CSS so it's pin-sharp on every screen, weighs almost
+// nothing, and stays editable in the same diff as the copy.
+//
+// Loop drives three states (idle → asked → answered) on a 14s cycle
+// so a visitor lingering long enough sees the full Pace turn play
+// out twice without scrolling. Reduced-motion users see the final
+// frame statically.
 ---
 
-<section class="px-6 pt-20 pb-24 md:pt-28 md:pb-32 max-w-6xl mx-auto">
-  <div class="grid md:grid-cols-2 gap-14 md:gap-12 items-center">
-    <!-- Left: headline + CTAs -->
-    <div class="pace-fade-up">
-      <div
-        class="inline-flex items-center gap-2 text-xs font-medium tracking-wide uppercase text-[var(--color-text-secondary)] mb-6 px-3 py-1 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]"
-      >
-        <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-positive)]"></span>
-        100% on-device · macOS 14+
-      </div>
+<section class="px-6 pt-16 md:pt-20 pb-10">
+  <div class="max-w-7xl mx-auto">
+    <!-- Editorial hero — first-person voice, single italic accent
+         in the headline, no rounded badge, no centered subhead
+         block. Long line of text reads like an essay opener, not
+         a SaaS landing page. -->
+    <div class="max-w-5xl mx-auto mb-10 md:mb-14 pace-fade-up">
+      <p class="text-sm tracking-wide text-[var(--color-text-muted)] mb-6 font-mono uppercase">
+        Pace · v1 · for macOS
+      </p>
 
-      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
-        The voice assistant
-        <br class="hidden md:block" />
-        <span class="text-[var(--color-accent)]">that doesn't phone home.</span>
+      <h1 class="pace-headline-display text-white">
+        I got tired of <span class="accent">Siri.</span>
+        <br />
+        So I made one that <span class="accent">stays on my Mac.</span>
       </h1>
 
-      <p class="mt-6 text-lg md:text-xl text-[var(--color-text-secondary)] leading-relaxed max-w-xl">
-        Talk to your Mac. Pace listens, reads your screen, and clicks for you —
-        all on your own silicon. No accounts, no servers, no monthly bill. The
-        first PTT answer arrives in under 500 ms.
-      </p>
-
-      <div class="mt-9 flex flex-col sm:flex-row gap-3">
-        <a href="#pricing" class="pace-cta-primary">
-          Download Pace — $29
-          <span aria-hidden="true">↓</span>
-        </a>
-        <a href="#what-it-does" class="pace-cta-secondary">See it work</a>
+      <div class="mt-8 md:mt-10 grid md:grid-cols-3 gap-6 md:gap-10 items-end">
+        <p class="pace-prose md:col-span-2 text-base md:text-lg">
+          Pace is a voice assistant for macOS. Hold ctrl+option, say something,
+          let go. It listens with your Mac's mic, reads your screen with a
+          vision model on the same Apple Silicon chip, and clicks things
+          for you. First answer in <strong>420 ms</strong>. No accounts.
+          No cloud. <strong>$29 once.</strong>
+        </p>
+        <p class="pace-margin-note text-right md:text-left md:pl-2 md:border-l md:border-[var(--color-border-subtle)]">
+          The whole point is that <em>nothing leaves your Mac.</em><br />
+          Including the bit where I tell you it doesn't.
+        </p>
       </div>
-
-      <p class="mt-4 text-sm text-[var(--color-text-muted)]">
-        Free with Apple Intelligence · One-time payment · No subscription
-      </p>
     </div>
 
-    <!-- Right: animated CSS-only demo -->
+    <!-- THE desktop. Wrapped in a rounded chrome that mirrors what
+         the user is actually about to install. -->
     <div class="pace-fade-up" style="animation-delay: 120ms">
-      <div class="relative">
-        <!-- Faux menu bar context to anchor the capsule visually. -->
-        <div
-          class="relative pace-card overflow-hidden p-0"
-          aria-label="Demo of Pace running in the macOS menu bar"
-        >
-          <!-- Menu bar -->
-          <div
-            class="bg-black px-4 py-2 flex items-center justify-between border-b border-[var(--color-border-subtle)]"
-          >
-            <div class="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
-              <span>Finder</span>
-              <span>File</span>
-              <span>Edit</span>
-              <span>View</span>
+      <div class="pace-mac-shell relative mx-auto" role="img"
+           aria-label="Animated demo of Pace running inside macOS: user speaks via push-to-talk, Pace thinks, Pace opens an app">
+
+        <!-- Outer Mac chassis bezel -->
+        <div class="pace-mac-bezel">
+
+          <!-- ===== macOS menu bar (with Pace notch capsule centered) ===== -->
+          <div class="pace-mac-menubar">
+            <!-- Left: app menus -->
+            <div class="flex items-center gap-4 text-[12px] font-medium">
+              <span class="inline-flex items-center gap-1.5 text-[var(--color-accent)]">
+                <span class="inline-flex items-end gap-[2px] h-3.5">
+                  <span class="pace-bar h-2"></span>
+                  <span class="pace-bar h-3.5"></span>
+                  <span class="pace-bar h-2.5"></span>
+                  <span class="pace-bar h-3"></span>
+                </span>
+                <strong class="text-white font-semibold">Pace</strong>
+              </span>
+              <span class="text-white/85">Safari</span>
+              <span class="text-white/55">File</span>
+              <span class="text-white/55">Edit</span>
+              <span class="text-white/55">View</span>
+              <span class="text-white/55">History</span>
             </div>
-            <!-- The notch capsule itself -->
-            <div
-              class="bg-black rounded-full px-3 py-1.5 flex items-center gap-2.5 border border-[var(--color-border-subtle)]"
-              aria-label="Pace listening"
-            >
-              <span
-                class="inline-flex items-end gap-[2px] h-3.5 text-[var(--color-accent)]"
-              >
+
+            <!-- Center: the Pace notch capsule itself -->
+            <div class="pace-notch-capsule pace-capsule-listening-bg">
+              <span class="inline-flex items-end gap-[2px] h-3.5 text-[var(--color-accent)]">
                 <span class="pace-bar h-2"></span>
                 <span class="pace-bar h-3.5"></span>
                 <span class="pace-bar h-2.5"></span>
                 <span class="pace-bar h-3"></span>
               </span>
-              <span class="text-[10px] text-[var(--color-text-secondary)] tracking-wide uppercase">Listening</span>
+              <span class="text-[10px] text-white/70 tracking-wide uppercase font-medium">Listening</span>
+            </div>
+
+            <!-- Right: standard mac chrome -->
+            <div class="flex items-center gap-3 text-[11px] text-white/70 font-medium">
+              <span>🔋 92%</span>
+              <span>◐</span>
+              <span>📶</span>
+              <span class="tabular-nums">9:41 AM</span>
             </div>
           </div>
 
-          <!-- Conversation bubble -->
-          <div class="p-6 bg-[var(--color-surface)] min-h-[260px] flex flex-col gap-4 justify-end">
-            <div class="ml-auto max-w-[80%]">
-              <div class="text-[11px] text-[var(--color-text-muted)] mb-1 text-right">You · 3s</div>
-              <div
-                class="bg-[var(--color-surface-raised)] border border-[var(--color-border-subtle)] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm"
-              >
-                pull up my design doc and snap it to the left
+          <!-- ===== Wallpaper / desktop surface ===== -->
+          <div class="pace-desktop-surface">
+
+            <!-- Safari window (foreground left) -->
+            <div class="pace-window pace-window-safari">
+              <div class="pace-window-titlebar">
+                <span class="pace-traffic-light pace-light-close"></span>
+                <span class="pace-traffic-light pace-light-min"></span>
+                <span class="pace-traffic-light pace-light-zoom"></span>
+                <span class="pace-window-url">news.ycombinator.com</span>
+              </div>
+              <div class="pace-window-body">
+                <div class="text-[10px] text-orange-400 font-bold mb-2">Hacker News</div>
+                <div class="space-y-1.5 text-[11px]">
+                  <div>1. <span class="text-white">Pace 1.0 — voice control for macOS, fully on-device</span></div>
+                  <div class="text-white/40 pl-3 text-[10px]">412 points · 87 comments · 2h ago</div>
+                  <div class="mt-2">2. <span class="text-white/80">Show HN: I built a Mac voice agent that runs Qwen3-4B locally</span></div>
+                  <div class="text-white/40 pl-3 text-[10px]">301 points · 64 comments · 4h ago</div>
+                  <div class="mt-2">3. <span class="text-white/80">Why on-device AI is finally good enough for daily use</span></div>
+                </div>
               </div>
             </div>
-            <div class="mr-auto max-w-[85%]">
-              <div class="text-[11px] text-[var(--color-text-muted)] mb-1 flex items-center gap-1.5">
-                <span
-                  class="inline-flex items-end gap-[2px] h-2.5 text-[var(--color-accent)]"
-                >
+
+            <!-- Notes window (background right) -->
+            <div class="pace-window pace-window-notes">
+              <div class="pace-window-titlebar">
+                <span class="pace-traffic-light pace-light-close"></span>
+                <span class="pace-traffic-light pace-light-min"></span>
+                <span class="pace-traffic-light pace-light-zoom"></span>
+                <span class="pace-window-title">Quarterly planning</span>
+              </div>
+              <div class="pace-window-body text-[11px]">
+                <div class="text-white/90 font-semibold mb-2">Q3 priorities</div>
+                <ul class="space-y-1 text-white/70 list-none">
+                  <li>· Ship pace-tuned planner</li>
+                  <li>· Cut TTFSW under 350 ms</li>
+                  <li>· Add Linear MCP server</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Pace cursor — the actual app's blue arrow -->
+            <svg class="pace-cursor-overlay" viewBox="0 0 24 24" aria-hidden="true">
+              <defs>
+                <linearGradient id="paceCursorGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#6b9fff" />
+                  <stop offset="100%" stop-color="#3a73e8" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M3 2 L3 18 L7 14 L10 21 L13 20 L10 13 L16 13 Z"
+                fill="url(#paceCursorGrad)"
+                stroke="#ffffff"
+                stroke-width="0.8"
+                stroke-linejoin="round"
+              />
+            </svg>
+
+            <!-- The plan-then-execute thought bubble.
+                 Lines stream in across the 14s loop driven by the
+                 pace-step-N keyframes in global.css. -->
+            <div class="pace-thought-bubble">
+              <div class="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-3 flex items-center gap-2">
+                <span class="inline-flex items-end gap-[2px] h-3 text-[var(--color-accent)]">
                   <span class="pace-bar h-1.5"></span>
-                  <span class="pace-bar h-2.5"></span>
+                  <span class="pace-bar h-3"></span>
                   <span class="pace-bar h-2"></span>
                 </span>
-                Pace · 420 ms
+                Pace turn · 420 ms
               </div>
-              <div
-                class="bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm"
-              >
-                Opening the design doc and snapping it left
-                <span class="pace-cursor-caret"></span>
+
+              <!-- Step 1: the user transcript -->
+              <div class="pace-stream-line" data-step="1">
+                <div class="text-[10px] text-[var(--color-text-muted)] mb-1">You said</div>
+                <div class="text-[13px] text-white leading-snug">
+                  "open hacker news and pin it to the left half"
+                </div>
               </div>
+
+              <!-- Step 2-5: the <think> scratchpad -->
+              <div class="mt-4 pl-3 border-l border-[var(--color-border-subtle)]">
+                <div class="pace-stream-line text-[10px] font-mono text-[var(--color-text-muted)] mb-1" data-step="2">
+                  &lt;think&gt;
+                </div>
+                <div class="pace-stream-line text-[11px] font-mono text-white/85 leading-relaxed" data-step="3">
+                  <span class="text-[var(--color-text-muted)]">intent:</span>
+                  open Hacker News, snap window left half.
+                </div>
+                <div class="pace-stream-line text-[11px] font-mono text-white/85 leading-relaxed" data-step="4">
+                  <span class="text-[var(--color-text-muted)]">plan:</span>
+                  open_url HN, then window snap-left.
+                </div>
+                <div class="pace-stream-line text-[11px] font-mono text-white/85 leading-relaxed" data-step="5">
+                  <span class="text-[var(--color-text-muted)]">risk:</span>
+                  none — reversible window placement.
+                </div>
+                <div class="pace-stream-line text-[10px] font-mono text-[var(--color-text-muted)] mt-1" data-step="6">
+                  &lt;/think&gt;
+                </div>
+              </div>
+
+              <!-- Step 7: spoken response -->
+              <div class="pace-stream-line mt-4" data-step="7">
+                <div class="text-[10px] text-[var(--color-text-muted)] mb-1">Pace spoke</div>
+                <div class="text-[13px] text-[var(--color-accent)] leading-snug">
+                  Opening Hacker News and snapping it left.
+                </div>
+              </div>
+
+              <!-- Step 8: tool call JSON. Braces are JSX-expression
+                   markers in Astro templates so we wrap each opener
+                   in a string expression to escape it. -->
+              <div class="pace-stream-line mt-3" data-step="8">
+                <div
+                  class="font-mono text-[10.5px] text-white/80 bg-black/40 border border-[var(--color-border-subtle)] rounded-md px-2.5 py-2 leading-relaxed"
+                >
+                  <div>
+                    <span class="text-[var(--color-text-muted)]">{'{'}"tool":</span>
+                    <span class="text-[var(--color-accent)]">"open_url"</span>
+                    <span class="text-[var(--color-text-muted)]">,"url":</span>
+                    <span class="text-[var(--color-positive)]">"news.ycombinator.com"</span>
+                    <span class="text-[var(--color-text-muted)]">{'}'}</span>
+                  </div>
+                  <div>
+                    <span class="text-[var(--color-text-muted)]">{'{'}"tool":</span>
+                    <span class="text-[var(--color-accent)]">"window"</span>
+                    <span class="text-[var(--color-text-muted)]">,"action":</span>
+                    <span class="text-[var(--color-positive)]">"snap_left"</span>
+                    <span class="text-[var(--color-text-muted)]">{'}'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 9: the result -->
+              <div class="pace-stream-line mt-3 flex items-center gap-2 text-[11px]" data-step="9">
+                <span class="text-[var(--color-positive)]">✓</span>
+                <span class="text-white/85">Done · 0 bytes sent off this Mac</span>
+              </div>
+            </div>
+
+            <!-- PTT key chip — animated press during listening window -->
+            <div class="pace-ptt-hint">
+              <span class="pace-key-chip pace-key-chip-animated">⌃</span>
+              <span class="text-white/50 text-xs">+</span>
+              <span class="pace-key-chip pace-key-chip-animated">⌥</span>
+              <span class="text-white/50 text-xs ml-2">hold to talk</span>
+            </div>
+
+            <!-- Dock -->
+            <div class="pace-dock">
+              <span title="Finder">📁</span>
+              <span title="Safari" class="pace-dock-active">🧭</span>
+              <span title="Mail">✉️</span>
+              <span title="Calendar">📅</span>
+              <span title="Notes">📝</span>
+              <span title="Music">🎵</span>
+              <span title="Messages">💬</span>
+              <span title="Terminal">⌨️</span>
+              <span title="Settings">⚙️</span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Floating proof chip -->
-        <div
-          class="absolute -bottom-3 -right-3 md:-bottom-4 md:-right-4 pace-card px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] flex items-center gap-2"
-        >
-          <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-positive)] inline-block"></span>
-          <span>0 bytes sent off this Mac</span>
+      <!-- CTAs land BELOW the desktop. The visual sold the dream;
+           the buttons close it. -->
+      <div class="mt-12 md:mt-14 flex flex-col items-center gap-4 pace-fade-up">
+        <div class="flex flex-col sm:flex-row gap-3">
+          <a href="#pricing" class="pace-cta-primary text-base">
+            Download Pace — $29
+            <span aria-hidden="true">↓</span>
+          </a>
+          <a href="#what-it-does" class="pace-cta-secondary text-base">
+            See what it does
+          </a>
         </div>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Free with Apple Intelligence · One-time payment · No subscription
+        </p>
       </div>
     </div>
   </div>
 </section>
+
+<style>
+  /* Outer chrome — gives the desktop a "framed device" feel
+     without leaning on a literal Mac bezel photo. */
+  .pace-mac-shell {
+    position: relative;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #1a1d22 0%, #0c0d10 100%);
+    padding: 8px;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+      0 30px 80px -20px rgba(0, 0, 0, 0.9),
+      0 12px 40px -10px rgba(79, 139, 255, 0.18);
+  }
+
+  .pace-mac-bezel {
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--color-border-subtle);
+  }
+
+  /* macOS-style menu bar */
+  .pace-mac-menubar {
+    height: 28px;
+    padding: 0 14px;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+  }
+
+  /* The notch capsule — centered absolutely so menus + clock can
+     flow naturally around it. */
+  .pace-notch-capsule {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border-subtle);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+    padding: 4px 14px 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* The "desktop wallpaper" — restrained dual gradient that hints
+     at depth without resorting to mesh blobs. */
+  .pace-desktop-surface {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background:
+      radial-gradient(140% 100% at 50% 0%, #1e2a4a 0%, #0a0c14 60%, #000 100%),
+      linear-gradient(180deg, #0e1424 0%, #050608 100%);
+    overflow: hidden;
+  }
+
+  /* Macishly translucent window frames */
+  .pace-window {
+    position: absolute;
+    border-radius: 10px;
+    background: rgba(20, 22, 28, 0.92);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.03) inset,
+      0 30px 60px -10px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+  }
+
+  .pace-window-safari {
+    top: 8%;
+    left: 4%;
+    width: 38%;
+    height: 56%;
+    transform: rotate(-1.2deg);
+  }
+
+  .pace-window-notes {
+    top: 18%;
+    right: 4%;
+    width: 26%;
+    height: 38%;
+    transform: rotate(0.8deg);
+    opacity: 0.92;
+  }
+
+  .pace-window-titlebar {
+    height: 28px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .pace-traffic-light {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .pace-light-close { background: #ff5f56; }
+  .pace-light-min { background: #ffbd2e; }
+  .pace-light-zoom { background: #27c93f; }
+  .pace-window-url,
+  .pace-window-title {
+    margin-left: 10px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: var(--font-mono);
+  }
+  .pace-window-body {
+    padding: 12px 14px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 11px;
+  }
+
+  /* Pace cursor — drifts between the Safari window and the bubble
+     so the eye traces the action. */
+  @keyframes pace-cursor-drift {
+    0%, 8% { transform: translate(38%, 22%) rotate(-12deg); opacity: 1; }
+    12%, 18% { transform: translate(22%, 38%) rotate(-12deg); opacity: 1; }
+    25%, 70% { transform: translate(54%, 56%) rotate(-12deg); opacity: 1; }
+    78%, 100% { transform: translate(38%, 22%) rotate(-12deg); opacity: 1; }
+  }
+  .pace-cursor-overlay {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    top: 0;
+    left: 0;
+    filter: drop-shadow(0 4px 8px rgba(79, 139, 255, 0.5));
+    animation: pace-cursor-drift 14s ease-in-out infinite;
+  }
+
+  /* The big "plan-then-execute" turn bubble. Anchors bottom-right
+     of the desktop so it doesn't fight with the windows for visual
+     weight. */
+  .pace-thought-bubble {
+    position: absolute;
+    bottom: 14%;
+    right: 5%;
+    width: min(42%, 380px);
+    background: rgba(11, 11, 13, 0.94);
+    backdrop-filter: blur(22px);
+    border: 1px solid rgba(79, 139, 255, 0.22);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.05) inset,
+      0 20px 60px -10px rgba(0, 0, 0, 0.9),
+      0 0 0 1px rgba(79, 139, 255, 0.08);
+  }
+
+  .pace-ptt-hint {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 5px 8px;
+  }
+
+  /* macOS-style dock */
+  .pace-dock {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    font-size: 22px;
+    line-height: 1;
+    box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.8);
+  }
+  .pace-dock-active {
+    transform: translateY(-2px) scale(1.08);
+  }
+
+  /* Mobile responsiveness — under 640 px the windows get cramped,
+     so we hide the Notes window + tighten the bubble. The hero is
+     still recognisable as a Mac scene at phone width. */
+  @media (max-width: 720px) {
+    .pace-mac-shell { padding: 5px; border-radius: 16px; }
+    .pace-mac-menubar { height: 24px; padding: 0 8px; font-size: 10px; }
+    .pace-notch-capsule { padding: 3px 10px 5px; }
+    .pace-window-notes { display: none; }
+    .pace-window-safari { width: 56%; transform: rotate(-1deg); }
+    .pace-thought-bubble {
+      width: 88%;
+      right: 6%;
+      left: 6%;
+      bottom: 18%;
+      padding: 12px 14px;
+    }
+    .pace-dock { gap: 7px; font-size: 16px; padding: 6px 10px; }
+    .pace-ptt-hint { top: 8px; left: 8px; padding: 3px 6px; }
+  }
+</style>

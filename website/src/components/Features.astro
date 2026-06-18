@@ -1,59 +1,71 @@
 ---
-// Specific verbs, specific outcomes. No "powerful", no "seamless",
-// no "robust". Each feature is something the user can picture.
+// Features as a long-form bulleted list with marginalia, NOT a
+// three-card grid. Each feature is a verb + sentence + technical
+// aside in the right margin. Reads like a feature article, not a
+// spec sheet.
 const features = [
   {
-    title: "Talk and walk away",
-    line: "Hold ctrl+option, say it, release. Pace finishes in the background while you do something else.",
-    detail: "Push-to-talk via a system-wide CGEvent tap. Streaming TTS lands the first word in ~420 ms.",
+    verb: "Listens",
+    body: "Hold ctrl+option, say something, let go. Push-to-talk via a system-wide CGEvent tap. The first spoken word back arrives in about 420 milliseconds.",
+    margin: "Apple Speech by default. WhisperKit-Large if you put the model on disk — Pace picks it up automatically.",
   },
   {
-    title: "It sees your screen",
-    line: "Ask about what you're looking at. Pace reads the screen with a local vision model and OCR — no \"open this app\" first.",
-    detail: "Qwen3-VL-4B + Apple Vision text recognition + the Accessibility tree, merged into one element map.",
+    verb: "Looks",
+    body: "Ask about what's on your screen. Pace runs a local vision model + Apple Vision OCR + the macOS Accessibility tree in parallel, merges them into one element map, and hands the result to the planner.",
+    margin: "Qwen3-VL-4B locally. Same model the LM Studio path used to host — now in-process, no max-loaded-models setting to wrestle with.",
   },
   {
-    title: "It clicks for you",
-    line: "\"Click submit\", \"snap this window left\", \"add this to my calendar.\" Pace executes through Accessibility, not coordinates.",
-    detail: "AXPress on a pressable role first; CGEvent fallback. Single undo banner appears for every reversible change.",
+    verb: "Clicks",
+    body: "\"Click submit,\" \"snap this window left,\" \"add this to my calendar.\" Pace executes through Accessibility — the right way to drive a Mac — and falls back to CGEvent only when AX can't find the element.",
+    margin: "Every reversible change leaves a 5-second undo banner. Tap to roll back.",
   },
   {
-    title: "It remembers",
-    line: "Tell it your preferred browser once. It remembers your spec doc, your morning routine, the people you work with.",
-    detail: "Two-tier memory: last 4 turns verbatim + a rolling summary. Survives quit/relaunch. Stored locally in one JSON file.",
+    verb: "Remembers",
+    body: "Tell it once that you use Firefox, that your design doc is the pinned tab in Arc, that Alex is the engineer not the designer. It carries that across sessions, across quits, across reboots.",
+    margin: "Two-tier memory: last four turns verbatim, everything older rolls into a summary. One JSON file, your home directory, your eyes only.",
   },
   {
-    title: "It connects to your apps",
-    line: "Calendar, Reminders, Notes, Mail, Things, Shortcuts, Messages — first-class. Plus 700+ SaaS tools via Composio.",
-    detail: "Apple-native data stays local through EventKit / Contacts. External SaaS goes through Composio's OAuth gateway when you opt in.",
+    verb: "Connects",
+    body: "Calendar, Reminders, Notes, Mail, Things, Shortcuts, Messages — first-class, through EventKit and AppleScript. Anything beyond Apple's native data goes through Composio's OAuth gateway when you choose to enable it.",
+    margin: "Apple-native stays local. External SaaS is your choice, off by default.",
   },
   {
-    title: "Custom model upgrades",
-    line: "Pace ships with Qwen3-4B-2507. Future Pace-tuned models arrive automatically through the app updater.",
-    detail: "Sparkle ships the .app. Models download from HuggingFace into your local cache. No re-purchase required.",
+    verb: "Upgrades",
+    body: "When I ship a Pace-tuned model that beats the off-the-shelf default, it comes through the same Sparkle updater every other Mac app uses. No re-purchase. No upgrade wall. Models live in your HuggingFace cache.",
+    margin: "Current default is Qwen3-4B-Instruct-2507 bf16. The next one will have a name with `pace-` in front of it.",
   },
 ];
 ---
 
-<section id="what-it-does" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
-  <div class="max-w-6xl mx-auto">
-    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+<section id="what-it-does" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
       What it does
     </p>
-    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
-      Six things Pace does well enough that you'll stop opening other tools.
+
+    <h2 class="pace-display text-4xl md:text-6xl text-white mb-16 max-w-3xl">
+      Six verbs. <em>That's the whole product.</em>
     </h2>
 
-    <div class="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div class="space-y-16 md:space-y-20">
       {
-        features.map((feature) => (
-          <div class="pace-card p-6 flex flex-col gap-3">
-            <h3 class="text-lg font-semibold leading-tight">{feature.title}</h3>
-            <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              {feature.line}
+        features.map((feature, index) => (
+          <div class="grid md:grid-cols-[8rem_1fr_14rem] gap-4 md:gap-10 items-start">
+            <p class="text-sm font-mono text-[var(--color-text-muted)] tabular-nums pt-3">
+              {String(index + 1).padStart(2, "0")}
             </p>
-            <p class="text-xs text-[var(--color-text-muted)] leading-relaxed mt-1 pt-3 border-t border-[var(--color-border-subtle)]">
-              {feature.detail}
+
+            <div>
+              <h3 class="pace-display text-3xl md:text-4xl text-white mb-3">
+                <em>{feature.verb}.</em>
+              </h3>
+              <p class="text-[var(--color-text-secondary)] leading-relaxed max-w-xl">
+                {feature.body}
+              </p>
+            </div>
+
+            <p class="pace-margin-note md:border-l md:border-[var(--color-border-subtle)] md:pl-4 md:mt-3">
+              {feature.margin}
             </p>
           </div>
         ))

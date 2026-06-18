@@ -1,72 +1,82 @@
 ---
-// Answers to the questions the buyer ASKS in their head before
-// clicking "buy". Honest about the tradeoffs (8 GB model, no
-// Windows/iPhone) so the wrong-fit user self-disqualifies before
-// hitting a refund.
-const faqs = [
+// Interview-style Q&A. No accordion. No card grid. Question in
+// serif italic, answer in body, like a magazine profile. Long-
+// form Q&A is one of the formats AI-generated landing pages
+// almost never use, because every Tailwind template defaults to
+// the chevron-accordion shape.
+
+const qas = [
   {
-    q: "Does Pace really run with zero network?",
-    a: "Yes, in the default configuration. Voice transcription, the planner, the vision model, and TTS all run on your Mac. The one scoped exception is `download_file` — and only when you explicitly ask Pace to fetch a URL by name. The Privacy dashboard inside the app shows the exact byte count.",
+    q: "Does it really run with no network?",
+    a: "Yes. Voice, screen reading, the planner, TTS — all on your Mac. The one exception is `download_file`, which fetches a URL only when you explicitly tell Pace to. The Privacy dashboard inside the app shows the exact byte count, broken out by surface.",
   },
   {
-    q: "How much disk and RAM does it actually use?",
-    a: "The .app itself is ~50 MB. The default planner (Qwen3-4B-Instruct-2507 bf16) is ~8 GB once downloaded into your HuggingFace cache. With everything loaded — planner + vision model + transcription — peak resident memory is ~14 GB. For 16 GB Macs, swap the bf16 identifier for the 4-bit variant in Settings → Models; that runs in ~6 GB.",
+    q: "How much disk and RAM are we talking?",
+    a: "The .app is about 50 megabytes. The default model — Qwen3-4B-Instruct-2507 in bf16 — is ~8 gigabytes, downloaded once into your HuggingFace cache. With the vision model and transcription also loaded, peak RAM is ~14 GB. If your Mac has 16 GB, swap to the 4-bit variant in Settings → Models; that runs comfortably in ~6 GB.",
   },
   {
-    q: "What Macs does it run on?",
-    a: "Apple Silicon (M1 or later) running macOS 14+. Intel Macs are not supported — MLX is Metal-backed and there's no path. Tested on M1 Air, M2 Pro, M3 Max, M4 Pro.",
+    q: "What Macs?",
+    a: "Apple Silicon, M1 or later, macOS 14+. Intel Macs aren't supported and there's no plan to add them — MLX is Metal-backed, and the on-device story is what the whole product is. Tested on M1 Air, M2 Pro, M3 Max, M4 Pro.",
   },
   {
-    q: "Is there an iPhone or Windows version?",
-    a: "No, and there's no roadmap for either today. Pace is a Mac product end-to-end. The Apple Silicon stack is what makes the on-device story possible at this price.",
+    q: "iPhone? Windows?",
+    a: "No, and not on the roadmap. Pace is a Mac product. The Apple Silicon stack is what makes \"voice + screen + actions, on-device, $29 once\" possible at all. Spreading it across three operating systems would mean rebuilding the assumptions and raising the price.",
   },
   {
-    q: "What's the upgrade path when you ship a custom Pace-tuned model?",
-    a: "Free for everyone who already owns Pace. Sparkle ships the new .app; the new model downloads from the HuggingFace cache on next activation. Pricing for new customers rises to $49 at that point — your $29 grandfathers in.",
+    q: "What happens when you ship your own model?",
+    a: "Free upgrade for everyone who already owns Pace. The .app updates through Sparkle; the new model identifier is just a string in Info.plist. Your existing license keeps working. The price for new buyers goes to $49 at that point — you're grandfathered in at $29.",
   },
   {
     q: "Do I need LM Studio installed?",
-    a: "No, not when you opt in to bundled MLX (the default for new installs after Phase B/C/D shipped). If you'd rather run the bigger Qwen3-30B model, you can still point Pace at LM Studio — that path remains supported as the power-user fallback.",
+    a: "No. The bundled MLX path covers planning, vision, embeddings, and TTS in-process. LM Studio is still supported as the power-user option if you'd rather run the larger Qwen3-30B model, but it's not required for a fresh install to be useful.",
   },
   {
     q: "Refund policy?",
-    a: "30 days, no questions. The .app deactivates and your license is refunded. We don't ask why because we already know — the model wasn't a fit, or the bf16 download hurt more than you expected. Both are valid.",
+    a: "30 days, no questions. The .app deactivates and your card gets refunded. I don't ask why because I already know — the model wasn't a fit, or the bf16 download hurt more than you wanted. Both are valid.",
   },
   {
-    q: "How is this different from Siri?",
-    a: "Siri can answer questions and trigger Shortcuts. Pace also reads your screen, clicks on it, fills forms, remembers across sessions, and runs locally — Siri rounds-trips most things to Apple's servers. Different products for different goals.",
+    q: "What if I don't like the voice?",
+    a: "Settings → Voice picks any Apple Premium voice on your Mac, or the bundled Qwen3 TTS, or the Kokoro sidecar if you want the higher-quality option. You're not locked into one synthesiser.",
   },
 ];
 ---
 
-<section id="faq" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
-  <div class="max-w-3xl mx-auto">
-    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
-      Questions
+<section id="faq" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      Before you buy
     </p>
-    <h2 class="text-3xl md:text-4xl font-bold leading-tight mb-12">
-      Before you buy.
+
+    <h2 class="pace-display text-3xl md:text-5xl text-white mb-16 max-w-2xl">
+      The questions <em>people actually ask.</em>
     </h2>
 
-    <div class="space-y-3">
+    <div class="space-y-12">
       {
-        faqs.map((faq) => (
-          <details class="pace-card p-5 group">
-            <summary class="font-semibold cursor-pointer list-none flex items-center justify-between text-base">
-              <span class="pr-4">{faq.q}</span>
-              <span
-                class="text-[var(--color-text-muted)] transition-transform group-open:rotate-45 text-2xl leading-none"
-                aria-hidden="true"
-              >
-                +
-              </span>
-            </summary>
-            <p class="mt-4 text-sm text-[var(--color-text-secondary)] leading-relaxed">
-              {faq.a}
+        qas.map((qa, index) => (
+          <div class="grid md:grid-cols-[10rem_1fr] gap-4 md:gap-8 items-start">
+            <p class="text-sm font-mono text-[var(--color-text-muted)] tabular-nums pt-1.5">
+              {String(index + 1).padStart(2, "0")}.
             </p>
-          </details>
+            <div>
+              <p class="pace-display text-xl md:text-2xl text-white mb-3">
+                <em>{qa.q}</em>
+              </p>
+              <p class="text-[var(--color-text-secondary)] leading-relaxed max-w-2xl">
+                {qa.a}
+              </p>
+            </div>
+          </div>
         ))
       }
     </div>
+
+    <p class="pace-margin-note mt-16 max-w-md">
+      Anything else?{" "}
+      <a href="mailto:hello@pace.app" class="underline hover:text-white">
+        email me
+      </a>{" "}
+      and I'll add it here.
+    </p>
   </div>
 </section>
