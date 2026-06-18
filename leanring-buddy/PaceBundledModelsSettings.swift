@@ -26,11 +26,15 @@ nonisolated enum PaceBundledModelsSettings {
     /// the right thing.
     private static let useBundledMLXKey = "pace.bundledModels.useMLXInProcessPlanner"
     private static let useBundledMLXEmbedderKey = "pace.bundledModels.useMLXInProcessEmbedder"
+    private static let useBundledMLXVLMKey = "pace.bundledModels.useMLXInProcessVLM"
+    private static let useBundledQwen3TTSKey = "pace.bundledModels.useQwen3TTSInProcess"
     private static let bundledPlannerModelKey = "pace.bundledModels.plannerModelIdentifier"
     private static let bundledEmbedderModelKey = "pace.bundledModels.embedderModelIdentifier"
+    private static let bundledVLMModelKey = "pace.bundledModels.vlmModelIdentifier"
 
     nonisolated static let defaultPlannerModelIdentifier = "mlx-community/Qwen3-4B-Instruct-4bit"
     nonisolated static let defaultEmbedderModelIdentifier = "mlx-community/nomic-embed-text-v1.5"
+    nonisolated static let defaultVLMModelIdentifier = "mlx-community/Qwen3-VL-4B-Instruct-4bit"
 
     /// True when the user has opted in AND the runtime is linked.
     /// The runtime check uses `PaceMLXPlannerClient.isRuntimeAvailable`
@@ -73,6 +77,38 @@ nonisolated enum PaceBundledModelsSettings {
         let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         UserDefaults.standard.set(trimmed, forKey: bundledEmbedderModelKey)
+    }
+
+    // MARK: - VLM (Phase C)
+
+    static func isUsingMLXInProcessVLM() -> Bool {
+        guard PaceMLXScreenAnalysisClient.isRuntimeAvailable else { return false }
+        return UserDefaults.standard.bool(forKey: useBundledMLXVLMKey)
+    }
+
+    static func setUsingMLXInProcessVLM(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: useBundledMLXVLMKey)
+    }
+
+    static func vlmModelIdentifier() -> String {
+        UserDefaults.standard.string(forKey: bundledVLMModelKey) ?? defaultVLMModelIdentifier
+    }
+
+    static func setVLMModelIdentifier(_ identifier: String) {
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        UserDefaults.standard.set(trimmed, forKey: bundledVLMModelKey)
+    }
+
+    // MARK: - TTS (Phase D — Qwen3 TTS via WhisperKit TTSKit)
+
+    static func isUsingQwen3TTSInProcess() -> Bool {
+        guard PaceQwen3TTSClient.isRuntimeAvailable else { return false }
+        return UserDefaults.standard.bool(forKey: useBundledQwen3TTSKey)
+    }
+
+    static func setUsingQwen3TTSInProcess(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: useBundledQwen3TTSKey)
     }
 
     /// Runtime-availability summary surfaced by the Settings UI.

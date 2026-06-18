@@ -179,7 +179,19 @@ extension PaceScreenAnalysisClient {
 
 enum PaceScreenAnalysisClientFactory {
     static func makeDefaultClient() -> any PaceScreenAnalysisClient {
-        makeClient(
+        // Bundled MLXVLM trumps the configured LM Studio path when
+        // the user has opted in AND the runtime is linked. Power
+        // users keep LM Studio's flexibility by leaving the toggle
+        // off.
+        if PaceBundledModelsSettings.isUsingMLXInProcessVLM() {
+            let client = PaceMLXScreenAnalysisClient(
+                modelIdentifier: PaceBundledModelsSettings.vlmModelIdentifier()
+            )
+            print("👁️ Screen analysis: using \(client.displayName) [bundled MLXVLM]")
+            return client
+        }
+
+        return makeClient(
             configuredProviderName: AppBundleConfiguration.stringValue(forKey: "ScreenAnalysisProvider"),
             configuredBaseURL: AppBundleConfiguration.stringValue(forKey: "LocalVLMBaseURL"),
             configuredModelIdentifier: AppBundleConfiguration.stringValue(forKey: "LocalVLMModelIdentifier"),

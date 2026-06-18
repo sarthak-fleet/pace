@@ -24,8 +24,11 @@ struct PaceBundledModelsSettingsTab: View {
 
     @State private var isUsingMLXPlanner: Bool = false
     @State private var isUsingMLXEmbedder: Bool = false
+    @State private var isUsingMLXVLM: Bool = false
+    @State private var isUsingQwen3TTS: Bool = false
     @State private var plannerModelIdentifier: String = ""
     @State private var embedderModelIdentifier: String = ""
+    @State private var vlmModelIdentifier: String = ""
 
     // Prefetch state — drives the "Download now" UX so users can
     // warm the model on wifi before the first PTT pays the cost.
@@ -41,9 +44,80 @@ struct PaceBundledModelsSettingsTab: View {
             Divider().background(DS.Colors.borderSubtle)
             embedderSection
             Divider().background(DS.Colors.borderSubtle)
+            vlmSection
+            Divider().background(DS.Colors.borderSubtle)
+            ttsSection
+            Divider().background(DS.Colors.borderSubtle)
             qualityCaveatSection
         }
         .onAppear(perform: loadCurrentSettings)
+    }
+
+    // MARK: - VLM section (Phase C)
+
+    private var vlmSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $isUsingMLXVLM) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("In-process MLX vision model")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("Run Qwen3-VL screen analysis via mlx-swift in-process. Drops LM Studio's max-loaded-models requirement for the VLM path. Same model as the LM Studio default — quality unchanged, latency improves by removing the HTTP loopback.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .disabled(!PaceMLXScreenAnalysisClient.isRuntimeAvailable)
+            .onChange(of: isUsingMLXVLM) { _, newValue in
+                PaceBundledModelsSettings.setUsingMLXInProcessVLM(newValue)
+            }
+            HStack(spacing: 8) {
+                Text("Model")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DS.Colors.textSecondary)
+                TextField(
+                    "mlx-community/Qwen3-VL-4B-Instruct-4bit",
+                    text: $vlmModelIdentifier
+                )
+                .textFieldStyle(.roundedBorder)
+                .disabled(!isUsingMLXVLM)
+                .onSubmit { commitVLMModelIdentifier() }
+                Button("Apply") { commitVLMModelIdentifier() }
+                    .buttonStyle(.bordered)
+                    .disabled(!isUsingMLXVLM)
+            }
+            Text("~2.5 GB download on first use. Memory cost ~3 GB resident while the VLM is loaded.")
+                .font(.system(size: 11))
+                .foregroundColor(DS.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - TTS section (Phase D)
+
+    private var ttsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $isUsingQwen3TTS) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("In-process Qwen3 TTS")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("Run text-to-speech via WhisperKit's TTSKit instead of the Kokoro Python sidecar. Drops the start-tts-server.sh dependency. ANE-accelerated, sub-200 ms first-audio-out.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .disabled(!PaceQwen3TTSClient.isRuntimeAvailable)
+            .onChange(of: isUsingQwen3TTS) { _, newValue in
+                PaceBundledModelsSettings.setUsingQwen3TTSInProcess(newValue)
+            }
+            Text("~300 MB download on first use. Voice + language are auto-resolved by TTSKit's defaults; per-voice configuration UI is a follow-up.")
+                .font(.system(size: 11))
+                .foregroundColor(DS.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Runtime status
@@ -235,8 +309,16 @@ struct PaceBundledModelsSettingsTab: View {
     private func loadCurrentSettings() {
         isUsingMLXPlanner = PaceBundledModelsSettings.isUsingMLXInProcessPlanner()
         isUsingMLXEmbedder = PaceBundledModelsSettings.isUsingMLXInProcessEmbedder()
+        isUsingMLXVLM = PaceBundledModelsSettings.isUsingMLXInProcessVLM()
+        isUsingQwen3TTS = PaceBundledModelsSettings.isUsingQwen3TTSInProcess()
         plannerModelIdentifier = PaceBundledModelsSettings.plannerModelIdentifier()
         embedderModelIdentifier = PaceBundledModelsSettings.embedderModelIdentifier()
+        vlmModelIdentifier = PaceBundledModelsSettings.vlmModelIdentifier()
+    }
+
+    private func commitVLMModelIdentifier() {
+        PaceBundledModelsSettings.setVLMModelIdentifier(vlmModelIdentifier)
+        vlmModelIdentifier = PaceBundledModelsSettings.vlmModelIdentifier()
     }
 
     private func commitPlannerModelIdentifier() {

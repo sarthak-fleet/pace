@@ -12,6 +12,8 @@
 		BB00CC052F6500050039DA55 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BB00CC022F6500020039DA55 /* MLXLLM */; };
 		BB00CC062F6500060039DA55 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BB00CC032F6500030039DA55 /* MLXLMCommon */; };
 		BB00CC072F6500070039DA55 /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = BB00CC042F6500040039DA55 /* MLXEmbedders */; };
+		BB00CC092F6500090039DA55 /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = BB00CC082F6500080039DA55 /* MLXVLM */; };
+		BB00CC0B2F65000B0039DA55 /* TTSKit in Frameworks */ = {isa = PBXBuildFile; productRef = BB00CC0A2F65000A0039DA55 /* TTSKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +80,8 @@
 				BB00CC052F6500050039DA55 /* MLXLLM in Frameworks */,
 				BB00CC062F6500060039DA55 /* MLXLMCommon in Frameworks */,
 				BB00CC072F6500070039DA55 /* MLXEmbedders in Frameworks */,
+				BB00CC092F6500090039DA55 /* MLXVLM in Frameworks */,
+				BB00CC0B2F65000B0039DA55 /* TTSKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -143,6 +147,8 @@
 				BB00CC022F6500020039DA55 /* MLXLLM */,
 				BB00CC032F6500030039DA55 /* MLXLMCommon */,
 				BB00CC042F6500040039DA55 /* MLXEmbedders */,
+				BB00CC082F6500080039DA55 /* MLXVLM */,
+				BB00CC0A2F65000A0039DA55 /* TTSKit */,
 			);
 			productName = "leanring-buddy";
 			productReference = 28F22CBF2F56440300A0FC59 /* Pace.app */;
@@ -674,6 +680,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB00CC012F6500010039DA55 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
 			productName = MLXEmbedders;
+		};
+		BB00CC082F6500080039DA55 /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB00CC012F6500010039DA55 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
+			productName = MLXVLM;
+		};
+		BB00CC0A2F65000A0039DA55 /* TTSKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA00BB072F6500070039DA55 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = TTSKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

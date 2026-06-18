@@ -56,6 +56,14 @@ protocol BuddyTTSClient: AnyObject {
 enum BuddyTTSClientFactory {
     @MainActor
     static func makeDefault() -> any BuddyTTSClient {
+        // Bundled Qwen3 TTS trumps the configured Kokoro-sidecar
+        // path when the user has opted in AND TTSKit is linked. This
+        // drops the Python sidecar dependency from the setup story.
+        if PaceBundledModelsSettings.isUsingQwen3TTSInProcess() {
+            print("🔊 TTS: using bundled Qwen3 TTS (TTSKit in-process)")
+            return PaceQwen3TTSClient()
+        }
+
         let configuredProvider = AppBundleConfiguration
             .stringValue(forKey: "TTSProvider")?
             .trimmingCharacters(in: .whitespacesAndNewlines)
