@@ -168,6 +168,20 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Public entry point shared between the `pace://` deeplink handler
+    /// and App Intents (Siri / Shortcuts / Spotlight). Buffering and
+    /// dispatch behavior is identical to the deeplink path — App Intents
+    /// hitting this method before `applicationDidFinishLaunching`
+    /// completes will be queued and drained the same way a cold-launch
+    /// deeplink is.
+    func executePaceExternalCommand(_ command: PaceDeepLinkCommand) {
+        if hasFinishedLaunching {
+            executeDeepLinkCommand(command)
+        } else {
+            pendingDeepLinkCommands.append(command)
+        }
+    }
+
     private func executeDeepLinkCommand(_ command: PaceDeepLinkCommand) {
         switch command {
         case .showPanel:
