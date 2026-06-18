@@ -1,0 +1,65 @@
+---
+// One idea per screen-fold (fleet standard).
+// This fold's idea: "on-device means something specific — here's
+// what doesn't happen."
+---
+
+<section id="on-device" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+      Everything stays here
+    </p>
+    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
+      Other voice assistants ship your microphone to the cloud. Pace ships
+      <span class="text-[var(--color-text-secondary)]">nothing.</span>
+    </h2>
+
+    <div class="mt-12 grid md:grid-cols-3 gap-6">
+      <div class="pace-card p-6">
+        <div class="text-[var(--color-accent)] text-2xl mb-3">●</div>
+        <h3 class="text-lg font-semibold mb-2">Your voice</h3>
+        <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+          Apple's on-device Speech framework, or WhisperKit-Large running on
+          your Apple Silicon. Your microphone never opens a socket.
+        </p>
+      </div>
+      <div class="pace-card p-6">
+        <div class="text-[var(--color-accent)] text-2xl mb-3">●</div>
+        <h3 class="text-lg font-semibold mb-2">Your screen</h3>
+        <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+          A 4B vision model reads your screen locally. Screenshots are
+          processed in-process and freed. Nothing is uploaded, cached, or
+          analyzed off your machine.
+        </p>
+      </div>
+      <div class="pace-card p-6">
+        <div class="text-[var(--color-accent)] text-2xl mb-3">●</div>
+        <h3 class="text-lg font-semibold mb-2">Your memory</h3>
+        <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+          Conversation history, durable facts, journals — all stored in
+          <code class="text-xs font-mono text-[var(--color-text-primary)] bg-[var(--color-surface)] px-1.5 py-0.5 rounded"
+            >~/Library/Application Support/Pace/</code
+          >. One JSON file you can read with <code>cat</code>.
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-10 pace-card p-6 md:p-8 grid md:grid-cols-2 gap-6 items-center">
+      <div>
+        <h3 class="text-xl font-semibold mb-2">No accounts. No servers. No bill.</h3>
+        <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+          One-time purchase. We don't run inference for you, so there's
+          nothing to subscribe to. Updates ship through the Mac App-Update
+          channel; new models arrive in the same release.
+        </p>
+      </div>
+      <div class="font-mono text-xs md:text-sm text-[var(--color-text-secondary)] bg-black border border-[var(--color-border-subtle)] rounded-lg p-4">
+        <div class="text-[var(--color-text-muted)]">$ nettop -p Pace</div>
+        <div class="mt-1 text-[var(--color-positive)]">
+          ↑ 0 bytes · ↓ 0 bytes
+        </div>
+        <div class="text-[var(--color-text-muted)] mt-3">$ <span class="text-white">_</span></div>
+      </div>
+    </div>
+  </div>
+</section>

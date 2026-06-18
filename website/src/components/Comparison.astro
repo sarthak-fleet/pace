@@ -1,0 +1,105 @@
+---
+// Per the fleet landing standard: only run a comparison table when
+// you're genuinely better on something the user cares about. Pace's
+// honest delta is the on-device + does-things-not-just-transcribes
+// pair. The cells below name that delta concretely — no fluff.
+const competitors = [
+  {
+    name: "Pace",
+    price: "$29 once",
+    onDevice: "Yes — every byte",
+    voice: "Yes",
+    screen: "Reads + clicks",
+    memory: "Persistent",
+    accent: true,
+  },
+  {
+    name: "Wispr Flow",
+    price: "$12/mo",
+    onDevice: "Cloud STT",
+    voice: "Yes (dictation)",
+    screen: "No",
+    memory: "No",
+    accent: false,
+  },
+  {
+    name: "Raycast Pro",
+    price: "$8/mo",
+    onDevice: "Cloud LLM",
+    voice: "Limited",
+    screen: "No",
+    memory: "Limited",
+    accent: false,
+  },
+  {
+    name: "MacWhisper Pro",
+    price: "$59 once",
+    onDevice: "Yes",
+    voice: "Files only",
+    screen: "No",
+    memory: "No",
+    accent: false,
+  },
+  {
+    name: "Apple Siri",
+    price: "Free",
+    onDevice: "Mixed",
+    voice: "Yes",
+    screen: "Limited",
+    memory: "No",
+    accent: false,
+  },
+];
+---
+
+<section id="vs" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+      Compared
+    </p>
+    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
+      Pace isn't a dictation app, an LLM launcher, or Siri. It's the only one
+      doing all three on your own silicon.
+    </h2>
+
+    <div class="mt-10 overflow-x-auto pace-card">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-[var(--color-border-subtle)] text-[var(--color-text-muted)]">
+            <th class="text-left font-medium py-4 px-5 min-w-[140px]">Product</th>
+            <th class="text-left font-medium py-4 px-5">Price</th>
+            <th class="text-left font-medium py-4 px-5">On-device</th>
+            <th class="text-left font-medium py-4 px-5">Voice</th>
+            <th class="text-left font-medium py-4 px-5">Reads screen</th>
+            <th class="text-left font-medium py-4 px-5">Memory</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            competitors.map((row) => (
+              <tr
+                class={`border-b border-[var(--color-border-subtle)] last:border-b-0 ${
+                  row.accent ? "bg-[var(--color-accent)]/5" : ""
+                }`}
+              >
+                <td class={`py-4 px-5 font-semibold ${row.accent ? "text-[var(--color-accent)]" : "text-white"}`}>
+                  {row.name}
+                </td>
+                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.price}</td>
+                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.onDevice}</td>
+                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.voice}</td>
+                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.screen}</td>
+                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.memory}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-4 text-xs text-[var(--color-text-muted)]">
+      Pricing snapshots as of January 2026. Pace pricing rises to $49 when the
+      Pace-tuned model ships — current $29 is the early-adopter floor.
+    </p>
+  </div>
+</section>

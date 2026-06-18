@@ -1,0 +1,63 @@
+---
+// Per the fleet landing standard: 3+ testimonials before launching
+// a paid landing page. Pace doesn't have public users yet — the
+// honest move is to flag this section as PRE-LAUNCH, with
+// placeholder structure that the founder fills before going live.
+//
+// Do NOT ship the page with these placeholders visible. The audit
+// checklist explicitly lists testimonials as a release gate.
+const testimonialPlaceholders = [
+  {
+    quote: "REPLACE BEFORE LAUNCH — quote from a real Pace beta user.",
+    name: "Beta tester #1",
+    role: "Replace with title + company",
+  },
+  {
+    quote: "REPLACE BEFORE LAUNCH — second beta-user quote.",
+    name: "Beta tester #2",
+    role: "Replace with title + company",
+  },
+  {
+    quote: "REPLACE BEFORE LAUNCH — third beta-user quote.",
+    name: "Beta tester #3",
+    role: "Replace with title + company",
+  },
+];
+
+// Render the section only when the env flag is set so the
+// placeholders don't accidentally ship to production. Switch to
+// `true` once you've collected real quotes.
+const showSocialProofSection = false;
+---
+
+{
+  showSocialProofSection && (
+    <section class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
+      <div class="max-w-6xl mx-auto">
+        <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+          What people say
+        </p>
+        <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
+          Early users on what Pace replaced.
+        </h2>
+
+        <div class="mt-12 grid md:grid-cols-3 gap-5">
+          {testimonialPlaceholders.map((testimonial) => (
+            <figure class="pace-card p-6">
+              <blockquote class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+                "{testimonial.quote}"
+              </blockquote>
+              <figcaption class="mt-5 pt-5 border-t border-[var(--color-border-subtle)] flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-[var(--color-surface-raised)] border border-[var(--color-border-subtle)]" />
+                <div>
+                  <div class="text-sm font-semibold">{testimonial.name}</div>
+                  <div class="text-xs text-[var(--color-text-muted)]">{testimonial.role}</div>
+                </div>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}

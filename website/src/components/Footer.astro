@@ -1,0 +1,73 @@
+---
+// Memorable footer (fleet landing standard rule #4): end on
+// something screenshot-worthy. Pace's punchline is the byte counter
+// — that's what makes the on-device claim unforgettable.
+//
+// Signed paragraph at the bottom — "show the founder" rule. Edit
+// the signature line before launch with the actual founder name.
+---
+
+<footer class="px-6 py-20 md:py-24 border-t border-[var(--color-border-subtle)] mt-10">
+  <div class="max-w-6xl mx-auto">
+    <!-- Big closing punchline -->
+    <div class="text-center mb-20">
+      <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] mb-6">
+        Daily bytes Pace sent off your Mac
+      </p>
+      <div
+        class="font-mono text-7xl md:text-9xl font-bold text-[var(--color-positive)] tracking-tight"
+        aria-label="Zero bytes"
+      >
+        0
+      </div>
+      <p class="mt-6 text-sm text-[var(--color-text-secondary)]">
+        Same number tomorrow. And the day after that.
+      </p>
+    </div>
+
+    <!-- Signed founder paragraph -->
+    <div
+      class="pace-card p-6 md:p-8 max-w-2xl mx-auto text-sm text-[var(--color-text-secondary)] leading-relaxed mb-16"
+    >
+      <p>
+        Pace started as a personal tool — I wanted Siri but smarter, faster,
+        and offline. I couldn't find one I trusted, so I built it on my own
+        Mac. If you try it and the second turn feels worse than I promised,
+        email me directly and I'll refund you. That's the whole quality bar.
+      </p>
+      <p class="mt-3 text-[var(--color-text-muted)] text-xs">
+        — Founder name · <a href="mailto:hello@pace.app" class="underline hover:text-white">hello@pace.app</a>
+      </p>
+    </div>
+
+    <!-- Bottom row -->
+    <div
+      class="border-t border-[var(--color-border-subtle)] pt-10 grid md:grid-cols-3 gap-6 text-sm text-[var(--color-text-muted)]"
+    >
+      <div>
+        <div class="flex items-center gap-2 text-white font-semibold mb-2">
+          <span class="inline-flex items-end gap-[3px] h-5 w-6 text-[var(--color-accent)]" aria-hidden="true">
+            <span class="pace-bar h-3"></span>
+            <span class="pace-bar h-5"></span>
+            <span class="pace-bar h-4"></span>
+            <span class="pace-bar h-3"></span>
+          </span>
+          Pace
+        </div>
+        <p>Voice control for macOS. On-device.</p>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+        <a href="#faq" class="hover:text-white transition-colors">FAQ</a>
+        <a href="/privacy" class="hover:text-white transition-colors">Privacy</a>
+        <a href="/terms" class="hover:text-white transition-colors">Terms</a>
+      </div>
+
+      <div class="flex flex-col gap-2 md:text-right">
+        <a href="mailto:hello@pace.app" class="hover:text-white transition-colors">hello@pace.app</a>
+        <span class="text-xs">© 2026 Pace · Built on a Mac in California</span>
+      </div>
+    </div>
+  </div>
+</footer>

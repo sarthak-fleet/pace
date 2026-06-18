@@ -1,0 +1,31 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.astro";
+import OnDevice from "../components/OnDevice.astro";
+import Features from "../components/Features.astro";
+import Comparison from "../components/Comparison.astro";
+import Pricing from "../components/Pricing.astro";
+import SocialProof from "../components/SocialProof.astro";
+import FAQ from "../components/FAQ.astro";
+import Footer from "../components/Footer.astro";
+
+// Hero copy under 10 words: "The voice assistant that doesn't phone home."
+// Subhead is the page <meta description> — feeds both the OG preview and
+// Google's snippet.
+const description = "Talk to your Mac. Pace listens, reads your screen, and clicks for you — all on your own silicon. No accounts, no cloud, no monthly bill. One-time $29.";
+---
+
+<BaseLayout title="Pace — voice control for macOS, on-device" description={description}>
+  <Nav />
+  <main>
+    <Hero />
+    <OnDevice />
+    <Features />
+    <Comparison />
+    <Pricing />
+    <SocialProof />
+    <FAQ />
+  </main>
+  <Footer />
+</BaseLayout>

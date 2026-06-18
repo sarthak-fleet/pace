@@ -1,0 +1,72 @@
+---
+// Answers to the questions the buyer ASKS in their head before
+// clicking "buy". Honest about the tradeoffs (8 GB model, no
+// Windows/iPhone) so the wrong-fit user self-disqualifies before
+// hitting a refund.
+const faqs = [
+  {
+    q: "Does Pace really run with zero network?",
+    a: "Yes, in the default configuration. Voice transcription, the planner, the vision model, and TTS all run on your Mac. The one scoped exception is `download_file` — and only when you explicitly ask Pace to fetch a URL by name. The Privacy dashboard inside the app shows the exact byte count.",
+  },
+  {
+    q: "How much disk and RAM does it actually use?",
+    a: "The .app itself is ~50 MB. The default planner (Qwen3-4B-Instruct-2507 bf16) is ~8 GB once downloaded into your HuggingFace cache. With everything loaded — planner + vision model + transcription — peak resident memory is ~14 GB. For 16 GB Macs, swap the bf16 identifier for the 4-bit variant in Settings → Models; that runs in ~6 GB.",
+  },
+  {
+    q: "What Macs does it run on?",
+    a: "Apple Silicon (M1 or later) running macOS 14+. Intel Macs are not supported — MLX is Metal-backed and there's no path. Tested on M1 Air, M2 Pro, M3 Max, M4 Pro.",
+  },
+  {
+    q: "Is there an iPhone or Windows version?",
+    a: "No, and there's no roadmap for either today. Pace is a Mac product end-to-end. The Apple Silicon stack is what makes the on-device story possible at this price.",
+  },
+  {
+    q: "What's the upgrade path when you ship a custom Pace-tuned model?",
+    a: "Free for everyone who already owns Pace. Sparkle ships the new .app; the new model downloads from the HuggingFace cache on next activation. Pricing for new customers rises to $49 at that point — your $29 grandfathers in.",
+  },
+  {
+    q: "Do I need LM Studio installed?",
+    a: "No, not when you opt in to bundled MLX (the default for new installs after Phase B/C/D shipped). If you'd rather run the bigger Qwen3-30B model, you can still point Pace at LM Studio — that path remains supported as the power-user fallback.",
+  },
+  {
+    q: "Refund policy?",
+    a: "30 days, no questions. The .app deactivates and your license is refunded. We don't ask why because we already know — the model wasn't a fit, or the bf16 download hurt more than you expected. Both are valid.",
+  },
+  {
+    q: "How is this different from Siri?",
+    a: "Siri can answer questions and trigger Shortcuts. Pace also reads your screen, clicks on it, fills forms, remembers across sessions, and runs locally — Siri rounds-trips most things to Apple's servers. Different products for different goals.",
+  },
+];
+---
+
+<section id="faq" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+      Questions
+    </p>
+    <h2 class="text-3xl md:text-4xl font-bold leading-tight mb-12">
+      Before you buy.
+    </h2>
+
+    <div class="space-y-3">
+      {
+        faqs.map((faq) => (
+          <details class="pace-card p-5 group">
+            <summary class="font-semibold cursor-pointer list-none flex items-center justify-between text-base">
+              <span class="pr-4">{faq.q}</span>
+              <span
+                class="text-[var(--color-text-muted)] transition-transform group-open:rotate-45 text-2xl leading-none"
+                aria-hidden="true"
+              >
+                +
+              </span>
+            </summary>
+            <p class="mt-4 text-sm text-[var(--color-text-secondary)] leading-relaxed">
+              {faq.a}
+            </p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

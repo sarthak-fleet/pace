@@ -1,0 +1,63 @@
+---
+// Specific verbs, specific outcomes. No "powerful", no "seamless",
+// no "robust". Each feature is something the user can picture.
+const features = [
+  {
+    title: "Talk and walk away",
+    line: "Hold ctrl+option, say it, release. Pace finishes in the background while you do something else.",
+    detail: "Push-to-talk via a system-wide CGEvent tap. Streaming TTS lands the first word in ~420 ms.",
+  },
+  {
+    title: "It sees your screen",
+    line: "Ask about what you're looking at. Pace reads the screen with a local vision model and OCR — no \"open this app\" first.",
+    detail: "Qwen3-VL-4B + Apple Vision text recognition + the Accessibility tree, merged into one element map.",
+  },
+  {
+    title: "It clicks for you",
+    line: "\"Click submit\", \"snap this window left\", \"add this to my calendar.\" Pace executes through Accessibility, not coordinates.",
+    detail: "AXPress on a pressable role first; CGEvent fallback. Single undo banner appears for every reversible change.",
+  },
+  {
+    title: "It remembers",
+    line: "Tell it your preferred browser once. It remembers your spec doc, your morning routine, the people you work with.",
+    detail: "Two-tier memory: last 4 turns verbatim + a rolling summary. Survives quit/relaunch. Stored locally in one JSON file.",
+  },
+  {
+    title: "It connects to your apps",
+    line: "Calendar, Reminders, Notes, Mail, Things, Shortcuts, Messages — first-class. Plus 700+ SaaS tools via Composio.",
+    detail: "Apple-native data stays local through EventKit / Contacts. External SaaS goes through Composio's OAuth gateway when you opt in.",
+  },
+  {
+    title: "Custom model upgrades",
+    line: "Pace ships with Qwen3-4B-2507. Future Pace-tuned models arrive automatically through the app updater.",
+    detail: "Sparkle ships the .app. Models download from HuggingFace into your local cache. No re-purchase required.",
+  },
+];
+---
+
+<section id="what-it-does" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
+      What it does
+    </p>
+    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
+      Six things Pace does well enough that you'll stop opening other tools.
+    </h2>
+
+    <div class="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {
+        features.map((feature) => (
+          <div class="pace-card p-6 flex flex-col gap-3">
+            <h3 class="text-lg font-semibold leading-tight">{feature.title}</h3>
+            <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+              {feature.line}
+            </p>
+            <p class="text-xs text-[var(--color-text-muted)] leading-relaxed mt-1 pt-3 border-t border-[var(--color-border-subtle)]">
+              {feature.detail}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

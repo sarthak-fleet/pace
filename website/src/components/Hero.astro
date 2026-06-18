@@ -1,0 +1,124 @@
+---
+// Fleet landing standard pins this section's job:
+//   - Sell from the hero alone (80% don't scroll)
+//   - Headline under 10 words, fifth-grader parseable
+//   - One specific number (no adjectives like "fast" / "powerful")
+//   - One primary CTA, label describes the action
+//   - Demo above the fold (we use a CSS-only animated mock — no
+//     video file to ship, no waiting on a recording session)
+//   - No weak words: powerful, seamless, robust, amazing
+---
+
+<section class="px-6 pt-20 pb-24 md:pt-28 md:pb-32 max-w-6xl mx-auto">
+  <div class="grid md:grid-cols-2 gap-14 md:gap-12 items-center">
+    <!-- Left: headline + CTAs -->
+    <div class="pace-fade-up">
+      <div
+        class="inline-flex items-center gap-2 text-xs font-medium tracking-wide uppercase text-[var(--color-text-secondary)] mb-6 px-3 py-1 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface)]"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-positive)]"></span>
+        100% on-device · macOS 14+
+      </div>
+
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
+        The voice assistant
+        <br class="hidden md:block" />
+        <span class="text-[var(--color-accent)]">that doesn't phone home.</span>
+      </h1>
+
+      <p class="mt-6 text-lg md:text-xl text-[var(--color-text-secondary)] leading-relaxed max-w-xl">
+        Talk to your Mac. Pace listens, reads your screen, and clicks for you —
+        all on your own silicon. No accounts, no servers, no monthly bill. The
+        first PTT answer arrives in under 500 ms.
+      </p>
+
+      <div class="mt-9 flex flex-col sm:flex-row gap-3">
+        <a href="#pricing" class="pace-cta-primary">
+          Download Pace — $29
+          <span aria-hidden="true">↓</span>
+        </a>
+        <a href="#what-it-does" class="pace-cta-secondary">See it work</a>
+      </div>
+
+      <p class="mt-4 text-sm text-[var(--color-text-muted)]">
+        Free with Apple Intelligence · One-time payment · No subscription
+      </p>
+    </div>
+
+    <!-- Right: animated CSS-only demo -->
+    <div class="pace-fade-up" style="animation-delay: 120ms">
+      <div class="relative">
+        <!-- Faux menu bar context to anchor the capsule visually. -->
+        <div
+          class="relative pace-card overflow-hidden p-0"
+          aria-label="Demo of Pace running in the macOS menu bar"
+        >
+          <!-- Menu bar -->
+          <div
+            class="bg-black px-4 py-2 flex items-center justify-between border-b border-[var(--color-border-subtle)]"
+          >
+            <div class="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+              <span>Finder</span>
+              <span>File</span>
+              <span>Edit</span>
+              <span>View</span>
+            </div>
+            <!-- The notch capsule itself -->
+            <div
+              class="bg-black rounded-full px-3 py-1.5 flex items-center gap-2.5 border border-[var(--color-border-subtle)]"
+              aria-label="Pace listening"
+            >
+              <span
+                class="inline-flex items-end gap-[2px] h-3.5 text-[var(--color-accent)]"
+              >
+                <span class="pace-bar h-2"></span>
+                <span class="pace-bar h-3.5"></span>
+                <span class="pace-bar h-2.5"></span>
+                <span class="pace-bar h-3"></span>
+              </span>
+              <span class="text-[10px] text-[var(--color-text-secondary)] tracking-wide uppercase">Listening</span>
+            </div>
+          </div>
+
+          <!-- Conversation bubble -->
+          <div class="p-6 bg-[var(--color-surface)] min-h-[260px] flex flex-col gap-4 justify-end">
+            <div class="ml-auto max-w-[80%]">
+              <div class="text-[11px] text-[var(--color-text-muted)] mb-1 text-right">You · 3s</div>
+              <div
+                class="bg-[var(--color-surface-raised)] border border-[var(--color-border-subtle)] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm"
+              >
+                pull up my design doc and snap it to the left
+              </div>
+            </div>
+            <div class="mr-auto max-w-[85%]">
+              <div class="text-[11px] text-[var(--color-text-muted)] mb-1 flex items-center gap-1.5">
+                <span
+                  class="inline-flex items-end gap-[2px] h-2.5 text-[var(--color-accent)]"
+                >
+                  <span class="pace-bar h-1.5"></span>
+                  <span class="pace-bar h-2.5"></span>
+                  <span class="pace-bar h-2"></span>
+                </span>
+                Pace · 420 ms
+              </div>
+              <div
+                class="bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm"
+              >
+                Opening the design doc and snapping it left
+                <span class="pace-cursor-caret"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating proof chip -->
+        <div
+          class="absolute -bottom-3 -right-3 md:-bottom-4 md:-right-4 pace-card px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] flex items-center gap-2"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-positive)] inline-block"></span>
+          <span>0 bytes sent off this Mac</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
