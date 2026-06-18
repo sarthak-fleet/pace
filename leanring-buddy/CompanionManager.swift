@@ -709,32 +709,18 @@ final class CompanionManager: ObservableObject {
         scheduleLazyEmbedding(entryIdsAndTextsToEmbed)
     }
 
-    /// Compute embeddings off the hot path so the user-facing turn never
-    /// waits. Constructs a fresh embedding client inside the detached task
-    /// to avoid capturing main-actor state. Best-effort: any failure (e.g.
-    /// the embedding model isn't loaded in LM Studio) just leaves the
-    /// entries nil-embedded, which excludes them from semantic recall — the
-    /// lexical retriever still covers them.
+    /// Off-hot-path embedding scheduler — extracted into its own
+    /// module so each memory write site is a one-line call. Created
+    /// lazily so the embedding client factory only runs after the
+    /// first write that needs it. See PaceLazyEmbeddingScheduler.
+    private lazy var lazyEmbeddingScheduler = PaceLazyEmbeddingScheduler(
+        memoryIndex: memoryIndex,
+        embeddingClientFactory: { PaceChainedTextEmbeddingClient.makePaceDefault() },
+        onEmbeddingsPersisted: { [weak self] in self?.persistUnifiedMemory() }
+    )
+
     private func scheduleLazyEmbedding(_ entryIdsAndTexts: [(id: String, text: String)]) {
-        guard !entryIdsAndTexts.isEmpty else { return }
-        let entryIds = entryIdsAndTexts.map { $0.id }
-        let entryTexts = entryIdsAndTexts.map { $0.text }
-        Task.detached(priority: .utility) { [weak self] in
-            let embeddingClient = PaceChainedTextEmbeddingClient.makePaceDefault()
-            guard
-                let embeddingVectors = try? await embeddingClient.embed(entryTexts),
-                embeddingVectors.count == entryIds.count
-            else {
-                return
-            }
-            await MainActor.run {
-                guard let self else { return }
-                for (entryId, embeddingVector) in zip(entryIds, embeddingVectors) {
-                    self.memoryIndex.setEmbedding(embeddingVector, forEntryId: entryId)
-                }
-                self.persistUnifiedMemory()
-            }
-        }
+        lazyEmbeddingScheduler.schedule(entryIdsAndTexts)
     }
 
     // MARK: - Unified memory (Phase 4: UI accessors + cascade)
