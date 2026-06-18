@@ -36,10 +36,18 @@ const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://pace.app").to
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageURL} />
 
-    <!-- Self-hosted Inter would be lighter but Google Fonts is fine
-         for v1 — swap when the OG image polish work happens. -->
+    <!-- Inter for body; Instrument Serif for editorial display
+         headlines — the serif is what shifts the whole page from
+         "generic dark Tailwind landing" to "someone designed this
+         on purpose." Free via Google Fonts. -->
     <link rel="preconnect" href="https://rsms.me/" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
+    />
   </head>
   <body class="min-h-screen">
     <slot />

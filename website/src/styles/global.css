@@ -19,6 +19,7 @@
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+  --font-display: "Instrument Serif", "Iowan Old Style", "Palatino", Georgia, serif;
 
   --radius-card: 14px;
   --radius-button: 10px;
@@ -42,6 +43,51 @@ h1,
 h2,
 h3 {
   letter-spacing: -0.022em;
+}
+
+/* Editorial display headlines — Instrument Serif with a slight
+   italic at the accent. This is the single biggest move from
+   "AI-generated dark landing page" to "someone made deliberate
+   typographic choices." Used in hero + section heads. */
+.pace-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  line-height: 0.98;
+}
+.pace-display em {
+  font-style: italic;
+  color: var(--color-accent);
+}
+
+/* Editorial body — wider measure for long-form sections, drop-cap
+   first paragraph optional via .pace-prose. */
+.pace-prose {
+  max-width: 38rem;
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+.pace-prose p + p {
+  margin-top: 1.1em;
+}
+.pace-prose strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.pace-prose em {
+  color: var(--color-text-primary);
+  font-style: italic;
+}
+
+/* "Marginal note" — annotations beside body text, like editorial
+   sidenotes. Used for footnotes, founder asides, technical notes. */
+.pace-margin-note {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 /* Single accent reserved for the primary CTA. Hover state matches
@@ -160,5 +206,160 @@ h3 {
   .pace-bar {
     transform: scaleY(0.7);
     opacity: 0.7;
+  }
+}
+
+/* === Plan-then-execute demo (Hero showpiece) ===
+   The keyframe orchestration below drives the live "Pace turn"
+   animation that's the hero of the hero. Each step is a separate
+   element with a delayed entry animation; the whole sequence loops
+   on a 14s cycle so a visitor lingering long enough sees it twice.
+
+   This is the one thing on the page no other product can show —
+   the actual plan-then-execute scaffold streaming a real-shaped
+   <think> block + spoken text + tool call JSON. */
+
+@keyframes pace-line-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pace-loop-fade {
+  /* Long sequence (~14s) so a visitor sees the full turn play out.
+     Pause holds the final state visible; restart fades the whole
+     stack out before the next iteration begins. */
+  0%,
+  82% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pace-key-press {
+  0%,
+  10% {
+    background: var(--color-surface-raised);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    transform: translateY(0);
+  }
+  18%,
+  72% {
+    background: var(--color-accent);
+    color: white;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 30%, transparent);
+    transform: translateY(1px);
+  }
+  82%,
+  100% {
+    background: var(--color-surface-raised);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    transform: translateY(0);
+  }
+}
+
+.pace-demo-loop {
+  animation: pace-loop-fade 14s ease-in-out infinite;
+}
+
+.pace-key-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.pace-key-chip-animated {
+  animation: pace-key-press 14s ease-in-out infinite;
+}
+
+/* Each line in the demo stream gets its own delay so the sequence
+   reads as a play-by-play. Tuned so the most informative lines
+   (the <think> block contents) land where the eye is most likely
+   to be parked. */
+.pace-stream-line {
+  opacity: 0;
+  animation: pace-line-in 0.5s ease-out forwards;
+  animation-iteration-count: infinite;
+  animation-duration: 14s;
+}
+.pace-stream-line[data-step="1"]  { animation-delay: 0.0s;  animation-name: pace-step-1; }
+.pace-stream-line[data-step="2"]  { animation-delay: 0.0s;  animation-name: pace-step-2; }
+.pace-stream-line[data-step="3"]  { animation-delay: 0.0s;  animation-name: pace-step-3; }
+.pace-stream-line[data-step="4"]  { animation-delay: 0.0s;  animation-name: pace-step-4; }
+.pace-stream-line[data-step="5"]  { animation-delay: 0.0s;  animation-name: pace-step-5; }
+.pace-stream-line[data-step="6"]  { animation-delay: 0.0s;  animation-name: pace-step-6; }
+.pace-stream-line[data-step="7"]  { animation-delay: 0.0s;  animation-name: pace-step-7; }
+.pace-stream-line[data-step="8"]  { animation-delay: 0.0s;  animation-name: pace-step-8; }
+.pace-stream-line[data-step="9"]  { animation-delay: 0.0s;  animation-name: pace-step-9; }
+
+/* Per-line keyframes — each is the same shape but with different
+   appearance points across the 14s loop. Holds at opacity:1 until
+   the loop fade-out grouping kicks in via pace-loop-fade. */
+@keyframes pace-step-1 { 0%, 3% { opacity: 0; transform: translateY(4px); } 8%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-2 { 0%, 11% { opacity: 0; transform: translateY(4px); } 16%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-3 { 0%, 22% { opacity: 0; transform: translateY(4px); } 27%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-4 { 0%, 27% { opacity: 0; transform: translateY(4px); } 32%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-5 { 0%, 33% { opacity: 0; transform: translateY(4px); } 38%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-6 { 0%, 40% { opacity: 0; transform: translateY(4px); } 45%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-7 { 0%, 52% { opacity: 0; transform: translateY(4px); } 58%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-8 { 0%, 62% { opacity: 0; transform: translateY(4px); } 68%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pace-step-9 { 0%, 73% { opacity: 0; transform: translateY(4px); } 78%, 100% { opacity: 1; transform: translateY(0); } }
+
+/* "Capsule" listening indicator in the demo header — the same
+   animated bars as the menu-bar overlay in the real app. */
+@keyframes pace-capsule-listening {
+  0%, 12% { background: var(--color-surface-raised); }
+  18%, 72% { background: color-mix(in oklab, var(--color-accent) 18%, var(--color-surface-raised)); }
+  82%, 100% { background: var(--color-surface-raised); }
+}
+
+.pace-capsule-listening-bg {
+  animation: pace-capsule-listening 14s ease-in-out infinite;
+}
+
+/* Headline display sizing — editorial Instrument Serif. Bigger
+   than typical Tailwind heroes because the serif carries weight
+   differently than Inter does. */
+.pace-headline-display {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8.5vw, 8rem);
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  font-weight: 400;
+}
+.pace-headline-display .accent {
+  font-style: italic;
+  color: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pace-demo-loop,
+  .pace-stream-line,
+  .pace-key-chip-animated,
+  .pace-capsule-listening-bg {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }

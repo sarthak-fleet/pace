@@ -1,105 +1,57 @@
 ---
-// Per the fleet landing standard: only run a comparison table when
-// you're genuinely better on something the user cares about. Pace's
-// honest delta is the on-device + does-things-not-just-transcribes
-// pair. The cells below name that delta concretely — no fluff.
-const competitors = [
-  {
-    name: "Pace",
-    price: "$29 once",
-    onDevice: "Yes — every byte",
-    voice: "Yes",
-    screen: "Reads + clicks",
-    memory: "Persistent",
-    accent: true,
-  },
-  {
-    name: "Wispr Flow",
-    price: "$12/mo",
-    onDevice: "Cloud STT",
-    voice: "Yes (dictation)",
-    screen: "No",
-    memory: "No",
-    accent: false,
-  },
-  {
-    name: "Raycast Pro",
-    price: "$8/mo",
-    onDevice: "Cloud LLM",
-    voice: "Limited",
-    screen: "No",
-    memory: "Limited",
-    accent: false,
-  },
-  {
-    name: "MacWhisper Pro",
-    price: "$59 once",
-    onDevice: "Yes",
-    voice: "Files only",
-    screen: "No",
-    memory: "No",
-    accent: false,
-  },
-  {
-    name: "Apple Siri",
-    price: "Free",
-    onDevice: "Mixed",
-    voice: "Yes",
-    screen: "Limited",
-    memory: "No",
-    accent: false,
-  },
-];
+// No table, no checkmarks, no "us vs them" grid. Just three honest
+// paragraphs about the products in the same shape of the user's
+// head, written like someone who actually uses them. This is the
+// section a competitor can't paste onto their site unchanged.
 ---
 
-<section id="vs" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
-  <div class="max-w-6xl mx-auto">
-    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
-      Compared
+<section id="vs" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      The competition
     </p>
-    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
-      Pace isn't a dictation app, an LLM launcher, or Siri. It's the only one
-      doing all three on your own silicon.
+
+    <h2 class="pace-display text-3xl md:text-5xl text-white mb-12 max-w-2xl">
+      Pace isn't Siri. <em>It's also not</em> Raycast, Wispr Flow, or
+      MacWhisper. Here's where each one stops.
     </h2>
 
-    <div class="mt-10 overflow-x-auto pace-card">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-[var(--color-border-subtle)] text-[var(--color-text-muted)]">
-            <th class="text-left font-medium py-4 px-5 min-w-[140px]">Product</th>
-            <th class="text-left font-medium py-4 px-5">Price</th>
-            <th class="text-left font-medium py-4 px-5">On-device</th>
-            <th class="text-left font-medium py-4 px-5">Voice</th>
-            <th class="text-left font-medium py-4 px-5">Reads screen</th>
-            <th class="text-left font-medium py-4 px-5">Memory</th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            competitors.map((row) => (
-              <tr
-                class={`border-b border-[var(--color-border-subtle)] last:border-b-0 ${
-                  row.accent ? "bg-[var(--color-accent)]/5" : ""
-                }`}
-              >
-                <td class={`py-4 px-5 font-semibold ${row.accent ? "text-[var(--color-accent)]" : "text-white"}`}>
-                  {row.name}
-                </td>
-                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.price}</td>
-                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.onDevice}</td>
-                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.voice}</td>
-                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.screen}</td>
-                <td class="py-4 px-5 text-[var(--color-text-secondary)]">{row.memory}</td>
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
+    <div class="pace-prose space-y-7">
+      <p>
+        <strong>Siri</strong> talks back. It doesn't read your screen, click
+        on it, or remember what you talked about last week. Half its answers
+        round-trip through Apple's servers, which is fine — until you're on a
+        plane or behind a corporate proxy or just don't want to.
+      </p>
+      <p>
+        <strong>Raycast Pro</strong> is a launcher with a chat box bolted on.
+        $8 a month, very good at what it does, runs everything through the
+        cloud. If your job is keyboard shortcuts and quick LLM queries, use
+        Raycast. If you want to be able to talk to it while your hands are
+        elsewhere, you'll need something else.
+      </p>
+      <p>
+        <strong>Wispr Flow</strong> is voice-to-text. $12 a month. Excellent
+        dictation. Doesn't see your screen. Doesn't do anything <em>with</em>
+        what you said — it just types it.
+      </p>
+      <p>
+        <strong>MacWhisper Pro</strong> transcribes audio files. $59 once,
+        fully offline, brilliant at one thing. If you have hours of meeting
+        audio to convert, buy it. It is not an assistant.
+      </p>
+      <p>
+        <strong>Pace</strong> is the one doing voice <em>and</em> screen
+        <em>and</em> actions <em>and</em> memory, fully on your machine, for
+        $29 paid once. That isn't a feature list — that's the whole pitch.
+        If any of the four above already covered what you need, you wouldn't
+        be reading this far.
+      </p>
     </div>
 
-    <p class="mt-4 text-xs text-[var(--color-text-muted)]">
-      Pricing snapshots as of January 2026. Pace pricing rises to $49 when the
-      Pace-tuned model ships — current $29 is the early-adopter floor.
+    <p class="pace-margin-note mt-10 max-w-md">
+      Pricing checked January 2026.<br />
+      If anyone's gotten cheaper since, tell me and I'll update this paragraph.
     </p>
   </div>
 </section>

@@ -1,140 +1,71 @@
 ---
-// Three tiers — Good / Better / Best — per the fleet landing
-// standard's "Opinionated defaults" section. One-time payments
-// where the value delivery is local; recurring only for the cloud-
-// backed routing that has per-call costs.
+// One declarative price. No three-card grid. No "Good / Better /
+// Best." Just the number, what it gets you, and the note about
+// when it changes. Things 3 prices this way. So does Tot.
 //
-// The middle tier is the recommended default and gets the accent.
-// Tier titles are jobs-to-be-done, not feature lists.
-const tiers = [
-  {
-    name: "Try",
-    price: "Free",
-    priceDetail: "Apple Intelligence required",
-    summary: "See if Pace is your thing.",
-    bullets: [
-      "Voice + screen + actions",
-      "Apple Foundation Models planner",
-      "Apple on-device Speech",
-      "Local memory (last session only)",
-      "Personal use",
-    ],
-    cta: "Download Free",
-    ctaHref: "#",
-    accent: false,
-  },
-  {
-    name: "Pace",
-    price: "$29",
-    priceDetail: "one-time · early-adopter price",
-    summary: "The full stack, on your Mac, forever.",
-    bullets: [
-      "Everything in Try, plus —",
-      "Bundled MLX models (Qwen3-4B-2507)",
-      "WhisperKit Large-v3 transcription",
-      "Persistent memory across sessions",
-      "Composio (700+ SaaS, BYO key)",
-      "Research escalation to local CLI",
-      "Future Pace-tuned models, free",
-    ],
-    cta: "Buy Pace — $29",
-    ctaHref: "#",
-    accent: true,
-    note: "Price rises to $49 when the Pace-tuned model ships",
-  },
-  {
-    name: "Studio",
-    price: "$5/mo",
-    priceDetail: "or $49/year · optional",
-    summary: "For people running Pace all day.",
-    bullets: [
-      "Everything in Pace, plus —",
-      "Pace-managed Composio routing",
-      "Priority access to model previews",
-      "Direct line to the founder",
-      "Cancel anytime, keep the app",
-    ],
-    cta: "Add Studio",
-    ctaHref: "#",
-    accent: false,
-  },
-];
+// The free tier is a footnote, not a column. The Studio tier is
+// genuinely optional — if it earns its own row it'll be added,
+// but introducing it as a tier-grid on the homepage is exactly
+// the SaaS-template move that makes everything feel generic.
 ---
 
-<section id="pricing" class="px-6 py-20 md:py-28 border-t border-[var(--color-border-subtle)]">
-  <div class="max-w-6xl mx-auto">
-    <p class="text-sm uppercase tracking-widest text-[var(--color-accent)] font-medium mb-4">
-      Pricing
-    </p>
-    <h2 class="text-3xl md:text-4xl font-bold leading-tight max-w-3xl">
-      Pay once. Own it. No tokens, no monthly cap, no inference invoice.
-    </h2>
-    <p class="mt-4 text-[var(--color-text-secondary)] max-w-2xl">
-      One-time purchase because the inference runs on your Mac. The optional
-      Studio sub covers the only things with ongoing cost — the Composio
-      routing and the human time on the other end of your bug reports.
+<section id="pricing" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      What it costs
     </p>
 
-    <div class="mt-12 grid md:grid-cols-3 gap-5">
-      {
-        tiers.map((tier) => (
-          <div
-            class={`pace-card p-7 flex flex-col gap-4 relative ${
-              tier.accent ? "border-[var(--color-accent)]/40" : ""
-            }`}
-          >
-            {tier.accent && (
-              <div class="absolute -top-3 left-7 px-2.5 py-0.5 text-[10px] uppercase tracking-wider font-semibold rounded-full bg-[var(--color-accent)] text-white">
-                Most people buy this
-              </div>
-            )}
-
-            <div>
-              <h3 class={`text-xl font-semibold ${tier.accent ? "text-[var(--color-accent)]" : ""}`}>
-                {tier.name}
-              </h3>
-              <div class="mt-3 flex items-baseline gap-2">
-                <span class="text-4xl font-bold">{tier.price}</span>
-              </div>
-              <p class="text-xs text-[var(--color-text-muted)] mt-1">{tier.priceDetail}</p>
-              <p class="text-sm text-[var(--color-text-secondary)] mt-3">{tier.summary}</p>
-            </div>
-
-            <ul class="space-y-2.5 text-sm text-[var(--color-text-secondary)] flex-1">
-              {
-                tier.bullets.map((bullet) => (
-                  <li class="flex gap-2.5">
-                    <span class="text-[var(--color-accent)] mt-0.5">→</span>
-                    <span class="leading-snug">{bullet}</span>
-                  </li>
-                ))
-              }
-            </ul>
-
-            <a
-              href={tier.ctaHref}
-              class={tier.accent ? "pace-cta-primary justify-center mt-2" : "pace-cta-secondary justify-center mt-2"}
-            >
-              {tier.cta}
-            </a>
-
-            {tier.note && (
-              <p class="text-[11px] text-[var(--color-text-muted)] text-center">{tier.note}</p>
-            )}
-          </div>
-        ))
-      }
+    <div class="pace-display text-white">
+      <span class="text-7xl md:text-9xl">$29.</span>
+      <span class="text-3xl md:text-5xl text-[var(--color-text-secondary)]">Once.</span>
     </div>
 
-    <div class="mt-10 pace-card p-6 text-sm text-[var(--color-text-secondary)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-      <div>
-        <strong class="text-white">Requirements:</strong> macOS 14+, Apple
-        Silicon (M1 or later). 16 GB RAM minimum; 32 GB recommended for the
-        bf16 model.
+    <div class="mt-10 grid md:grid-cols-2 gap-10 md:gap-16">
+      <div class="pace-prose">
+        <p>
+          You pay <strong>twenty-nine dollars one time</strong> and Pace is
+          yours. The model runs on your Mac. The inference costs me nothing
+          on an ongoing basis, so there's nothing to charge you for monthly.
+        </p>
+        <p>
+          When the first Pace-tuned model ships (sometime in the next two
+          quarters, no exact date) the price for new buyers goes to $49.
+          If you bought at $29 you keep getting the new models free, by way
+          of the same Sparkle updater every other Mac app uses.
+        </p>
       </div>
-      <div class="text-xs text-[var(--color-text-muted)]">
-        Tested on M1, M2 Pro, M3 Max, M4 Pro.
+
+      <div class="pace-prose text-sm md:text-base">
+        <p>
+          <strong>Try it free first.</strong> If your Mac has Apple
+          Intelligence on, Pace runs against Apple's Foundation Models tier
+          at no cost. It's the same app — you'll know within a week if the
+          bundled stack is worth the $29.
+        </p>
+        <p>
+          <strong>Studio, $5/month, optional.</strong> Only useful if you
+          want me to host the Composio routing instead of running it
+          yourself. Most people skip it. Add it later or never.
+        </p>
+        <p>
+          <strong>30-day refund.</strong> No questions. The license
+          deactivates, your card gets the money back.
+        </p>
       </div>
+    </div>
+
+    <div
+      class="mt-14 flex flex-col items-start gap-4 pt-10 border-t border-[var(--color-border-subtle)]"
+    >
+      <a href="#" class="pace-cta-primary text-base">
+        Buy Pace — $29
+        <span aria-hidden="true">→</span>
+      </a>
+      <p class="pace-margin-note max-w-lg">
+        macOS 14+, Apple Silicon, 16 GB RAM minimum.<br />
+        32 GB if you want the bigger bf16 model loaded all the time —
+        otherwise the 4-bit variant is one Settings toggle away.
+      </p>
     </div>
   </div>
 </section>
