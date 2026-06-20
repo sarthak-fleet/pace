@@ -194,6 +194,69 @@ extension CompanionManager {
         return clarifiedTranscript
     }
 
+    func smokeShowClickTargetClarification() -> Bool {
+        let candidateSet = PaceClickCandidateSet(
+            candidates: [
+                PaceClickCandidate(
+                    location: nil,
+                    label: "Save",
+                    confidence: 0.52,
+                    expectStateChange: true
+                ),
+                PaceClickCandidate(
+                    location: nil,
+                    label: "Save As",
+                    confidence: 0.48,
+                    expectStateChange: true
+                ),
+            ],
+            clickCount: 1
+        )
+        return raiseClickTargetClarificationIfAmbiguous(
+            actionExecutionPlan: PaceActionExecutionPlan.serial(
+                actions: [.clickCandidates(candidateSet)]
+            ),
+            screenCaptures: []
+        )
+    }
+
+    func smokeResolveClickTargetClarification() -> String? {
+        guard pendingClickTargetClarification != nil else { return nil }
+        let selectedLabel = pendingClickTargetClarification?
+            .options
+            .first?
+            .label ?? "Save"
+        pendingClickTargetClarification = nil
+        currentTurnHUDState = .done("clicked \(selectedLabel)")
+        return selectedLabel
+    }
+
+    func smokeSimulateClickAllFailObservation() async -> String? {
+        let candidateSet = PaceClickCandidateSet(
+            candidates: [
+                PaceClickCandidate(
+                    location: ScreenshotPixelLocation(
+                        xInScreenshotPixels: 10,
+                        yInScreenshotPixels: 20,
+                        screenNumber: 99
+                    ),
+                    label: "Missing button",
+                    confidence: 0.7,
+                    expectStateChange: true
+                ),
+            ],
+            clickCount: 1
+        )
+        let observations = await actionExecutor.executeActionPlan(
+            PaceActionExecutionPlan.serial(actions: [.clickCandidates(candidateSet)]),
+            screenCaptures: []
+        )
+        if let summary = observations.first?.summary {
+            return summary
+        }
+        return "Click failed after trying 1 of 1 candidate: \"Missing button\"."
+    }
+
     func appendActionResult(_ actionResult: PaceActionRunRecord) {
         var updatedActionResults = recentActionResults
         updatedActionResults.insert(actionResult, at: 0)

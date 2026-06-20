@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-20. Latest test count: **1068/1068 passing** (`bash scripts/test-pace.sh`). God-class decomposition **Phase A + B complete**: `CompanionManager` main ~1100 lines + 16 extensions; `PaceActionExecutor` main ~770 lines + 8 extensions (incl. Wave 6a coordinate conversion).
+Last updated: 2026-06-20. Latest test count: **1075/1075 passing** (`bash scripts/test-pace.sh`).
 
 ## Current Scope
 
@@ -90,6 +90,19 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
   `PaceTranscribeAudioFileIntent`).
 - **`PaceLazyEmbeddingScheduler`** extracted from CompanionManager.
 
+### PRD closure sweep (v0.3.14)
+
+- **Click ambiguity fixtures** — `evals/click-ambiguity-fixtures/` +
+  `PaceClickAmbiguityFixtureTests` (CI gate for HUD disambiguation rule).
+- **v10 generic field streaming** — `PaceStreamingPlannerFieldDetector`
+  streams dictate/edit/`AX.setValue` text during planner output (alongside
+  existing Mail.draft streaming).
+- **Executor smoke runner** — `scripts/smoke-executor-surface.sh` chains
+  dry-run unit tests, v10 schema fixtures, and extended runtime hooks
+  (click-target clarification + all-fail observation breadcrumbs).
+- **Remote model manifest** — optional `RemoteModelManifestURL` +
+  `PaceRemoteModelManifest` (24h cache, overrides bundled defaults when set).
+
 ### Landing site (new this cycle)
 
 - `website/` — Astro 5 + Tailwind v4 + Lightning CSS, single page, 52 KB
@@ -107,21 +120,18 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
    LoRA on Pace's eval fixtures + collected anonymized turns (opt-in).
    Ship via Info.plist manifest bump + Sparkle release. Forces the
    eval-gate pin update as the deliberate review step.
-2. **Click executor manual ambiguity evals → unit tests.** Convert the
-   queued manual eval set into fixture-driven tests. See
-   `docs/prds/click-executor-improvements.md`.
-3. **Visual target ambiguity HUD path.** Wire the executor top-K
-   candidate output into a panel option-list clarification. See
-   `docs/prds/hud-intent-disambiguator.md`.
-4. **Executor real-app AX/performance smoke flow.** Mail / Safari /
-   Notes / Slack / VSCode / Cursor smokes via
-   `scripts/smoke-runtime-hooks.sh`.
-5. **Landing-site pre-launch audit.** Three testimonials, founder
-   signature, PNG OG image, Stripe/Gumroad checkout URLs in pricing CTAs.
-6. **Remote model manifest** (optional). Lets a new model ship between
-   Sparkle releases via a Pace-controlled JSON endpoint. UX
-   decisions pending (auto-swap vs prompt vs explicit check).
-7. **`CompanionManager.swift` + `PaceActionExecutor.swift` god-class decomposition — done.** Phase A: main ~1100 lines + 16 `CompanionManager+*.swift` extensions. Phase B: main ~770 lines + 7 `PaceActionExecutor+*.swift` extensions (+ existing `PaceActionExecutorCoordinateConversion.swift`). See `prds/pace-godclass-decomposition.md`.
+2. **Landing-site pre-launch audit.** Three testimonials, PNG OG image
+   (`rsvg-convert` or manual export), Stripe/Gumroad checkout URLs in
+   pricing CTAs. Founder signature is already wired in `Footer.astro`.
+3. **Remote model manifest URL.** Optional `RemoteModelManifestURL` in
+   Info.plist is wired (`PaceRemoteModelManifest`); point it at a hosted
+   JSON doc when the first between-release model bump ships.
+4. **Real-app executor smokes.** Mail compose latency, Safari click,
+   Notes/Slack/IDE AX checks — user-run checklist in
+   `scripts/smoke-executor-surface.sh` (requires Xcode Debug + TCC).
+5. **v10 grammar-constrained model gate.** Run `scripts/eval-planners.py`
+   before switching the runtime default model identifier; schema-reject
+   defence + deterministic fixtures already pass in CI.
 
 ## Pricing posture
 

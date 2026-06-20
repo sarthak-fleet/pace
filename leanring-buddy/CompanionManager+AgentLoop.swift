@@ -169,6 +169,29 @@ extension CompanionManager {
         return true
     }
 
+    func applyStreamingPlannerFieldChange(_ change: PaceStreamingPlannerFieldChange) async {
+        switch change.snapshot.kind {
+        case .dictateText:
+            guard !change.typingDelta.isEmpty else { return }
+            await actionExecutor.typeText(change.typingDelta)
+        case .editReplacement:
+            _ = actionExecutor.setTextValue(
+                PaceSetTextValueRequest(
+                    value: change.snapshot.text,
+                    target: .selection
+                )
+            )
+        case .setValue:
+            let target = change.snapshot.setValueTarget ?? .focused
+            _ = actionExecutor.setTextValue(
+                PaceSetTextValueRequest(
+                    value: change.snapshot.text,
+                    target: target
+                )
+            )
+        }
+    }
+
     /// Set-of-Mark click recovery: for any observation flagged as an all-fail
     /// click, render numbered marks on the same screenshot the click was planned
     /// against, ask the VLM which mark is the intended element, and re-click. On
@@ -984,11 +1007,13 @@ extension CompanionManager {
             var currentTurnUserPrompt = transcript
             var pendingPostActionFeedbackText: String?
             let streamingMailDraftDetector = PaceStreamingMailDraftDetector()
+            let streamingPlannerFieldDetector = PaceStreamingPlannerFieldDetector()
 
             do {
                 agentStepLoop: while stepIndex < maxAgentStepCount {
                     stepIndex += 1
                     streamingMailDraftDetector.reset()
+                    streamingPlannerFieldDetector.reset()
                     let isFirstStep = (stepIndex == 1)
                     guard !Task.isCancelled else { return }
 
@@ -1215,6 +1240,17 @@ extension CompanionManager {
                                         _ = await self.actionExecutor.beginOrUpdateStreamingMailDraft(
                                             streamingMailDraftSnapshot
                                         )
+                                    }
+                                }
+                                if let streamingFieldChange = streamingPlannerFieldDetector
+                                    .detectChange(in: accumulatedPlannerText) {
+                                    Task { @MainActor [weak self] in
+                                        guard let self,
+                                              self.actionExecutor.actionsAreEnabled,
+                                              !self.requiresActionApproval else {
+                                            return
+                                        }
+                                        await self.applyStreamingPlannerFieldChange(streamingFieldChange)
                                     }
                                 }
                             }
