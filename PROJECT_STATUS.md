@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-20. Latest test count: **1075/1075 passing** (`bash scripts/test-pace.sh`).
+Last updated: 2026-06-20. Latest test count: **1079/1079 passing** (`bash scripts/test-pace.sh`).
 
 ## Current Scope
 
@@ -106,7 +106,8 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
 - **Landing pre-launch (repo)** — OG PNG, commerce config with mailto fallback,
   honest early-access social proof (no fictional names).
 - **Pace-tuned model scaffold** — `docs/plans/pace-tuned-model-v1.md`,
-  `scripts/train-pace-tuned-model.sh`, `evals/pace-tuned-export/`.
+  `scripts/train-pace-tuned-model.sh`, `scripts/export-pace-tuned-turns.sh`,
+  `PaceTunedTurnExporter.swift` (Settings → Models opt-in), `evals/pace-tuned-export/`.
 
 ### Landing site (new this cycle)
 
@@ -118,12 +119,12 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
   FAQ → Footer (signed founder paragraph + "0 bytes today" punchline).
 - Walks the [`fleet/LANDING_STANDARD.md`](../LANDING_STANDARD.md) audit
   checklist. Open items called out in [`website/README.md`](./website/README.md).
+- **Deployed** to Cloudflare Pages project `pace` (`npm run deploy` in `website/`).
+  Mailto checkout fallback live until `PUBLIC_PACE_CHECKOUT_URL` is set in Pages build env.
 
 ## Planned Next
 
-1. **First pace-tuned model.** Dataset export → LoRA train → eval gate. Scaffold:
-   `docs/plans/pace-tuned-model-v1.md`, `scripts/train-pace-tuned-model.sh`,
-   `evals/pace-tuned-export/`. Blocked on opt-in turn collection, not code.
+1. **First pace-tuned model.** Enable Settings → Models export, collect turns, `bash scripts/export-pace-tuned-turns.sh`, then LoRA train + eval gate. Scaffold: `docs/plans/pace-tuned-model-v1.md`, `scripts/train-pace-tuned-model.sh`.
 2. **Stripe checkout URL.** Set `PUBLIC_PACE_CHECKOUT_URL` at Cloudflare Pages
    build when live (mailto fallback ships today).
 3. **Permissioned public testimonials.** Replace private-beta theme cards in

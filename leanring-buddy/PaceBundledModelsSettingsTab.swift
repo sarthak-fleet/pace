@@ -29,6 +29,8 @@ struct PaceBundledModelsSettingsTab: View {
     @State private var plannerModelIdentifier: String = ""
     @State private var embedderModelIdentifier: String = ""
     @State private var vlmModelIdentifier: String = ""
+    @State private var isPaceTunedTurnExportEnabled: Bool = PaceUserPreferencesStore
+        .bool(.isPaceTunedTurnExportEnabled, default: false)
 
     // Prefetch state — drives the "Download now" UX so users can
     // warm the model on wifi before the first PTT pays the cost.
@@ -47,6 +49,8 @@ struct PaceBundledModelsSettingsTab: View {
             vlmSection
             Divider().background(DS.Colors.borderSubtle)
             ttsSection
+            Divider().background(DS.Colors.borderSubtle)
+            paceTunedExportSection
             Divider().background(DS.Colors.borderSubtle)
             qualityCaveatSection
         }
@@ -314,6 +318,30 @@ struct PaceBundledModelsSettingsTab: View {
                 .font(.system(size: 11))
                 .foregroundColor(DS.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Pace-tuned dataset export
+
+    private var paceTunedExportSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $isPaceTunedTurnExportEnabled) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Contribute anonymized planner turns")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("When ON, local planner turns (not cloud bridge or research) append to ~/Library/Application Support/Pace/pace-tuned-turns.jsonl after emails, phone numbers, and home paths are redacted. Copy into the repo with bash scripts/export-pace-tuned-turns.sh before LoRA training.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .onChange(of: isPaceTunedTurnExportEnabled) { _, newValue in
+                PaceUserPreferencesStore.setBool(newValue, for: .isPaceTunedTurnExportEnabled)
+                if !newValue {
+                    PaceTunedTurnExportTrace.clear()
+                }
+            }
         }
     }
 

@@ -280,7 +280,10 @@ extension CompanionManager {
     /// Append one tool-call debug capture for Settings → Debug. Newest
     /// first, capped so the buffer never grows unbounded. Purely an
     /// observability sink — never affects routing, speech, or execution.
-    func recordToolCallDebug(_ record: PaceToolCallDebugRecord) {
+    func recordToolCallDebug(
+        _ record: PaceToolCallDebugRecord,
+        systemPromptForExport: String? = nil
+    ) {
         var updatedDebugRecords = recentToolCallDebugRecords
         updatedDebugRecords.insert(record, at: 0)
         let maximumRetainedDebugRecords = 25
@@ -291,6 +294,10 @@ extension CompanionManager {
         // Persist to the JSONL trace file so the history survives restarts
         // and can be inspected outside the app (off the main actor).
         PaceToolCallDebugTrace.append(record)
+        PaceTunedTurnExporter.exportIfEnabled(
+            record: record,
+            systemPrompt: systemPromptForExport
+        )
     }
 
     /// Clear the Settings → Debug tool-call capture buffer AND the persisted

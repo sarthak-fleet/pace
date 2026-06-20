@@ -32,7 +32,7 @@ case "$mode" in
     command -v python3 >/dev/null || { echo "need python3"; exit 1; }
     if [[ ! -d "$DATASET_DIR" ]]; then
       echo "⚠️  Missing dataset dir: $DATASET_DIR"
-      echo "   Export opt-in turns into JSONL there before training."
+      echo "   Enable Settings → Models export, then bash scripts/export-pace-tuned-turns.sh"
     else
       echo "✓ dataset dir exists: $DATASET_DIR"
     fi

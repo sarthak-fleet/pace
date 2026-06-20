@@ -94,6 +94,11 @@ enum PaceUserPreferenceKey: String {
     /// `click`/`type`. The `draw_annotation` and `clear_annotations` tools
     /// are ALWAYS available regardless of this flag. Default OFF.
     case isTuitionModeEnabled
+    /// Opt-in: append anonymized local planner turns to
+    /// `~/Library/Application Support/Pace/pace-tuned-turns.jsonl` for the
+    /// first pace-tuned LoRA dataset. Default OFF — see
+    /// docs/plans/pace-tuned-model-v1.md.
+    case isPaceTunedTurnExportEnabled
 }
 
 enum PaceUserPreferencesStore {

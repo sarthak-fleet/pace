@@ -57,6 +57,11 @@ Cloudflare Pages with `pages_build_output_dir: dist`. Astro's static output is u
 
 ```bash
 npm run build
-# upload dist/ to Cloudflare Pages, or:
-# wrangler pages deploy dist --project-name pace
+npm run deploy
+# or: npx wrangler pages deploy dist --project-name pace
 ```
+
+Production: Cloudflare Pages project **`pace`**. Set build env vars in the Pages dashboard when checkout goes live:
+
+- `PUBLIC_PACE_CHECKOUT_URL` — Stripe / Lemon Squeezy link (mailto fallback ships without it)
+- `PUBLIC_STUDIO_CHECKOUT_URL` — optional Studio tier link

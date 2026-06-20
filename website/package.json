@@ -8,7 +8,8 @@
     "prebuild": "bash ../scripts/generate-og-image.sh || true",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name pace"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.16",
@@ -16,6 +17,7 @@
     "tailwindcss": "^4.1.16"
   },
   "devDependencies": {
-    "lightningcss": "^1.30.5"
+    "lightningcss": "^1.30.5",
+    "wrangler": "^4.103.0"
   }
 }

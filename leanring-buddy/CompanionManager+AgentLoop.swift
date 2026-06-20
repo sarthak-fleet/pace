@@ -464,6 +464,8 @@ extension CompanionManager {
                     plannerLatencyMs: Int(Date().timeIntervalSince(plannerStartedAt) * 1000),
                     totalTurnLatencyMs: Int(Date().timeIntervalSince(plannerStartedAt) * 1000),
                     userPrompt: userPromptForPlanner
+                ), systemPromptForExport: CompanionSystemPrompt.buildTextOnly(
+                    threadSummaryInjection: threadSummaryInjectionForTurn
                 ))
 
                 recordConversationTurn(userTranscript: transcript, assistantResponse: spokenText)
@@ -1567,7 +1569,7 @@ extension CompanionManager {
                             Date().timeIntervalSince(turnStartedAt) * 1000
                         ),
                         userPrompt: userPromptForPlannerForDebug
-                    ))
+                    ), systemPromptForExport: isResearchTurn ? nil : systemPromptForTurn)
 
                     // 11. Exit conditions for the agent loop:
                     //     - planner emitted [DONE]

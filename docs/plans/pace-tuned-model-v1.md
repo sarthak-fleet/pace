@@ -1,6 +1,6 @@
 # Pace-tuned planner v1 — training plan
 
-Status: **data gate** — engineering scaffold is in repo; the LoRA run waits on opt-in turn export.
+Status: **export wired** — opt-in toggle in Settings → Models writes anonymized JSONL locally; copy into repo with `scripts/export-pace-tuned-turns.sh`. LoRA run still waits on enough collected turns.
 
 ## Target
 
@@ -10,9 +10,11 @@ Status: **data gate** — engineering scaffold is in repo; the LoRA run waits on
 
 ## Dataset
 
-1. Export anonymized planner turns (user opt-in) to `evals/pace-tuned-export/*.jsonl`.
-2. Mix with existing `evals/fm-fixtures/*.txt` converted to v10 JSON envelope shape.
-3. Hold out `evals/fm-fixtures-holdout/` — never train on holdout.
+1. Enable **Settings → Models → Contribute anonymized planner turns** (default OFF).
+2. Use Pace locally — local planner turns append to `~/Library/Application Support/Pace/pace-tuned-turns.jsonl` (emails, phone numbers, home paths redacted; cloud bridge + research skipped).
+3. Copy into the repo: `bash scripts/export-pace-tuned-turns.sh` → `evals/pace-tuned-export/export-YYYYMMDD.jsonl`.
+4. Mix with existing `evals/fm-fixtures/*.txt` converted to v10 JSON envelope shape.
+5. Hold out `evals/fm-fixtures-holdout/` — never train on holdout.
 
 ## Train
 
