@@ -98,10 +98,15 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
   streams dictate/edit/`AX.setValue` text during planner output (alongside
   existing Mail.draft streaming).
 - **Executor smoke runner** — `scripts/smoke-executor-surface.sh` chains
-  dry-run unit tests, v10 schema fixtures, and extended runtime hooks
-  (click-target clarification + all-fail observation breadcrumbs).
+  dry-run unit tests, v10 schema fixtures, runtime hooks, and
+  `scripts/smoke-real-apps.sh` (Notes/Safari/Mail mailto).
 - **Remote model manifest** — optional `RemoteModelManifestURL` +
   `PaceRemoteModelManifest` (24h cache, overrides bundled defaults when set).
+- **v10 eval gate** — `scripts/eval-v10-gate.sh` (unit + schema + FM sweep).
+- **Landing pre-launch (repo)** — OG PNG, commerce config with mailto fallback,
+  honest early-access social proof (no fictional names).
+- **Pace-tuned model scaffold** — `docs/plans/pace-tuned-model-v1.md`,
+  `scripts/train-pace-tuned-model.sh`, `evals/pace-tuned-export/`.
 
 ### Landing site (new this cycle)
 
@@ -116,22 +121,15 @@ v4 + Lightning CSS, deployed to Cloudflare Pages.
 
 ## Planned Next
 
-1. **First pace-tuned model.** Distill from qwen3-30b-a3b into a 4B
-   LoRA on Pace's eval fixtures + collected anonymized turns (opt-in).
-   Ship via Info.plist manifest bump + Sparkle release. Forces the
-   eval-gate pin update as the deliberate review step.
-2. **Landing-site pre-launch audit.** Three testimonials, PNG OG image
-   (`rsvg-convert` or manual export), Stripe/Gumroad checkout URLs in
-   pricing CTAs. Founder signature is already wired in `Footer.astro`.
-3. **Remote model manifest URL.** Optional `RemoteModelManifestURL` in
-   Info.plist is wired (`PaceRemoteModelManifest`); point it at a hosted
-   JSON doc when the first between-release model bump ships.
-4. **Real-app executor smokes.** Mail compose latency, Safari click,
-   Notes/Slack/IDE AX checks — user-run checklist in
-   `scripts/smoke-executor-surface.sh` (requires Xcode Debug + TCC).
-5. **v10 grammar-constrained model gate.** Run `scripts/eval-planners.py`
-   before switching the runtime default model identifier; schema-reject
-   defence + deterministic fixtures already pass in CI.
+1. **First pace-tuned model.** Dataset export → LoRA train → eval gate. Scaffold:
+   `docs/plans/pace-tuned-model-v1.md`, `scripts/train-pace-tuned-model.sh`,
+   `evals/pace-tuned-export/`. Blocked on opt-in turn collection, not code.
+2. **Stripe checkout URL.** Set `PUBLIC_PACE_CHECKOUT_URL` at Cloudflare Pages
+   build when live (mailto fallback ships today).
+3. **Permissioned public testimonials.** Replace private-beta theme cards in
+   `SocialProof.astro` when 3+ real quotes exist.
+4. **Voice Mail latency demo.** Manual `<700ms` check with Mail prewarm
+   (see `scripts/smoke-executor-surface.sh` checklist).
 
 ## Pricing posture
 

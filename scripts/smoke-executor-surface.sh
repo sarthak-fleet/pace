@@ -32,14 +32,19 @@ else
     echo "    (Dry-run unit coverage above still validates the dispatcher surface.)"
 fi
 
+echo
+echo "▶ Real-app smoke (Notes / Safari / Mail mailto + dry-run)"
+bash "$SCRIPT_DIR/smoke-real-apps.sh" || exit 1
+
 cat <<'EOF'
 
-Manual real-app checklist (pace-executor-surface.md / pace-v9-body-streaming-wiring.md):
-  [ ] Mail compose: voice draft with streaming body lands in <700ms after stop-talk
-  [ ] Safari: AX.press on a visible labelled control succeeds
-  [ ] Notes: create + append without clipboard pollution
-  [ ] Slack / VS Code / Cursor: focused-field setValue or click smoke
-  [ ] Grammar-constrained planner decode: run scripts/eval-planners.py before switching default model
+Manual checklist (pace-v9-body-streaming-wiring.md):
+  [ ] Voice Mail draft with prewarm: compose + body streaming <700ms after stop-talk
+  [ ] Slack / VS Code / Cursor focused-field smoke when those apps are foreground
+
+Optional model gate before default switch:
+  bash scripts/eval-v10-gate.sh
+  PACE_RUN_MLX_EVAL=1 bash scripts/eval-v10-gate.sh
 
 EOF
 
