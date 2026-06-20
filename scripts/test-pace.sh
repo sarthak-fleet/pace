@@ -61,7 +61,11 @@ if [[ -z "${DEVELOPER_DIR:-}" ]]; then
         export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
     else
         # Fall back to a versioned Xcode beta (e.g. Xcode-27.0.0-Beta.app).
-        beta_xcode="$(/usr/bin/find /Applications -maxdepth 1 -name 'Xcode*.app' -type d 2>/dev/null | /usr/bin/sort | /usr/bin/tail -1)"
+        # Exclude `Xcodes.app` — that's the Xcodes version-manager installer,
+        # not an Xcode toolchain, and it has no Contents/Developer. Without
+        # this filter it sorts last and gets picked, leaving DEVELOPER_DIR
+        # unset so xcodebuild falls back to the Command Line Tools and errors.
+        beta_xcode="$(/usr/bin/find /Applications -maxdepth 1 -name 'Xcode*.app' ! -name 'Xcodes.app' -type d 2>/dev/null | /usr/bin/sort | /usr/bin/tail -1)"
         if [[ -n "$beta_xcode" && -d "$beta_xcode/Contents/Developer" ]]; then
             export DEVELOPER_DIR="$beta_xcode/Contents/Developer"
         fi
