@@ -1,6 +1,6 @@
 # pace — PROJECT STATUS
 
-Last updated: 2026-06-20
+Last updated: 2026-06-23
 
 ## Why/What
 
@@ -66,7 +66,7 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 - **v0.3.12–0.3.14 cycle:** Her-arc voice loop, trust surfaces, on-device model supply, macOS integrations, executor/planner v10, MCP/recipes, landing shipped.
 - **2026-06-20:** Restraint policy, episodic memory, wake word, proactive nudges, barge-in VAD, demonstration replay, trust-and-failures, recipe library, planner tier picker, cloud-bridge toggle, chat interface, conversational thread memory, first-run experience, morning triage, inclusivity surface, always-listening mode, unified memory, local RAG layer (substrate), local VLM runtime port, WhisperKit streaming scaffold, HUD intent disambiguator, dictation postproc, v8/v9/v10 planner iterations, click executor improvements, set-of-mark click recovery, executor surface, Her-arc roadmap meta — all landed.
 - **Active plan:** `docs/plans/pace-tuned-model-v1.md` — export wired; LoRA pending data.
-- **Test suite:** 1079/1079 XCTest cases via `scripts/test-pace.sh`.
+- **Test suite:** 1079/1079 XCTest cases via `scripts/test-pace.sh`; CI runs the full suite on every push/PR via `.github/workflows/ci.yml` (macos-latest, `xcodebuild test` with `CODE_SIGNING_ALLOWED=NO`).
 
 ## Products
 

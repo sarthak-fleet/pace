@@ -73,7 +73,7 @@ final class PaceFMIntentClassifier {
 
         let resolvedSession = resolveSession()
         let generationOptions = GenerationOptions(
-            samplingMode: .greedy,
+            sampling: .greedy,
             temperature: 0,
             maximumResponseTokens: 30
         )
