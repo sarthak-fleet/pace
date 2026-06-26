@@ -1,0 +1,42 @@
+name: Deploy pace to Cloudflare Pages
+# Reproduces the manual deploy in website/package.json:
+#   npm run build && wrangler pages deploy dist --project-name pace
+# Trigger is workflow_dispatch ONLY for now — a push trigger will be added
+# after a verified manual dispatch run confirms the build + deploy is green.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The Astro app lives in website/ (lockfile, scripts, dist all there).
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          # Lockfile lives in website/, not repo root.
+          cache-dependency-path: website/package-lock.json
+      # The build's prebuild step rasterizes public/og-image.svg via rsvg-convert
+      # (qlmanage on the maintainer's Mac). Install librsvg on the Linux runner so
+      # the OG image is regenerated just like the manual macOS deploy. The prebuild
+      # is `|| true`, so the build still succeeds if this is ever unavailable.
+      - name: Install rsvg-convert for OG image generation
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+        working-directory: .
+      - run: npm ci
+      - run: npm run build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: website
+          command: pages deploy dist --project-name pace
