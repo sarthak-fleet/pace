@@ -180,6 +180,44 @@ released. Awaiting a real-world click-miss test before shipping.
   `main` → release v0.3.17. If the hit-rate disappoints → iterate the grounding
   prompt in `LocalVLMClient.groundMarkedClickTarget` before shipping.
 
+## Priority 12a: Automation Modules — IMPLEMENTED + WIRED
+
+Status: implemented, wired into the app, tested (1154 tests pass), merged to
+`main` (PR #54, commit `d236148`).
+
+Seven modules that were previously standalone stubs are now fully integrated:
+
+- **Barge-in echo rejection** — `PaceBargeInVAD` suppresses echo during TTS
+  playback with a raised threshold and echo suppression window. Wired into
+  `CompanionManager+PrivateBindings` to activate/deactivate with TTS state.
+- **Meeting mode** — `PaceSystemAudioCapture` / `PaceMeetingModeController`
+  captures system audio via SCStream (excluding Pace's own TTS). Voice: "start
+  meeting mode" / "stop meeting mode". Settings toggle in General → Automation.
+  Resumes on launch if preference is on.
+- **Apple FM tool-calling** — `PaceFMTurnResponse.toolCalls` array is serialized
+  via `serializedToolCallsJSON()` in `AppleFoundationModelsPlannerClient` into
+  `<tool_calls>` JSON blocks. Previously the field was silently dropped.
+- **Background agents** — `PaceBackgroundAgentRunner` runs headless planner
+  turns in the background. Voice: "in the background, draft a reply...".
+  CompanionManager wires `executePlannerTurn` + `speakResult` callbacks.
+- **SKILL.md system** — `PaceSkillLoader` parses `.skill.md` files from
+  `Resources/skills/` into planner prompts. Voice: "run the standup skill".
+  Sample skill: `resources/skills/standup-notes.skill.md`.
+- **Cron scheduling** — `PaceCronScheduler` runs recurring planner tasks on
+  timers. Voice: "every 30 minutes check my calendar". Settings toggle in
+  General → Automation. CompanionManager wires `executeTaskCallback`.
+- **Self-modifying plugins** — `PaceDynamicToolRegistry` loads user-installed
+  shell-command plugins from `~/Library/Application Support/Pace/plugins/`.
+  Plugin tool docs are injected into `CompanionSystemPrompt` so the planner
+  sees them. Auto-repair callback asks the planner to fix failed commands.
+  Settings toggle in General → Automation.
+- **Telemetry** — `PaceTelemetryLog` records E2E, STT, VLM, and token
+  throughput metrics from the actual agent loop. `benchmark_ttfsw.sh` updated.
+
+All modules are voice-command-routable via `PaceAutomationCommandParser` in the
+pre-planner dispatch (after named-destination fast path, before chitchat
+classifier). All default OFF except barge-in echo rejection (always on).
+
 ## Priority 13: Premium Conversational UI
 
 Status: unstarted. Biggest remaining quality lever toward "best local tool."

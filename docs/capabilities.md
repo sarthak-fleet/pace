@@ -51,8 +51,10 @@ Contacts, Reminders, explicitly-chosen file folders, and past Pace turns
 toggleable; nothing is crawled without an explicit root.
 
 **Modes** — push-to-talk (the floor), always-listening / "hey pace" wake word,
-barge-in (interrupt mid-speech by speaking), watch mode (observe the screen and
-emit change events), in-window chat (text instead of voice).
+barge-in (interrupt mid-speech by speaking, with echo rejection during TTS
+playback), watch mode (observe the screen and emit change events), meeting mode
+(capture system audio excluding Pace's own output), in-window chat (text instead
+of voice).
 
 **Proactive surfaces (all default OFF)** — posture watch, focus-fatigue nudges,
 calendar pre-meeting nudges, watch-mode observation nudges, the weekday morning
@@ -62,6 +64,31 @@ call / when you're actively typing).
 **External integrations (MCP)** — anything a configured Model Context Protocol
 server exposes. Configured via `~/.config/pace/mcp-servers.json` or the one-tap
 catalog in Settings → MCP (filesystem, fetch, github, applescript, slack, linear).
+
+**Automation (all default OFF)** — four opt-in automation surfaces in Settings →
+General → Automation:
+- *Meeting mode* — captures system audio (excluding Pace's own TTS) via SCStream
+  so Pace can listen during calls. Voice: "start meeting mode" / "stop meeting
+  mode" (`PaceMeetingModeController`).
+- *Cron scheduling* — recurring planner tasks on a timer. Voice: "every 30
+  minutes check my calendar" (`PaceCronScheduler`).
+- *Dynamic plugins* — user-installed shell-command tools from
+  `~/Library/Application Support/Pace/plugins/`, with planner-powered auto-repair
+  of failed commands (`PaceDynamicToolRegistry`).
+- *Background agents* — run headless planner turns in the background. Voice: "in
+  the background, draft a reply to..." (`PaceBackgroundAgentRunner`).
+
+**Skills** — `.skill.md` files in `Resources/skills/` define reusable multi-step
+workflows that are parsed into planner prompts. Voice: "run the standup skill"
+(`PaceSkillLoader`).
+
+**Apple Foundation Models tool-calling** — when the planner tier is Apple FM,
+multi-step tool calls are serialized from the typed `PaceFMTurnResponse.toolCalls`
+array into `<tool_calls>` JSON blocks that the existing action parser executes.
+
+**Telemetry** — E2E turn latency, STT latency, VLM latency, and token throughput
+are recorded per turn via `PaceTelemetryLog` and visible in the benchmark script
+`scripts/benchmark_ttfsw.sh`.
 
 **Entry points** — voice (PTT/wake word), text (chat), and `pace://` deeplinks
 (`listen`, `chat`, `watch`, `panel`) from Raycast / Shortcuts.
@@ -78,8 +105,12 @@ default-off. See `docs/architecture.md` for the privacy posture.
 1. **Fast path** (`PaceFastActionCommandParser`) — deterministic, no model, no
    screen: open app/URL/known site, media, volume, brightness, undo, window
    snap, common key shortcuts. Sub-200ms.
-2. **Text-only planner** — pure-knowledge answers, no screen capture.
-3. **Screen pipeline** — VLM + planner, for commands that genuinely need to see
+2. **Automation parsers** — deterministic, no model: cron scheduling ("every 30
+   minutes..."), background agents ("in the background..."), meeting mode
+   ("start meeting mode"), skills ("run the standup skill"). Routes to the
+   relevant module before the planner.
+3. **Text-only planner** — pure-knowledge answers, no screen capture.
+4. **Screen pipeline** — VLM + planner, for commands that genuinely need to see
    or act on the screen. The VLM is skipped for launch/navigate verbs that don't
    reference an on-screen element (see `PaceTagParsers.transcriptIsLikelyScreenReferential`).
 
