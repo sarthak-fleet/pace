@@ -38,6 +38,13 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
+      - name: Install Metal Toolchain
+        run: |
+          # The MLX dependency requires the Metal toolchain, which is
+          # not always pre-installed on GitHub Actions macOS runners.
+          # Download it explicitly before building.
+          xcodebuild -downloadComponent MetalToolchain || true
+
       - name: Cache SPM packages
         uses: actions/cache@v4
         with:
