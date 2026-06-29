@@ -56,7 +56,8 @@ enum CompanionSystemPrompt {
     static func build(
         includeAgentMode: Bool,
         isTuitionModeEnabled: Bool = false,
-        threadSummaryInjection: String? = nil
+        threadSummaryInjection: String? = nil,
+        ambientContextInjection: String? = nil
     ) -> String {
         var assembledPrompt = baseVoiceRules + "\n\n" + pointingRules
         if includeAgentMode {
@@ -69,6 +70,14 @@ enum CompanionSystemPrompt {
             if isTuitionModeEnabled {
                 assembledPrompt += "\n\n" + tuitionModeRules
             }
+        }
+        // Ambient context (frontmost app, window title, time of day)
+        // is appended AFTER the static blocks so the KV-cache prefix
+        // stays stable — only the tail changes per-turn. The ambient
+        // block is small (~50 tokens) and gives the planner instant
+        // context without a VLM round-trip.
+        if let ambient = ambientContextInjection, !ambient.isEmpty {
+            assembledPrompt += "\n\n" + ambient
         }
         return prependingThreadSummaryInjection(
             threadSummaryInjection,
@@ -85,11 +94,16 @@ enum CompanionSystemPrompt {
     /// - Parameter threadSummaryInjection: see `build(includeAgentMode:
     ///   threadSummaryInjection:)`.
     static func buildTextOnly(
-        threadSummaryInjection: String? = nil
+        threadSummaryInjection: String? = nil,
+        ambientContextInjection: String? = nil
     ) -> String {
+        var prompt = baseVoiceRules
+        if let ambient = ambientContextInjection, !ambient.isEmpty {
+            prompt += "\n\n" + ambient
+        }
         return prependingThreadSummaryInjection(
             threadSummaryInjection,
-            to: baseVoiceRules
+            to: prompt
         )
     }
 

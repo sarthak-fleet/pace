@@ -429,7 +429,8 @@ extension CompanionManager {
                 let (fullResponseText, _) = try await plannerForTextOnlyTurn.generateResponseStreaming(
                     images: [],
                     systemPrompt: CompanionSystemPrompt.buildTextOnly(
-                        threadSummaryInjection: threadSummaryInjectionForTurn
+                        threadSummaryInjection: threadSummaryInjectionForTurn,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                     ),
                     conversationHistory: historyForPlanner,
                     userPrompt: userPromptForPlanner,
@@ -502,6 +503,59 @@ extension CompanionManager {
     }
 
     /// Fast path for deterministic local actions that do not need screen
+    /// Handle a subagent decomposition command. Spawns N parallel
+    /// subagents via the coordinator, waits for results, and speaks
+    /// the merged response.
+    func handleSubagentDecomposition(command: PaceSubagentCommand) {
+        currentTurnHUDState = .understanding("spawning \(command.subtasks.count) parallel agents")
+
+        let batchId = PaceSubagentCoordinator.shared.decomposeAndRun(
+            parentPrompt: command.parentPrompt,
+            subtasks: command.subtasks,
+            mergeStrategy: command.mergeStrategy
+        )
+
+        let parentPrompt = command.parentPrompt
+        print("🤖 Subagent batch \(batchId): \(command.subtasks.count) subagents, merge: \(command.mergeStrategy)")
+
+        // Spawn a task to wait for completion and speak the result.
+        currentResponseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.voiceState = .processing
+
+            // Poll for completion (up to 60 seconds).
+            var mergedResult: String?
+            for _ in 0..<120 {
+                if let batch = PaceSubagentCoordinator.shared.batches.first(where: { $0.id == batchId }),
+                   batch.completedAt != nil {
+                    mergedResult = batch.mergedResult
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+                if Task.isCancelled { break }
+            }
+
+            guard let result = mergedResult, !result.isEmpty else {
+                self.currentTurnHUDState = .idle
+                self.voiceState = .idle
+                return
+            }
+
+            self.recordConversationTurn(
+                userTranscript: parentPrompt,
+                assistantResponse: String(result.prefix(500))
+            )
+            self.responseOverlayManager.updateStreamingText(result)
+
+            // Speak a summary (first 200 chars) through TTS.
+            let spokenSummary = String(result.prefix(200))
+            await self.streamingSentenceTTSPipeline.flushFinal(finalSpokenText: spokenSummary)
+
+            self.currentTurnHUDState = .idle
+            self.voiceState = .idle
+        }
+    }
+
     /// Speculative fast-action: called when a stable partial transcript
     /// matches a deterministic fast-action command BEFORE PTT release.
     /// This runs the same handleFastLocalActionPath as the normal path,
@@ -1035,6 +1089,15 @@ extension CompanionManager {
             )
             return
         }
+        // Subagent decomposition: "research X, Y, and Z" → 3 parallel
+        // subagents. Routed before the planner so it doesn't burn a
+        // single-agent round-trip first.
+        if researchTurnPlannerOverride == nil,
+           let subagentCommand = PaceSubagentCommandParser.parse(transcript) {
+            print("🎯 Intent: subagentDecomposition — \(subagentCommand.subtasks.count) parallel subagents")
+            handleSubagentDecomposition(command: subagentCommand)
+            return
+        }
         print("🎯 Intent: \(mutableIntentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — \(mutableIntentPrediction.route.rawValue)")
         currentTurnHUDState = .understanding(routeHUDDetail(for: mutableIntentPrediction))
 
@@ -1147,7 +1210,8 @@ extension CompanionManager {
                         systemPromptForTurn = CompanionSystemPrompt.build(
                             includeAgentMode: isAgentModeEnabled,
                             isTuitionModeEnabled: isTuitionModeEnabled,
-                            threadSummaryInjection: threadSummaryInjectionForTurn
+                            threadSummaryInjection: threadSummaryInjectionForTurn,
+                            ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                         )
                     }
                     // Mark this turn as off-device for the amber-tint

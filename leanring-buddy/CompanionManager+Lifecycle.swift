@@ -132,6 +132,13 @@ extension CompanionManager {
     func start() {
         refreshAllPermissions()
         loadPersistedToolCallDebugRecords()
+        // Start the always-on ambient context store. Polls the system
+        // every 3s for frontmost app, window title, AX tree summary,
+        // clipboard metadata, and time-of-day — all permission-free
+        // and <1ms per poll. The snapshot is injected into the planner
+        // system prompt so the planner has instant context without a
+        // VLM round-trip.
+        PaceAmbientContextStore.shared.start()
         // Begin observing macOS Focus state. Idempotent — only the
         // first call triggers the one-shot INFocusStatus permission
         // ask; the rest are no-ops. Denied permission means the
@@ -268,7 +275,8 @@ extension CompanionManager {
                     // Run a text-only planner turn (no screen capture).
                     let systemPrompt = CompanionSystemPrompt.build(
                         includeAgentMode: false,
-                        threadSummaryInjection: nil
+                        threadSummaryInjection: nil,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                     )
                     do {
                         let (text, _) = try await self.plannerClient.generateResponseStreaming(
@@ -293,13 +301,70 @@ extension CompanionManager {
             }
         }
 
+        // 1b. Subagent coordinator: each subagent runs a headless
+        //     planner turn. Results are merged by the coordinator.
+        //     The summarize callback uses Apple FM for fast merging.
+        PaceSubagentCoordinator.shared.executePlannerTurn = { [weak self] prompt in
+            guard let self else { return "Subagent: CompanionManager unavailable." }
+            return await withCheckedContinuation { continuation in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        continuation.resume(returning: "Subagent: CompanionManager unavailable.")
+                        return
+                    }
+                    let systemPrompt = CompanionSystemPrompt.build(
+                        includeAgentMode: false,
+                        threadSummaryInjection: nil,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
+                    )
+                    do {
+                        let (text, _) = try await self.plannerClient.generateResponseStreaming(
+                            images: [],
+                            systemPrompt: systemPrompt,
+                            conversationHistory: [],
+                            userPrompt: prompt,
+                            onTextChunk: { _ in }
+                        )
+                        continuation.resume(returning: text)
+                    } catch {
+                        continuation.resume(returning: "Subagent error: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        PaceSubagentCoordinator.shared.summarizeResults = { [weak self] concatenated in
+            guard let self else { return concatenated }
+            return await withCheckedContinuation { continuation in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        continuation.resume(returning: concatenated)
+                        return
+                    }
+                    let summaryPrompt = "Summarize the following research results into a concise, readable summary. Keep key findings and actionable items:\n\n\(concatenated)"
+                    do {
+                        let (text, _) = try await self.plannerClient.generateResponseStreaming(
+                            images: [],
+                            systemPrompt: "You are a concise summarizer.",
+                            conversationHistory: [],
+                            userPrompt: summaryPrompt,
+                            onTextChunk: { _ in }
+                        )
+                        continuation.resume(returning: text)
+                    } catch {
+                        continuation.resume(returning: concatenated)
+                    }
+                }
+            }
+        }
+
         // 2. Cron scheduler: each fire runs a planner turn and speaks
         //    the result. Enabled by the isCronSchedulerEnabled pref.
         PaceCronScheduler.shared.executeTaskCallback = { [weak self] task in
             guard let self else { return }
             let systemPrompt = CompanionSystemPrompt.build(
                 includeAgentMode: false,
-                threadSummaryInjection: nil
+                threadSummaryInjection: nil,
+                ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
             )
             do {
                 let (text, _) = try await self.plannerClient.generateResponseStreaming(
