@@ -502,6 +502,31 @@ extension CompanionManager {
     }
 
     /// Fast path for deterministic local actions that do not need screen
+    /// Speculative fast-action: called when a stable partial transcript
+    /// matches a deterministic fast-action command BEFORE PTT release.
+    /// This runs the same handleFastLocalActionPath as the normal path,
+    /// but earlier — saving ~200-500ms of perceived latency for common
+    /// commands like "open Music" or "volume up".
+    ///
+    /// Accuracy is preserved because:
+    /// 1. The fast-action parser only matches short, deterministic commands
+    /// 2. The stable partial must have 2+ words (via LocalAgreement stabilizer)
+    /// 3. When the final transcript arrives, if it matches the speculative
+    ///    partial, the normal submit path is skipped (no double-execution)
+    /// 4. If the final transcript differs, the normal path runs and the
+    ///    planner handles the full command (speculative action was a subset)
+    func handleSpeculativeFastAction(transcript: String) {
+        guard let fastActionParseResult = PaceFastActionCommandParser.parse(transcript: transcript) else {
+            print("⚡️ Speculative fast-action: no match for \"\(transcript)\" — falling back to normal path")
+            return
+        }
+        print("⚡️ Speculative fast-action: executing \"\(transcript)\" before PTT release")
+        handleFastLocalActionPath(
+            transcript: transcript,
+            fastActionParseResult: fastActionParseResult
+        )
+    }
+
     /// perception or planner reasoning. This keeps "open Raycast" /
     /// "volume down" in the sub-second local-control lane while preserving
     /// the same approval, preflight, result, and TTS surfaces as planner

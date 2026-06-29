@@ -502,6 +502,19 @@ extension CompanionManager {
                             self.responseOverlayManager.updateStreamingText(finalTranscript)
                             self.sendTranscriptToPlannerWithScreenshot(transcript: finalTranscript)
                         }
+                    },
+                    speculativeFastAction: { [weak self] stablePartial in
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            print("⚡️ Speculative fast-action triggered: \(stablePartial)")
+                            // Mark STT complete early — the speculative
+                            // path bypasses the normal submit flow.
+                            PaceLatencyBudget.shared.mark(.sttComplete)
+                            // Execute the fast-action immediately.
+                            // This runs the same handleFastLocalActionPath
+                            // the normal path uses, but before PTT release.
+                            self.handleSpeculativeFastAction(transcript: stablePartial)
+                        }
                     }
                 )
             }

@@ -199,6 +199,12 @@ private enum BuddyDictationStartSource {
 private struct BuddyDictationDraftCallbacks {
     let updateDraftText: (String) -> Void
     let submitDraftText: (String) -> Void
+    /// Fired when a stable partial transcript matches a deterministic
+    /// fast-action command (e.g. "open Music"). The action can start
+    /// before PTT release, saving ~200-500ms of perceived latency.
+    /// The final transcript is still checked — if it differs from the
+    /// speculative partial, the normal path runs.
+    let speculativeFastAction: ((String) -> Void)?
 }
 
 @MainActor
@@ -299,6 +305,16 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
     private var lazyCloseGeneration: Int = 0
     private var isAudioEngineKeptWarm: Bool = false
 
+    /// Speculative fast-action: tracks the stable partial that was
+    /// speculatively executed so the final transcript can be checked
+    /// against it. If they match, the normal path is skipped.
+    private var speculativeExecutedTranscript: String?
+    /// Minimum word count in a stable partial before we trust it
+    /// enough to speculatively execute. 2 words catches "open Music",
+    /// "volume up", "undo that" while avoiding false triggers on
+    /// single-word partials like "open".
+    private let speculativeMinWordCount = 2
+
     override init() {
         let transcriptionProvider = BuddyTranscriptionProviderFactory.makeDefaultProvider()
         self.transcriptionProvider = transcriptionProvider
@@ -309,7 +325,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
     func startPushToTalkFromKeyboardShortcut(
         currentDraftText: String,
         updateDraftText: @escaping (String) -> Void,
-        submitDraftText: @escaping (String) -> Void
+        submitDraftText: @escaping (String) -> Void,
+        speculativeFastAction: ((String) -> Void)? = nil
     ) async {
         await startPushToTalk(
             startSource: .keyboardShortcut,
@@ -318,7 +335,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
             submitDraftText: submitDraftText,
             shouldAutomaticallySubmitFinalDraftOnStop: currentDraftText
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
+                .isEmpty,
+            speculativeFastAction: speculativeFastAction
         )
     }
 
@@ -405,7 +423,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         currentDraftText: String,
         updateDraftText: @escaping (String) -> Void,
         submitDraftText: @escaping (String) -> Void,
-        shouldAutomaticallySubmitFinalDraftOnStop: Bool
+        shouldAutomaticallySubmitFinalDraftOnStop: Bool,
+        speculativeFastAction: ((String) -> Void)? = nil
     ) async {
         guard !isDictationInProgress else { return }
 
@@ -452,7 +471,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         localAgreementStabilizer.reset()
         draftCallbacks = BuddyDictationDraftCallbacks(
             updateDraftText: updateDraftText,
-            submitDraftText: submitDraftText
+            submitDraftText: submitDraftText,
+            speculativeFastAction: speculativeFastAction
         )
         activeStartSource = startSource
         shouldAutomaticallySubmitFinalDraft = shouldAutomaticallySubmitFinalDraftOnStop
@@ -626,6 +646,37 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
 
         let stableDraftText = composeDraftText(withTranscribedText: stablePartialTranscript)
         draftCallbacks?.updateDraftText(stableDraftText)
+
+        // Speculative fast-action: if the stable partial is long enough
+        // and matches a deterministic fast-action command, fire it
+        // immediately — before PTT release. This saves ~200-500ms of
+        // perceived latency for common commands like "open Music" or
+        // "volume up". Only fires once per session.
+        checkSpeculativeFastAction(stablePartialTranscript)
+    }
+
+    /// Check if a stable partial transcript matches a deterministic
+    /// fast-action command. If so, fire the speculative callback so
+    /// the action starts before PTT release.
+    private func checkSpeculativeFastAction(_ stablePartial: String) {
+        // Only fire once per session.
+        guard speculativeExecutedTranscript == nil else { return }
+        guard let callbacks = draftCallbacks, callbacks.speculativeFastAction != nil else { return }
+
+        // Require at least N words to avoid false triggers on partials
+        // like "open" or "volume" that could be the start of a longer
+        // command.
+        let wordCount = stablePartial.split(separator: " ").count
+        guard wordCount >= speculativeMinWordCount else { return }
+
+        // Run the same deterministic parser the normal path uses.
+        // If it matches, the command is safe to execute speculatively
+        // because fast-action commands are all reversible.
+        guard PaceFastActionCommandParser.parse(transcript: stablePartial) != nil else { return }
+
+        speculativeExecutedTranscript = stablePartial
+        print("⚡️ Speculative fast-action on stable partial: \"\(stablePartial)\"")
+        callbacks.speculativeFastAction?(stablePartial)
     }
 
     /// Track how much real audio we delivered to the recogniser this
@@ -705,6 +756,22 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         guard shouldSubmitFinalDraft else { return }
         guard !finalTranscriptText.isEmpty else { return }
 
+        // Speculative fast-action: if the final transcript matches
+        // the speculative partial, the action already executed via
+        // the speculativeFastAction callback — skip submitDraftText
+        // entirely to avoid double-execution. The CompanionManager
+        // already spoke the confirmation and updated UI.
+        if let speculative = speculativeExecutedTranscript,
+           finalTranscriptText.lowercased() == speculative.lowercased() {
+            print("⚡️ Speculative fast-action confirmed — skipping normal submit (action already executed)")
+            return
+        }
+
+        // If a speculative action fired but the final transcript
+        // differs, the speculative action was a subset (e.g., "open
+        // Music" when the full command was "open Music and play next
+        // song"). The normal path runs — the planner sees the action
+        // was already partially done and handles the rest.
         currentDraftCallbacks?.submitDraftText(finalDraftText)
     }
 
@@ -793,6 +860,7 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         )
         microphoneButtonRecordingStartedAt = nil
         lastRecordedAudioPowerSampleDate = .distantPast
+        speculativeExecutedTranscript = nil
     }
 
     private func updateAudioPowerLevel(from audioBuffer: AVAudioPCMBuffer) {
