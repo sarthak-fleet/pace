@@ -163,4 +163,85 @@ struct PaceBackgroundAgentRunnerTests {
 
         #expect(countAfterClear < countBeforeClear)
     }
+
+    // MARK: - Priority queue (Sprint 2.2)
+
+    /// High-priority tasks should be started before low-priority ones
+    /// when both are queued.
+    @Test
+    func highPriorityTaskStartsFirst() async {
+        let runner = PaceBackgroundAgentRunner.shared
+
+        // Block all slots with slow tasks so we can queue more.
+        runner.executePlannerTurn = { _ in
+            try? await Task.sleep(for: .seconds(5))
+            return "done"
+        }
+        defer { runner.executePlannerTurn = nil }
+
+        // Fill all 4 concurrent slots with normal-priority tasks.
+        var blockerIds: [String] = []
+        for i in 0..<4 {
+            blockerIds.append(runner.enqueue(prompt: "blocker \(i)", displayName: "Blocker \(i)"))
+        }
+
+        try? await Task.sleep(for: .milliseconds(500))
+
+        // Now queue a low-priority and a high-priority task.
+        let lowId = runner.enqueue(prompt: "low priority", displayName: "Low", priority: .low)
+        let highId = runner.enqueue(prompt: "high priority", displayName: "High", priority: .high)
+
+        // Both should be queued (all slots are full).
+        #expect(runner.tasks.first(where: { $0.id == lowId })?.state == .queued)
+        #expect(runner.tasks.first(where: { $0.id == highId })?.state == .queued)
+
+        // Cancel one blocker to free a slot.
+        runner.cancel(taskId: blockerIds[0])
+        try? await Task.sleep(for: .milliseconds(500))
+
+        // The high-priority task should have started, not the low one.
+        let highTask = runner.tasks.first(where: { $0.id == highId })
+        let lowTask = runner.tasks.first(where: { $0.id == lowId })
+        #expect(highTask?.state == .running || highTask?.state == .completed || highTask?.state == .failed(""))
+        #expect(lowTask?.state == .queued)
+
+        // Cleanup.
+        for id in blockerIds { runner.cancel(taskId: id) }
+        runner.cancel(taskId: lowId)
+        runner.cancel(taskId: highId)
+    }
+
+    // MARK: - Progress tracking (Sprint 2.2)
+
+    /// updateProgress should update the step description and count.
+    @Test
+    func updateProgressSetsStepDescription() {
+        let runner = PaceBackgroundAgentRunner.shared
+        let id = runner.enqueue(prompt: "progress test", displayName: "Progress Test")
+
+        runner.updateProgress(taskId: id, stepDescription: "Searching...", stepCount: 2)
+
+        let task = runner.tasks.first(where: { $0.id == id })
+        #expect(task?.currentStepDescription == "Searching...")
+        #expect(task?.stepCount == 2)
+
+        runner.cancel(taskId: id)
+    }
+
+    // MARK: - Queue summary (Sprint 2.2)
+
+    /// queueSummary should report correct counts.
+    @Test
+    func queueSummaryReportsCorrectCounts() {
+        let runner = PaceBackgroundAgentRunner.shared
+        let id1 = runner.enqueue(prompt: "summary 1", displayName: "Summary 1")
+        let id2 = runner.enqueue(prompt: "summary 2", displayName: "Summary 2")
+
+        let summary = runner.queueSummary
+        // At least 2 tasks should be running or queued.
+        #expect(summary.running + summary.queued >= 2)
+
+        runner.cancel(taskId: id1)
+        runner.cancel(taskId: id2)
+    }
 }

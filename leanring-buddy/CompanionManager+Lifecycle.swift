@@ -12,6 +12,7 @@ import Combine
 import Contacts
 import EventKit
 import Foundation
+import FoundationModels
 import ScreenCaptureKit
 import Speech
 
@@ -124,6 +125,11 @@ extension CompanionManager {
         // Stamp intent-commit now so TTFSW latency logging stays meaningful
         // for deeplink turns (there is no PTT release to stamp it).
         streamingSentenceTTSPipeline.markIntentCommitted()
+        // Start a fresh latency budget for this non-PTT turn. Without
+        // this, the turn's marks would land on a stale budget left over
+        // from an earlier PTT turn and emit a bogus BUDGET line.
+        PaceLatencyBudget.shared.startTurn(trigger: .deeplink)
+        PaceLatencyBudget.shared.mark(.sttComplete)
         screenContextService.prewarmScreenContext(reason: .deepLinkChat)
         voiceState = .processing
         sendTranscriptToPlannerWithScreenshot(transcript: transcript)
@@ -142,6 +148,13 @@ extension CompanionManager {
             PaceMeetingAudioRecorder.crashRepairAllMeetingRecordings()
             PaceMeetingAudioRecorder.pruneMeetingRecordings(olderThanDays: meetingRecordingRetentionDays)
         }
+        // Start the always-on ambient context store. Polls the system
+        // every 3s for frontmost app, window title, AX tree summary,
+        // clipboard metadata, and time-of-day — all permission-free
+        // and <1ms per poll. The snapshot is injected into the planner
+        // system prompt so the planner has instant context without a
+        // VLM round-trip.
+        PaceAmbientContextStore.shared.start()
         // Begin observing macOS Focus state. Idempotent — only the
         // first call triggers the one-shot INFocusStatus permission
         // ask; the rest are no-ops. Denied permission means the
@@ -278,7 +291,8 @@ extension CompanionManager {
                     // Run a text-only planner turn (no screen capture).
                     let systemPrompt = CompanionSystemPrompt.build(
                         includeAgentMode: false,
-                        threadSummaryInjection: nil
+                        threadSummaryInjection: nil,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                     )
                     do {
                         let (text, _) = try await self.plannerClient.generateResponseStreaming(
@@ -303,13 +317,97 @@ extension CompanionManager {
             }
         }
 
+        // 1b. Subagent coordinator: each subagent runs a headless
+        //     planner turn. Results are merged by the coordinator.
+        //     The summarize callback uses Apple FM for fast merging.
+        PaceSubagentCoordinator.shared.executePlannerTurn = { [weak self] prompt in
+            guard let self else { return "Subagent: CompanionManager unavailable." }
+            return await withCheckedContinuation { continuation in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        continuation.resume(returning: "Subagent: CompanionManager unavailable.")
+                        return
+                    }
+                    let systemPrompt = CompanionSystemPrompt.build(
+                        includeAgentMode: false,
+                        threadSummaryInjection: nil,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
+                    )
+                    do {
+                        let (text, _) = try await self.plannerClient.generateResponseStreaming(
+                            images: [],
+                            systemPrompt: systemPrompt,
+                            conversationHistory: [],
+                            userPrompt: prompt,
+                            onTextChunk: { _ in }
+                        )
+                        continuation.resume(returning: text)
+                    } catch {
+                        continuation.resume(returning: "Subagent error: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+        PaceSubagentCoordinator.shared.summarizeResults = { [weak self] concatenated in
+            guard let self else { return concatenated }
+            return await withCheckedContinuation { continuation in
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        continuation.resume(returning: concatenated)
+                        return
+                    }
+                    let summaryPrompt = "Summarize the following research results into a concise, readable summary. Keep key findings and actionable items:\n\n\(concatenated)"
+                    do {
+                        let (text, _) = try await self.plannerClient.generateResponseStreaming(
+                            images: [],
+                            systemPrompt: "You are a concise summarizer.",
+                            conversationHistory: [],
+                            userPrompt: summaryPrompt,
+                            onTextChunk: { _ in }
+                        )
+                        continuation.resume(returning: text)
+                    } catch {
+                        continuation.resume(returning: concatenated)
+                    }
+                }
+            }
+        }
+
+        // 1c. Dictation fast path: type text directly into the focused
+        //     field without invoking the planner. The typeText callback
+        //     uses the same CGEvent path as [TYPE:...].
+        PaceDictationFastPath.shared.typeTextCallback = { [weak self] text in
+            guard let self else { return }
+            await self.actionExecutor.typeText(text)
+        }
+        // Apple FM cleanup callback for disfluency removal. Only set
+        // when Apple Intelligence is available.
+        if SystemLanguageModel.default.availability == .available {
+            PaceDictationFastPath.shared.appleFMCleanupCallback = { text in
+                await withCheckedContinuation { continuation in
+                    Task { @MainActor in
+                        do {
+                            let session = LanguageModelSession(
+                                instructions: "Remove filler words (um, uh, like), repeated words, and false starts from the following dictated text. Preserve the original meaning, tone, and language. Output ONLY the cleaned text, no explanation."
+                            )
+                            let response = try await session.respond(to: text)
+                            continuation.resume(returning: response.content)
+                        } catch {
+                            continuation.resume(returning: nil)
+                        }
+                    }
+                }
+            }
+        }
+
         // 2. Cron scheduler: each fire runs a planner turn and speaks
         //    the result. Enabled by the isCronSchedulerEnabled pref.
         PaceCronScheduler.shared.executeTaskCallback = { [weak self] task in
             guard let self else { return }
             let systemPrompt = CompanionSystemPrompt.build(
                 includeAgentMode: false,
-                threadSummaryInjection: nil
+                threadSummaryInjection: nil,
+                ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
             )
             do {
                 let (text, _) = try await self.plannerClient.generateResponseStreaming(

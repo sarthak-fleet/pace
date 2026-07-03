@@ -424,15 +424,18 @@ extension CompanionManager {
                 let threadSummaryInjectionForTurn = threadMemory.injectionPrefix()
 
                 let plannerStartedAt = Date()
+                PaceLatencyBudget.shared.mark(.plannerStart)
 
                 let (fullResponseText, _) = try await plannerForTextOnlyTurn.generateResponseStreaming(
                     images: [],
                     systemPrompt: CompanionSystemPrompt.buildTextOnly(
-                        threadSummaryInjection: threadSummaryInjectionForTurn
+                        threadSummaryInjection: threadSummaryInjectionForTurn,
+                        ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                     ),
                     conversationHistory: historyForPlanner,
                     userPrompt: userPromptForPlanner,
                     onTextChunk: { [weak self] accumulatedPlannerText in
+                        PaceLatencyBudget.shared.mark(.plannerFirstToken)
                         self?.responseOverlayManager.updateStreamingText(accumulatedPlannerText)
                         Task { @MainActor [weak self] in
                             await self?.streamingSentenceTTSPipeline.acceptStreamedText(accumulatedPlannerText)
@@ -440,6 +443,7 @@ extension CompanionManager {
                     }
                 )
                 guard !Task.isCancelled else { return }
+                PaceLatencyBudget.shared.mark(.plannerComplete)
 
                 let actionParseResult = PaceActionTagParser.parseActions(from: fullResponseText)
                 let (_, textAfterDoneStrip) = PaceTagParsers.parseAndStripDoneSignal(from: actionParseResult.spokenText)
@@ -481,6 +485,8 @@ extension CompanionManager {
                 }
 
                 responseOverlayManager.finishStreaming()
+                PaceLatencyBudget.shared.mark(.ttsComplete)
+                PaceLatencyBudget.shared.finishTurn()
                 voiceState = .idle
                 currentTurnHUDState = .done("answered")
                 if isWalkingAvatarEnabled {
@@ -494,6 +500,96 @@ extension CompanionManager {
                 currentTurnHUDState = .failed("Local planner issue")
             }
         }
+    }
+
+    /// Handle a subagent decomposition command. Spawns N parallel
+    /// subagents via the coordinator, waits for results, and speaks
+    /// the merged response.
+    func handleSubagentDecomposition(command: PaceSubagentCommand) {
+        currentTurnHUDState = .understanding("spawning \(command.subtasks.count) parallel agents")
+
+        let batchId = PaceSubagentCoordinator.shared.decomposeAndRun(
+            parentPrompt: command.parentPrompt,
+            subtasks: command.subtasks,
+            mergeStrategy: command.mergeStrategy
+        )
+
+        let parentPrompt = command.parentPrompt
+        print("🤖 Subagent batch \(batchId): \(command.subtasks.count) subagents, merge: \(command.mergeStrategy)")
+
+        // Spawn a task to wait for completion and speak the result.
+        currentResponseTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.voiceState = .processing
+
+            // Poll for completion (up to 60 seconds).
+            var mergedResult: String?
+            for _ in 0..<120 {
+                if let batch = PaceSubagentCoordinator.shared.batches.first(where: { $0.id == batchId }),
+                   batch.completedAt != nil {
+                    mergedResult = batch.mergedResult
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+                if Task.isCancelled { break }
+            }
+
+            guard let result = mergedResult, !result.isEmpty else {
+                // Timed out or produced nothing — tell the user instead
+                // of going silently idle, and close the latency budget
+                // so the stale turn can't pollute a later turn's stats.
+                self.responseOverlayManager.updateStreamingText("the parallel agents didn't finish in time.")
+                await self.streamingSentenceTTSPipeline.flushFinal(
+                    finalSpokenText: "the parallel agents didn't finish in time."
+                )
+                self.currentTurnHUDState = .failed("Subagents timed out")
+                self.voiceState = .idle
+                PaceLatencyBudget.shared.cancelTurn()
+                return
+            }
+
+            self.recordConversationTurn(
+                userTranscript: parentPrompt,
+                assistantResponse: String(result.prefix(500))
+            )
+            self.responseOverlayManager.updateStreamingText(result)
+
+            // Speak a summary (first 200 chars) through TTS.
+            let spokenSummary = String(result.prefix(200))
+            await self.streamingSentenceTTSPipeline.flushFinal(finalSpokenText: spokenSummary)
+
+            self.currentTurnHUDState = .idle
+            self.voiceState = .idle
+            // Close out the per-turn latency budget — this route never
+            // reaches the main loop's finishTurn call.
+            PaceLatencyBudget.shared.mark(.ttsComplete)
+            PaceLatencyBudget.shared.finishTurn()
+        }
+    }
+
+    /// Speculative fast-action: called when a stable partial transcript
+    /// matches a deterministic fast-action command BEFORE PTT release.
+    /// This runs the same handleFastLocalActionPath as the normal path,
+    /// but earlier — saving ~200-500ms of perceived latency for common
+    /// commands like "open Music" or "volume up".
+    ///
+    /// Accuracy is preserved because:
+    /// 1. The fast-action parser only matches short, deterministic commands
+    /// 2. The stable partial must have 2+ words (via LocalAgreement stabilizer)
+    /// 3. When the final transcript arrives, if it matches the speculative
+    ///    partial, the normal submit path is skipped (no double-execution)
+    /// 4. If the final transcript differs, the normal path runs and the
+    ///    planner handles the full command (speculative action was a subset)
+    func handleSpeculativeFastAction(transcript: String) {
+        guard let fastActionParseResult = PaceFastActionCommandParser.parse(transcript: transcript) else {
+            print("⚡️ Speculative fast-action: no match for \"\(transcript)\" — falling back to normal path")
+            return
+        }
+        print("⚡️ Speculative fast-action: executing \"\(transcript)\" before PTT release")
+        handleFastLocalActionPath(
+            transcript: transcript,
+            fastActionParseResult: fastActionParseResult
+        )
     }
 
     /// Fast path for deterministic local actions that do not need screen
@@ -823,6 +919,7 @@ extension CompanionManager {
         // enough to return .chitchat (not .unknown). Anything ambiguous
         // falls through to the full pipeline.
         let intentPrediction = await intentClassifier.classify(transcript)
+        PaceLatencyBudget.shared.mark(.intentClassified)
         lastIntentRouteForEpisodicExtraction = intentPrediction.intent
         currentTurnHUDState = .understanding(routeHUDDetail(for: intentPrediction))
         if let clarification = PaceIntentClarifier.clarification(for: transcript) {
@@ -1004,6 +1101,40 @@ extension CompanionManager {
             )
             return
         }
+        // Subagent decomposition: "research X, Y, and Z" → 3 parallel
+        // subagents. Routed before the planner so it doesn't burn a
+        // single-agent round-trip first.
+        if researchTurnPlannerOverride == nil,
+           let subagentCommand = PaceSubagentCommandParser.parse(transcript) {
+            print("🎯 Intent: subagentDecomposition — \(subagentCommand.subtasks.count) parallel subagents")
+            handleSubagentDecomposition(command: subagentCommand)
+            return
+        }
+        // Dictation fast path: "type ..." / "dictate ..." → STT cleanup
+        // → paste, no planner. Zero-latency text input.
+        if researchTurnPlannerOverride == nil,
+           let dictationText = PaceDictationFastPath.extractDictationText(from: transcript) {
+            print("🎯 Intent: dictationFastPath — skipping planner, typing directly")
+            currentTurnHUDState = .understanding("typing")
+            currentResponseTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                let result = await PaceDictationFastPath.shared.dictate(transcript: dictationText)
+                if let typedText = result {
+                    self.recordConversationTurn(
+                        userTranscript: transcript,
+                        assistantResponse: "[typed: \(typedText.prefix(100))]"
+                    )
+                }
+                self.currentTurnHUDState = .idle
+                self.voiceState = .idle
+                // Close out the per-turn latency budget — this route
+                // never reaches the main loop's finishTurn call, and a
+                // dangling turn would absorb the next chat-submit
+                // turn's marks and emit a bogus BUDGET line.
+                PaceLatencyBudget.shared.finishTurn()
+            }
+            return
+        }
         print("🎯 Intent: \(mutableIntentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — \(mutableIntentPrediction.route.rawValue)")
         currentTurnHUDState = .understanding(routeHUDDetail(for: mutableIntentPrediction))
 
@@ -1116,7 +1247,8 @@ extension CompanionManager {
                         systemPromptForTurn = CompanionSystemPrompt.build(
                             includeAgentMode: isAgentModeEnabled,
                             isTuitionModeEnabled: isTuitionModeEnabled,
-                            threadSummaryInjection: threadSummaryInjectionForTurn
+                            threadSummaryInjection: threadSummaryInjectionForTurn,
+                            ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
                         )
                     }
                     // Mark this turn as off-device for the amber-tint
@@ -1166,6 +1298,7 @@ extension CompanionManager {
                     // variable half of the planner input so a failing turn can
                     // be reproduced offline (system prompt is static in source).
                     let plannerSectionStartedAt = Date()
+                    PaceLatencyBudget.shared.mark(.plannerStart)
                     var userPromptForPlannerForDebug = ""
                     let fullResponseText: String
                     var raceLiteWonSpokenText: String? = nil
@@ -1204,11 +1337,13 @@ extension CompanionManager {
                         //    structured element map — cuts perception cost on the
                         //    planner side and is essential when the planner is text-only.
                         let screenContextStartedAt = Date()
+                        PaceLatencyBudget.shared.mark(.vlmStart)
                         let screenContextPrompt = await screenContextService.buildUserPromptWithLocalVLMContextIfEnabled(
                             transcript: currentTurnUserPrompt,
                             screenCaptures: screenCaptures,
                             prewarmedContext: prewarmedContextForStep
                         )
+                        PaceLatencyBudget.shared.mark(.vlmComplete)
                         let userPromptForPlanner = await appendLocalRetrievalContext(
                             to: appendConfiguredMCPContext(to: screenContextPrompt),
                             query: transcript,
@@ -1248,6 +1383,8 @@ extension CompanionManager {
                             conversationHistory: historyForPlanner,
                             userPrompt: userPromptForPlanner,
                             onTextChunk: { [weak self] accumulatedPlannerText in
+                                // Mark planner first-token on the first chunk.
+                                PaceLatencyBudget.shared.mark(.plannerFirstToken)
                                 // 1. Mirror raw text into the bubble so the user
                                 //    sees tags, thinking blocks, everything live.
                                 //    The end-of-turn step replaces this with the
@@ -1300,6 +1437,7 @@ extension CompanionManager {
                         )
                         fullResponseText = singlePlannerResponseText
                     }
+                    PaceLatencyBudget.shared.mark(.plannerComplete)
                     turnFullResponseText = fullResponseText
                     let plannerSectionElapsedMs = Int(
                         Date().timeIntervalSince(plannerSectionStartedAt) * 1000
@@ -1509,6 +1647,7 @@ extension CompanionManager {
                                 // before the synthetic click fires.
                                 try? await Task.sleep(nanoseconds: 350_000_000)
                                 guard !Task.isCancelled else { return }
+                                PaceLatencyBudget.shared.mark(.toolExecStart)
                                 if actionExecutor.hasActiveStreamingMailDraft,
                                    let finalMailDraft = streamedMailDraftForFinalization {
                                     if let streamingMailObservation = await actionExecutor
@@ -1536,6 +1675,7 @@ extension CompanionManager {
                                     observations: toolObservations,
                                     screenCaptures: screenCaptures
                                 )
+                                PaceLatencyBudget.shared.mark(.toolExecComplete)
                                 if !toolObservations.isEmpty {
                                     print("🧰 Tool observations:\n\(PaceActionExecutionObservation.formatForPlanner(toolObservations))")
                                     appendActionResult(.completed(observations: toolObservations))
@@ -1706,6 +1846,7 @@ extension CompanionManager {
                 isCloudBridgeCallActive = false
                 isOffDeviceTurnInFlight = false
                 responseOverlayManager.hideOverlay()
+                PaceLatencyBudget.shared.cancelTurn()
             } catch {
                 PaceAnalytics.trackResponseError(error: error.localizedDescription)
                 print("⚠️ Companion response error: \(error)")
@@ -1745,6 +1886,10 @@ extension CompanionManager {
                     spokenWordCount: spokenWordCount,
                     plannerTokenCount: plannerTokenEstimate
                 )
+                // Finish the per-turn latency budget and emit the
+                // structured BUDGET= log line.
+                PaceLatencyBudget.shared.mark(.ttsComplete)
+                PaceLatencyBudget.shared.finishTurn()
                 // Keep the bubble up while TTS is still speaking so the
                 // user can read along, then fade ~800ms after audio ends.
                 let weakTTSClient = ttsClient

@@ -63,7 +63,7 @@ Outputs a markdown table with n, min, p50, p95, max, mean for TTFSW (time-to-fir
 
 ## Test coverage
 
-Pace targets an **EXEMPLARY** testing tier: **> 80%** line coverage on core logic (parser, executor, memory, planner clients) and **> 70%** on UI. The suite is 818 tests across 118 files, and coverage is collected on every CI run.
+Pace targets an **EXEMPLARY** testing tier: **> 80%** line coverage on core logic (parser, executor, memory, planner clients) and **> 70%** on UI. The suite is 1079 tests (see `PROJECT_STATUS.md` for the current count), and coverage is collected on every CI run.
 
 <!-- coverage badge placeholder — swap in a live badge once coverage gating is wired to a reporting backend -->
 ![coverage](https://img.shields.io/badge/coverage-EXEMPLARY%20tier-blue)
