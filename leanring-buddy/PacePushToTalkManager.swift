@@ -199,6 +199,12 @@ private enum BuddyDictationStartSource {
 private struct BuddyDictationDraftCallbacks {
     let updateDraftText: (String) -> Void
     let submitDraftText: (String) -> Void
+    /// Fired when a stable partial transcript matches a deterministic
+    /// fast-action command (e.g. "open Music"). The action can start
+    /// before PTT release, saving ~200-500ms of perceived latency.
+    /// The final transcript is still checked — if it differs from the
+    /// speculative partial, the normal path runs.
+    let speculativeFastAction: ((String) -> Void)?
 }
 
 @MainActor
@@ -289,6 +295,31 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
     /// rapid follow-up requests that arrive before macOS updates its cache.
     private var lastPermissionRequestCompletedAt: Date?
 
+    /// Lazy stream close: after PTT release, the AVAudioEngine is kept
+    /// running (tap removed, session cancelled) for this many seconds so
+    /// the next PTT press skips engine.prepare()+start(). Saves ~100-200ms
+    /// on back-to-back commands. Generation counter cancels pending
+    /// closes if a new session starts before the timeout fires.
+    /// Kept at 10s (not longer) because macOS shows the mic-in-use
+    /// indicator while the engine input is running — a lingering orange
+    /// dot after every command reads as "Pace is still listening", which
+    /// contradicts the privacy posture. 10s still covers back-to-back
+    /// follow-up commands.
+    private let lazyCloseDelaySeconds: TimeInterval = 10.0
+    private var lazyCloseWorkItem: DispatchWorkItem?
+    private var lazyCloseGeneration: Int = 0
+    private var isAudioEngineKeptWarm: Bool = false
+
+    /// Speculative fast-action: tracks the stable partial that was
+    /// speculatively executed so the final transcript can be checked
+    /// against it. If they match, the normal path is skipped.
+    private var speculativeExecutedTranscript: String?
+    /// Minimum word count in a stable partial before we trust it
+    /// enough to speculatively execute. 2 words catches "open Music",
+    /// "volume up", "undo that" while avoiding false triggers on
+    /// single-word partials like "open".
+    private let speculativeMinWordCount = 2
+
     override init() {
         let transcriptionProvider = BuddyTranscriptionProviderFactory.makeDefaultProvider()
         self.transcriptionProvider = transcriptionProvider
@@ -299,7 +330,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
     func startPushToTalkFromKeyboardShortcut(
         currentDraftText: String,
         updateDraftText: @escaping (String) -> Void,
-        submitDraftText: @escaping (String) -> Void
+        submitDraftText: @escaping (String) -> Void,
+        speculativeFastAction: ((String) -> Void)? = nil
     ) async {
         await startPushToTalk(
             startSource: .keyboardShortcut,
@@ -308,7 +340,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
             submitDraftText: submitDraftText,
             shouldAutomaticallySubmitFinalDraftOnStop: currentDraftText
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
+                .isEmpty,
+            speculativeFastAction: speculativeFastAction
         )
     }
 
@@ -384,6 +417,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         audioEngine.inputNode.removeTap(onBus: 0)
         activeTranscriptionSession?.cancel()
         logSessionAudioDiagnostics(reason: "cancel")
+        cancelLazyEngineClose()
+        isAudioEngineKeptWarm = false
 
         resetSessionState()
     }
@@ -393,7 +428,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         currentDraftText: String,
         updateDraftText: @escaping (String) -> Void,
         submitDraftText: @escaping (String) -> Void,
-        shouldAutomaticallySubmitFinalDraftOnStop: Bool
+        shouldAutomaticallySubmitFinalDraftOnStop: Bool,
+        speculativeFastAction: ((String) -> Void)? = nil
     ) async {
         guard !isDictationInProgress else { return }
 
@@ -440,7 +476,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         localAgreementStabilizer.reset()
         draftCallbacks = BuddyDictationDraftCallbacks(
             updateDraftText: updateDraftText,
-            submitDraftText: submitDraftText
+            submitDraftText: submitDraftText,
+            speculativeFastAction: speculativeFastAction
         )
         activeStartSource = startSource
         shouldAutomaticallySubmitFinalDraft = shouldAutomaticallySubmitFinalDraftOnStop
@@ -470,6 +507,8 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
                 audioEngine.stop()
                 audioEngine.inputNode.removeTap(onBus: 0)
                 activeTranscriptionSession?.cancel()
+                cancelLazyEngineClose()
+                isAudioEngineKeptWarm = false
                 resetSessionState()
                 return
             }
@@ -507,10 +546,13 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         let finalTranscriptFallbackDelaySeconds = activeTranscriptionSession?.finalTranscriptFallbackDelaySeconds
             ?? Self.defaultFinalTranscriptFallbackDelaySeconds
 
-        audioEngine.stop()
+        // Lazy stream close: remove the tap and request the final
+        // transcript, but DON'T stop the engine — schedule a delayed
+        // stop so the next PTT press within 30s skips engine init.
         audioEngine.inputNode.removeTap(onBus: 0)
         activeTranscriptionSession?.requestFinalTranscript()
         logSessionAudioDiagnostics(reason: "PTT-release")
+        scheduleLazyEngineClose()
 
         finalizeFallbackWorkItem?.cancel()
         let shouldSubmitFinalDraftWhenFallbackTriggers = shouldAutomaticallySubmitFinalDraft
@@ -529,6 +571,9 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
     }
 
     private func startRecognitionSession() async throws {
+        // Cancel any pending lazy engine close — the engine is about
+        // to be reused for this new session.
+        cancelLazyEngineClose()
         activeTranscriptionSession?.cancel()
         activeTranscriptionSession = nil
 
@@ -583,8 +628,16 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
             self.recordSessionAudioBufferDiagnostics(from: buffer)
         }
 
-        audioEngine.prepare()
-        try audioEngine.start()
+        // Lazy stream close: if the engine is still running from a
+        // previous turn (within the 30s lazy-close window), skip the
+        // prepare+start cycle — saves ~100-200ms on back-to-back PTT.
+        if isAudioEngineKeptWarm && audioEngine.isRunning {
+            print("🎙️ PacePushToTalkManager: engine already warm — skipping prepare+start")
+        } else {
+            audioEngine.prepare()
+            try audioEngine.start()
+            isAudioEngineKeptWarm = true
+        }
     }
 
     private func handlePartialTranscriptUpdate(_ transcriptText: String) {
@@ -598,6 +651,48 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
 
         let stableDraftText = composeDraftText(withTranscribedText: stablePartialTranscript)
         draftCallbacks?.updateDraftText(stableDraftText)
+
+        // Speculative fast-action: if the stable partial is long enough
+        // and matches a deterministic fast-action command, fire it
+        // immediately — before PTT release. This saves ~200-500ms of
+        // perceived latency for common commands like "open Music" or
+        // "volume up". Only fires once per session.
+        checkSpeculativeFastAction(stablePartialTranscript)
+    }
+
+    /// Check if a stable partial transcript matches a deterministic
+    /// fast-action command. If so, fire the speculative callback so
+    /// the action starts before PTT release.
+    private func checkSpeculativeFastAction(_ stablePartial: String) {
+        // Only fire once per session.
+        guard speculativeExecutedTranscript == nil else { return }
+        guard let callbacks = draftCallbacks, callbacks.speculativeFastAction != nil else { return }
+
+        // Require at least N words to avoid false triggers on partials
+        // like "open" or "volume" that could be the start of a longer
+        // command.
+        let wordCount = stablePartial.split(separator: " ").count
+        guard wordCount >= speculativeMinWordCount else { return }
+
+        // Run the same deterministic parser the normal path uses.
+        // If it matches, the command is safe to execute speculatively
+        // because fast-action commands are all reversible.
+        guard PaceFastActionCommandParser.parse(transcript: stablePartial) != nil else { return }
+
+        speculativeExecutedTranscript = stablePartial
+        print("⚡️ Speculative fast-action on stable partial: \"\(stablePartial)\"")
+        callbacks.speculativeFastAction?(stablePartial)
+    }
+
+    /// Lowercase and strip punctuation/whitespace so a final transcript
+    /// like "Open Music." matches the stable partial "open music" it was
+    /// speculatively executed from.
+    private static func normalizedForSpeculativeComparison(_ transcriptText: String) -> String {
+        transcriptText
+            .lowercased()
+            .components(separatedBy: CharacterSet.punctuationCharacters)
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Track how much real audio we delivered to the recogniser this
@@ -666,15 +761,43 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
             currentDraftCallbacks?.updateDraftText(finalDraftText)
         }
 
-        audioEngine.stop()
+        // Capture the speculative marker BEFORE resetSessionState()
+        // clears it — the dedup check below must see the value from
+        // the session that just ended, not the freshly reset nil.
+        let speculativeTranscriptExecutedThisSession = speculativeExecutedTranscript
+
+        // Lazy stream close: remove tap + cancel session, but defer
+        // the engine stop so a quick follow-up PTT is faster.
         audioEngine.inputNode.removeTap(onBus: 0)
         activeTranscriptionSession?.cancel()
+        scheduleLazyEngineClose()
 
         resetSessionState()
 
         guard shouldSubmitFinalDraft else { return }
         guard !finalTranscriptText.isEmpty else { return }
 
+        // Speculative fast-action: if the final transcript matches
+        // the speculative partial, the action already executed via
+        // the speculativeFastAction callback — skip submitDraftText
+        // entirely to avoid double-execution. The CompanionManager
+        // already spoke the confirmation and updated UI. Comparison
+        // ignores case and punctuation because Apple Speech finals
+        // often add punctuation the stable partial lacked ("Open
+        // Music." vs "open music") — an exact match would defeat the
+        // dedup and re-execute the action.
+        if let speculative = speculativeTranscriptExecutedThisSession,
+           Self.normalizedForSpeculativeComparison(finalTranscriptText)
+               == Self.normalizedForSpeculativeComparison(speculative) {
+            print("⚡️ Speculative fast-action confirmed — skipping normal submit (action already executed)")
+            return
+        }
+
+        // If a speculative action fired but the final transcript
+        // differs, the speculative action was a subset (e.g., "open
+        // Music" when the full command was "open Music and play next
+        // song"). The normal path runs — the planner sees the action
+        // was already partially done and handles the rest.
         currentDraftCallbacks?.submitDraftText(finalDraftText)
     }
 
@@ -697,6 +820,41 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         }
 
         return draftTextBeforeCurrentDictation + " " + trimmedTranscriptText
+    }
+
+    /// Schedule a delayed engine stop. If the user presses PTT again
+    /// before the timeout fires, `cancelLazyEngineClose` (called from
+    /// `startRecognitionSession`) cancels the pending stop and the
+    /// engine stays warm. Generation counter prevents a stale close
+    /// from stopping the engine after a new session has started.
+    private func scheduleLazyEngineClose() {
+        cancelLazyEngineClose()
+        lazyCloseGeneration += 1
+        let generation = lazyCloseGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                // Only stop if no new session has started since we
+                // scheduled this close.
+                guard self.lazyCloseGeneration == generation else { return }
+                if self.audioEngine.isRunning {
+                    self.audioEngine.stop()
+                    print("🎙️ PacePushToTalkManager: lazy engine close after \(self.lazyCloseDelaySeconds)s idle")
+                }
+                self.isAudioEngineKeptWarm = false
+            }
+        }
+        lazyCloseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + lazyCloseDelaySeconds, execute: workItem)
+    }
+
+    /// Cancel a pending lazy engine close. Called when a new PTT
+    /// session starts so the engine stays warm.
+    private func cancelLazyEngineClose() {
+        lazyCloseWorkItem?.cancel()
+        lazyCloseWorkItem = nil
+        // Bump generation so any in-flight close work item is invalidated.
+        lazyCloseGeneration += 1
     }
 
     private func resetSessionState() {
@@ -728,6 +886,7 @@ final class PacePushToTalkManager: NSObject, ObservableObject {
         )
         microphoneButtonRecordingStartedAt = nil
         lastRecordedAudioPowerSampleDate = .distantPast
+        speculativeExecutedTranscript = nil
     }
 
     private func updateAudioPowerLevel(from audioBuffer: AVAudioPCMBuffer) {

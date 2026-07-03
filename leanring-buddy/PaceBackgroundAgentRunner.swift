@@ -3,8 +3,8 @@
 //  leanring-buddy
 //
 //  Background agent execution — runs multi-step tasks asynchronously
-//  while the user continues working. Inspired by Clicky's background
-//  agents and Shiro's parallel sub-agents.
+//  while the user continues working. Inspired by ChatGPT App's
+//  background task queue and Shiro's parallel sub-agents.
 //
 //  Unlike the synchronous agent loop (which blocks the UI and TTS
 //  pipeline), background agents:
@@ -19,6 +19,12 @@
 //    - "Draft a Gmail response to the last email"
 //    - "Research the top 5 competitors for X"
 //
+//  Sprint 2.2 enhancements:
+//    - Increased concurrency from 2 → 4 (matches subagent coordinator)
+//    - Progress tracking: currentStep description + step count
+//    - Priority queue: high-priority tasks jump the queue
+//    - Elapsed time tracking for UI display
+//
 
 import Combine
 import Foundation
@@ -32,16 +38,32 @@ enum PaceBackgroundAgentState: Equatable {
     case failed(String)
 }
 
+/// Priority of a background agent task. Higher priority tasks
+/// jump ahead of lower priority ones in the queue.
+enum PaceBackgroundAgentPriority: Int, Comparable {
+    case low = 0
+    case normal = 1
+    case high = 2
+
+    static func < (lhs: PaceBackgroundAgentPriority, rhs: PaceBackgroundAgentPriority) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 /// A background agent task. Created by voice command or cron trigger.
 struct PaceBackgroundAgentTask: Identifiable, Equatable {
     let id: String
     let displayName: String
     let prompt: String
+    let priority: PaceBackgroundAgentPriority
     var state: PaceBackgroundAgentState
     var startedAt: Date?
     var completedAt: Date?
     var resultSummary: String?
     var stepCount: Int
+    /// Human-readable description of the current step, for UI display.
+    /// e.g. "Searching Linear...", "Drafting ticket...", "Done".
+    var currentStepDescription: String?
 
     static func == (lhs: PaceBackgroundAgentTask, rhs: PaceBackgroundAgentTask) -> Bool {
         lhs.id == rhs.id
@@ -63,8 +85,10 @@ final class PaceBackgroundAgentRunner: ObservableObject {
     /// Callback to speak a result. Set by CompanionManager.
     var speakResult: ((String) async -> Void)?
 
-    /// Maximum concurrent background tasks.
-    private let maxConcurrent = 2
+    /// Maximum concurrent background tasks. Set to 4 to match the
+    /// subagent coordinator — M-series chips can handle 4 parallel
+    /// planner turns without contention when using Apple FM.
+    private let maxConcurrent = 4
 
     private var runningTasks: [String: Task<Void, Never>] = [:]
 
@@ -73,23 +97,29 @@ final class PaceBackgroundAgentRunner: ObservableObject {
     // MARK: - Task lifecycle
 
     /// Enqueue a background task. Starts immediately if under the
-    /// concurrency limit.
-    func enqueue(prompt: String, displayName: String) -> String {
+    /// concurrency limit. Higher-priority tasks jump the queue.
+    func enqueue(
+        prompt: String,
+        displayName: String,
+        priority: PaceBackgroundAgentPriority = .normal
+    ) -> String {
         let id = "bg-\(UUID().uuidString.prefix(8))"
-        var task = PaceBackgroundAgentTask(
+        let task = PaceBackgroundAgentTask(
             id: id,
             displayName: displayName,
             prompt: prompt,
+            priority: priority,
             state: .queued,
             startedAt: nil,
             completedAt: nil,
             resultSummary: nil,
-            stepCount: 0
+            stepCount: 0,
+            currentStepDescription: nil
         )
         tasks.append(task)
 
         if runningTasks.count < maxConcurrent {
-            startTask(id)
+            startNextQueuedTask()
         }
 
         return id
@@ -103,21 +133,61 @@ final class PaceBackgroundAgentRunner: ObservableObject {
             task.state = .cancelled
             task.completedAt = Date()
         }
+        // Start next queued task if a slot freed up.
+        startNextQueuedTask()
     }
 
     /// Remove completed/cancelled/failed tasks from the list.
     func clearCompleted() {
         tasks.removeAll { task in
-            task.state == .completed || task.state == .cancelled || task.state == .failed("")
+            switch task.state {
+            case .completed, .cancelled, .failed:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    /// Update progress for a running task. Called by the executing
+    /// code to report step-level progress for UI display.
+    func updateProgress(taskId: String, stepDescription: String, stepCount: Int? = nil) {
+        updateTask(taskId) { task in
+            task.currentStepDescription = stepDescription
+            if let stepCount {
+                task.stepCount = stepCount
+            }
         }
     }
 
     // MARK: - Execution
 
+    /// Start the highest-priority queued task, if any. Same-priority
+    /// tasks dequeue in insertion (FIFO) order — a single linear scan
+    /// that only replaces on strictly-greater priority guarantees this,
+    /// where `sorted` with an equal-elements comparator would not
+    /// (Swift's sort is not documented as stable).
+    private func startNextQueuedTask() {
+        guard runningTasks.count < maxConcurrent else { return }
+        var nextTask: PaceBackgroundAgentTask?
+        for queuedTask in tasks where queuedTask.state == .queued {
+            if let currentBest = nextTask {
+                if queuedTask.priority > currentBest.priority {
+                    nextTask = queuedTask
+                }
+            } else {
+                nextTask = queuedTask
+            }
+        }
+        guard let nextTask else { return }
+        startTask(nextTask.id)
+    }
+
     private func startTask(_ taskId: String) {
         guard let taskIndex = tasks.firstIndex(where: { $0.id == taskId }) else { return }
         tasks[taskIndex].state = .running
         tasks[taskIndex].startedAt = Date()
+        tasks[taskIndex].currentStepDescription = "Starting..."
 
         let prompt = tasks[taskIndex].prompt
 
@@ -138,6 +208,13 @@ final class PaceBackgroundAgentRunner: ObservableObject {
                 return
             }
 
+            await MainActor.run {
+                self.updateTask(taskId) { task in
+                    task.currentStepDescription = "Thinking..."
+                    task.stepCount = 1
+                }
+            }
+
             let result = await executePlannerTurn(prompt)
 
             // Check for cancellation before speaking.
@@ -148,6 +225,7 @@ final class PaceBackgroundAgentRunner: ObservableObject {
                     task.state = .completed
                     task.completedAt = Date()
                     task.resultSummary = result
+                    task.currentStepDescription = "Done"
                 }
             }
 
@@ -174,9 +252,7 @@ final class PaceBackgroundAgentRunner: ObservableObject {
         await MainActor.run {
             self.runningTasks.removeValue(forKey: taskId)
             // Start next queued task if any.
-            if let nextQueued = self.tasks.first(where: { $0.state == .queued }) {
-                self.startTask(nextQueued.id)
-            }
+            self.startNextQueuedTask()
         }
     }
 
@@ -188,5 +264,18 @@ final class PaceBackgroundAgentRunner: ObservableObject {
     /// Whether any background tasks are currently running.
     var hasRunningTasks: Bool {
         tasks.contains(where: { $0.state == .running })
+    }
+
+    /// Number of tasks in each state, for UI summary.
+    var queueSummary: (running: Int, queued: Int, completed: Int) {
+        var running = 0, queued = 0, completed = 0
+        for task in tasks {
+            switch task.state {
+            case .running: running += 1
+            case .queued: queued += 1
+            case .completed, .cancelled, .failed: completed += 1
+            }
+        }
+        return (running, queued, completed)
     }
 }

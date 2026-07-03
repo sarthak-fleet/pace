@@ -200,6 +200,8 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 3. **Permissioned public testimonials** — replace private-beta theme cards when 3+ real quotes exist.
 4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm.
 5. **WhisperKit streaming bridge** — complete scaffold when `TranscriptionProvider=whisperKit` selected.
+6. **Speaking-time context prefetch (episodic/RAG)** — the dual-agent prefetch implementation was removed (unwired callbacks, self-cancelling VLM task, and it duplicated `prewarmScreenContext`); the right shape is folding episodic-memory + RAG prewarm into the existing `prewarmScreenContext` path keyed off stable partials. Idea tracked in `docs/competitive/steal-catalog.md`.
+7. **Amber off-device indicator for headless planner turns** — subagent coordinator, background agent runner, and cron turns call `plannerClient` directly and bypass `isOffDeviceTurnInFlight`, so a non-Local tier serving those turns doesn't tint the capsule amber.
 
 ### Deferred
 

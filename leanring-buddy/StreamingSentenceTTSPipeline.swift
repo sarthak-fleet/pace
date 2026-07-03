@@ -309,6 +309,7 @@ final class StreamingSentenceTTSPipeline: ObservableObject {
             // the user already heard" without subscribing to TTS state.
             hasDispatchedFirstSentenceOfTurn = true
             firstSpokenWordCharacterCount += trimmedNewPortion.count
+            PaceLatencyBudget.shared.mark(.ttsFirstDispatch)
             logTimeToFirstSpokenWordIfApplicable()
         } catch {
             print("⚠️ Streaming TTS submission failed: \(error.localizedDescription)")
