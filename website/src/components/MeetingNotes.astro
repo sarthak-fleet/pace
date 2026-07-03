@@ -1,0 +1,114 @@
+---
+// Meeting notes — the wedge section. Same shape as OnDevice: one
+// declarative claim, prose on the left, a proof artifact on the
+// right. The artifact is a rendered notes file (clearly labelled as
+// illustrative), because the honest proof of this feature is what
+// lands on disk, not a screenshot of a call.
+//
+// Every claim below is verified against the shipped code:
+// two 16 kHz tracks (PaceMeetingAudioRecorder), you/them turn
+// attribution (PaceMeetingTurnSegmenter), WhisperKit → Apple Speech
+// (PaceAudioFileTranscriber), privacy-pinned local synthesis
+// (makeLocalOnlyPlannerForPrivacyPinnedFeatures), retention pruning
+// of both the index and the WAVs (CompanionManager+Lifecycle).
+---
+
+<section id="meeting-notes" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      Meeting notes
+    </p>
+
+    <h2 class="pace-display text-4xl md:text-6xl text-white mb-12 max-w-3xl">
+      It takes meeting notes too. <em>Without uploading the meeting.</em>
+    </h2>
+
+    <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+      <div class="pace-prose">
+        <p>
+          Say "start meeting mode." Pace records your mic and the other
+          side's audio as two separate 16&nbsp;kHz tracks — never mixed —
+          and splits them into <em>you said</em> / <em>they said</em> turns.
+          Transcription runs on your Apple Silicon: WhisperKit if you've put
+          the model on disk, Apple Speech if you haven't.
+        </p>
+        <p>
+          When you stop, a local model writes the summary, action items,
+          and decisions. That model is <strong>privacy-pinned</strong>:
+          even if you've pointed Pace's planner at a cloud tier for other
+          work, meeting synthesis can't use it. The pin is in the code
+          path, not a setting you could fat-finger.
+        </p>
+        <p>
+          A week later, ask <em>"what did we decide in standup?"</em> and
+          Pace answers from the notes on disk. Recordings and notes prune
+          themselves after your retention window — 30 days unless you move
+          the stepper in Settings.
+        </p>
+      </div>
+
+      <div>
+        <p class="text-xs font-mono text-[var(--color-text-muted)] mb-3 uppercase tracking-wider">
+          What lands on disk — illustrative
+        </p>
+        <div
+          class="font-mono text-sm bg-black border border-[var(--color-border-subtle)] rounded-lg p-5 leading-relaxed"
+        >
+          <div class="text-[var(--color-text-muted)]">~/Library/…/Pace/meetings/9F41/</div>
+          <div class="text-white/70 mb-3">mic.wav · system.wav · notes</div>
+          <div>
+            <span class="text-[var(--color-text-muted)]">summary </span>
+            <span class="text-white/80">launch gate moves to Thursday; QA signs off Wednesday night</span>
+          </div>
+          <div class="mt-1.5">
+            <span class="text-[var(--color-text-muted)]">decided </span>
+            <span class="text-white/80">rollback plan before the gate, not after</span>
+          </div>
+          <div class="mt-1.5">
+            <span class="text-[var(--color-text-muted)]">actions </span>
+            <span class="text-[var(--color-accent)]">you</span>
+            <span class="text-white/80"> — send the revised timeline</span>
+          </div>
+          <div>
+            <!-- Invisible copy of the "actions" label so the second
+                 action item aligns under the first in the mono grid. -->
+            <span class="invisible" aria-hidden="true">actions </span>
+            <span class="text-[var(--color-accent)]">them</span>
+            <span class="text-white/80"> — book the dry run</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+            <span class="text-[var(--color-text-muted)]">you, next week: </span>
+            <span class="text-white">"what did we decide in standup?"</span>
+          </div>
+          <div class="mt-1">
+            <span class="text-[var(--color-positive)]">pace </span>
+            <span class="text-white/80">answers from this file. No server involved — there isn't one.</span>
+          </div>
+        </div>
+        <p class="pace-margin-note mt-5">
+          Two WAVs and the notes, in your Library folder.<br />
+          <code class="font-mono">cat</code> them, back them up, or delete
+          the folder — they're ordinary files you own.
+        </p>
+      </div>
+    </div>
+
+    <!-- The wedge, said plainly. Granola / Otter / Fireflies are good
+         products with a cloud architecture; the claim stays at exactly
+         that — no pricing, no feature strawmen. -->
+    <div class="mt-16 md:mt-20 pt-10 border-t border-[var(--color-border-subtle)] grid md:grid-cols-[1fr_14rem] gap-4 md:gap-10 items-start">
+      <p class="pace-prose max-w-xl">
+        Granola, Otter, and Fireflies are the tools people use for this
+        today, and they earned it. All three process your meetings in the
+        cloud — that's their architecture, not a bug. Which is fine, until
+        the meeting is a hiring call, a board call, or a call you signed
+        an NDA about. Pace's version is a folder on your Mac and a model
+        that's pinned local.
+      </p>
+      <p class="pace-margin-note md:border-l md:border-[var(--color-border-subtle)] md:pl-4">
+        If one of them ships a fully local mode, email me and I'll say so
+        here.
+      </p>
+    </div>
+  </div>
+</section>

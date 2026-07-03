@@ -11,6 +11,10 @@ const qas = [
     a: "Yes. Voice, screen reading, the planner, TTS — all on your Mac. The one exception is `download_file`, which fetches a URL only when you explicitly tell Pace to. The Privacy dashboard inside the app shows the exact byte count, broken out by surface.",
   },
   {
+    q: "Where do my meeting recordings go?",
+    a: "`~/Library/Application Support/Pace/meetings/` — two WAV files per meeting (your mic, their audio) plus the notes. Transcription and note-writing both happen on your Mac, and the notes model is pinned local: it can't use a cloud tier even if you've enabled one elsewhere in Pace. Everything auto-deletes after the retention window in Settings — 30 days by default. Want it gone sooner? Delete the folder. They're ordinary files.",
+  },
+  {
     q: "How much disk and RAM are we talking?",
     a: "The .app is about 50 megabytes. The default model — Qwen3-4B-Instruct-2507 in bf16 — is ~8 gigabytes, downloaded once into your HuggingFace cache. With the vision model and transcription also loaded, peak RAM is ~14 GB. If your Mac has 16 GB, swap to the 4-bit variant in Settings → Models; that runs comfortably in ~6 GB.",
   },
