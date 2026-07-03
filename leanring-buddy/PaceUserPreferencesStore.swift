@@ -127,6 +127,13 @@ enum PaceUserPreferenceKey: String {
     /// Speech if WhisperKit isn't installed. See PRD
     /// docs/prds/on-device-meeting-notes.md.
     case meetingNotesTranscriptionBackend
+    /// Premium chat panel (docs/prds/premium-chat-panel.md, phase 1):
+    /// when ON, the notch panel renders the new `PaceChatPanelView`
+    /// conversation surface; when OFF (the phase-1 default) the panel
+    /// keeps the existing surface byte-identical. Read once per panel
+    /// creation in `MenuBarPanelManager.createPanel()`. Flips ON by
+    /// default in phase 2 after real-world use.
+    case useChatPanelAsPrimarySurface
 }
 
 enum PaceUserPreferencesStore {

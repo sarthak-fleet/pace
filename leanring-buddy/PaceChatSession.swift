@@ -24,12 +24,16 @@ import Combine
 import Foundation
 import SwiftUI
 
-enum PaceChatRole: String, Codable, Equatable {
+// `nonisolated`: these are plain value DTOs. The app target's default
+// actor isolation is MainActor, which would otherwise pin them there —
+// but the pure `PaceChatTranscriptModel` mapping layer (and its
+// off-main-actor tests) needs to read them from a nonisolated context.
+nonisolated enum PaceChatRole: String, Codable, Equatable {
     case user
     case pace
 }
 
-struct PaceChatMessage: Identifiable, Equatable {
+nonisolated struct PaceChatMessage: Identifiable, Equatable {
     let id: String
     let role: PaceChatRole
     let body: String

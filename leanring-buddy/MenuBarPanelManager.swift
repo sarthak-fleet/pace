@@ -156,13 +156,25 @@ final class MenuBarPanelManager: NSObject {
     }
 
     private func createPanel() {
-        // Premium chat surface (PacePanelChatView). The prior dashboard
-        // (CompanionPanelView) is kept in the tree, not deleted — swap this
-        // line back to revert.
-        let companionPanelView = PacePanelChatView(companionManager: companionManager)
-            .frame(width: panelWidth)
-
-        let hostingView = NSHostingView(rootView: companionPanelView)
+        // Feature flag (docs/prds/premium-chat-panel.md, phase 1): the
+        // redesigned PaceChatPanelView renders only when the user opted
+        // in via `useChatPanelAsPrimarySurface` (default OFF). Flag OFF
+        // keeps the shipped PacePanelChatView byte-identical. The flag
+        // is read once, at panel creation (first show after launch), so
+        // flipping it takes effect on the next app launch.
+        let hostingView: NSView
+        if PaceUserPreferencesStore.bool(for: .useChatPanelAsPrimarySurface) {
+            let chatPanelView = PaceChatPanelView(companionManager: companionManager)
+                .frame(width: panelWidth)
+            hostingView = NSHostingView(rootView: chatPanelView)
+        } else {
+            // Premium chat surface (PacePanelChatView). The prior dashboard
+            // (CompanionPanelView) is kept in the tree, not deleted — swap this
+            // line back to revert.
+            let companionPanelView = PacePanelChatView(companionManager: companionManager)
+                .frame(width: panelWidth)
+            hostingView = NSHostingView(rootView: companionPanelView)
+        }
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = .clear

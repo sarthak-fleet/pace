@@ -9,7 +9,14 @@
 
 import Foundation
 
-enum PaceActionRunStatus: String, Equatable {
+// `nonisolated`: plain value DTOs whose dependencies
+// (`PaceActionExecutionPlan`, `PaceToolPreflightIssue`,
+// `PaceActionExecutionObservation`) are already nonisolated. The app
+// target's default actor isolation is MainActor, which would otherwise
+// pin them there — but the pure `PaceChatTranscriptModel` mapping layer
+// (and its off-main-actor tests) needs to read them from a nonisolated
+// context.
+nonisolated enum PaceActionRunStatus: String, Equatable {
     case planned
     case completed
     case failed
@@ -32,7 +39,7 @@ enum PaceActionRunStatus: String, Equatable {
     }
 }
 
-struct PaceActionRunRecord: Identifiable, Equatable {
+nonisolated struct PaceActionRunRecord: Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
     let status: PaceActionRunStatus
