@@ -12,6 +12,7 @@ import SwiftUI
 
 struct CompanionPanelView: View {
     @ObservedObject var companionManager: CompanionManager
+    @ObservedObject private var meetingController = PaceMeetingModeController.shared
 
     /// Bumped after each starter-prompt tap or dismiss so the card
     /// re-reads `PaceStarterPromptStore` and shows the updated state
@@ -48,6 +49,9 @@ struct CompanionPanelView: View {
                     .padding(.horizontal, 16)
 
                 morningBriefCardSection
+                    .padding(.horizontal, 16)
+
+                meetingNotesCardSection
                     .padding(.horizontal, 16)
 
                 notchChatInputSection
@@ -363,6 +367,166 @@ struct CompanionPanelView: View {
             )
             .padding(.bottom, 8)
         }
+    }
+
+    // MARK: - Meeting notes card
+
+    /// Shows the live meeting state (recording / transcribing /
+    /// synthesizing) with an elapsed timer + RMS meter while active,
+    /// and the synthesized notes (summary, action items, decisions)
+    /// after stop. Dismisses when the next turn starts.
+    @ViewBuilder
+    private var meetingNotesCardSection: some View {
+        Group {
+            if case .failed = meetingController.state {
+                meetingFailedCard()
+            } else if meetingController.state != .inactive {
+                meetingActiveCard(controller: meetingController)
+            } else if let notes = meetingController.lastMeetingNotes {
+                meetingNotesResultCard(notes: notes)
+            }
+        }
+    }
+
+    private func meetingActiveCard(controller: PaceMeetingModeController) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
+                Text(stateLabel(for: controller.state))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+
+                Spacer(minLength: 0)
+
+                Text(elapsedTimeString(controller.captureDurationSeconds))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .monospacedDigit()
+            }
+
+            // RMS meter — reuses the live detectedSpeechLevel.
+            ProgressView(value: Double(controller.detectedSpeechLevel), total: 1.0)
+                .progressViewStyle(.linear)
+                .tint(DS.Colors.accent)
+                .frame(height: 3)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+        .padding(.bottom, 8)
+    }
+
+    private func meetingNotesResultCard(notes: PaceMeetingNotes) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
+                Text(notes.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+
+                Spacer(minLength: 0)
+
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(notes.transcript, forType: .string)
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(DS.Colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Color.white.opacity(0.07)))
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+                .help("Copy transcript")
+            }
+
+            if notes.synthesisFailed {
+                Text("Notes synthesis failed — transcript saved.")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !notes.summary.isEmpty {
+                Text(notes.summary)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !notes.actionItems.isEmpty {
+                Text("Action items:")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+                    .padding(.top, 4)
+                ForEach(Array(notes.actionItems.enumerated()), id: \.offset) { _, item in
+                    Text("• \(item.text)\(item.owner.map { " — \($0)" } ?? "")")
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if !notes.decisions.isEmpty {
+                Text("Decisions:")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+                    .padding(.top, 4)
+                ForEach(Array(notes.decisions.enumerated()), id: \.offset) { _, decision in
+                    Text("• \(decision)")
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+        .padding(.bottom, 8)
+    }
+
+    private func stateLabel(for state: PaceMeetingModeState) -> String {
+        switch state {
+        case .inactive: return "Meeting"
+        case .starting: return "Starting meeting…"
+        case .active: return "Recording meeting"
+        case .transcribing: return "Transcribing…"
+        case .synthesizing: return "Writing notes…"
+        case .failed: return "Meeting failed"
+        }
+    }
+
+    private func meetingFailedCard() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Meeting failed")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(DS.Colors.textSecondary)
+            if case .failed(let message) = meetingController.state {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+        .padding(.bottom, 8)
+    }
+
+    private func elapsedTimeString(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%02d:%02d", minutes, secs)
     }
 
     // MARK: - Permissions Copy

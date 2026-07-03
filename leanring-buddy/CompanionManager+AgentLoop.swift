@@ -2082,13 +2082,18 @@ extension CompanionManager {
 
     func handleMeetingModeCommand(_ command: PaceMeetingModeCommand, transcript: String) {
         let controller = PaceMeetingModeController.shared
+        // Inject the retriever + planner so the controller can journal
+        // notes and synthesize them via the active planner. Set before
+        // start so stop() has them available.
+        controller.localRetriever = localRetriever
+        controller.plannerClient = plannerClient
         switch command {
         case .start:
             PaceUserPreferencesStore.setBool(true, for: .isMeetingModeEnabled)
             controller.isEnabled = true
             Task {
                 await controller.start()
-                try? await ttsClient.speakText("Meeting mode on. I'm listening to system audio.")
+                try? await ttsClient.speakText("Meeting mode on. Recording — I'll generate notes when you stop.")
                 voiceState = .idle
             }
         case .stop:
@@ -2096,7 +2101,14 @@ extension CompanionManager {
             controller.isEnabled = false
             Task {
                 await controller.stop()
-                try? await ttsClient.speakText("Meeting mode off.")
+                if let notes = controller.lastMeetingNotes, !notes.summary.isEmpty {
+                    let brief = notes.synthesisFailed
+                        ? "Meeting stopped. Notes synthesis failed, but the transcript is saved."
+                        : "Meeting stopped. \(notes.summary)"
+                    try? await ttsClient.speakText(brief)
+                } else {
+                    try? await ttsClient.speakText("Meeting stopped. No speech detected.")
+                }
                 voiceState = .idle
             }
         case .status:

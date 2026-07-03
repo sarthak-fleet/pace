@@ -22,6 +22,7 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
     case screenTime
     case localPreference
     case episodicMemory
+    case meetingNotes
 
     var displayName: String {
         switch self {
@@ -51,6 +52,8 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
             return "Preference"
         case .episodicMemory:
             return "Episodic memory"
+        case .meetingNotes:
+            return "Meeting notes"
         }
     }
 }
@@ -833,6 +836,7 @@ final class PaceLocalRetriever: PaceRetriever {
     private let embeddingClient: PaceTextEmbedding
     private(set) var lastQueryDurationMilliseconds: Int?
     private var screenWatchJournal: PaceScreenWatchJournal?
+    private var meetingNotesJournal: PaceMeetingNotesJournal?
 
     init(
         store: PaceRetrievalStore? = nil,
@@ -953,6 +957,35 @@ final class PaceLocalRetriever: PaceRetriever {
             now: now
         )
         replaceDocuments(journal.allDocuments(now: now), forSource: .screenWatchHistory)
+        return journal
+    }
+
+    /// Journals synthesized meeting notes so "what did we decide in
+    /// standup?" / "did we agree on the launch date?" questions can be
+    /// answered from local history. Recording is free of model calls —
+    /// the notes (summary, action items, decisions) come from the
+    /// caller's already-completed `PaceMeetingNotesBuilder.build` call.
+    func recordMeetingNotes(_ notes: PaceMeetingNotes, now: Date = Date()) {
+        guard isSourceEnabled(.meetingNotes) else { return }
+        var journal = meetingNotesJournal ?? rehydratedMeetingNotesJournal(now: now)
+        let changedDocument = journal.record(notes, now: now)
+        meetingNotesJournal = journal
+        if let changedDocument {
+            store.upsertDocuments([changedDocument])
+        }
+    }
+
+    /// Rebuilds the in-memory meeting-notes journal from persisted
+    /// documents on the first recording after launch — without this, the
+    /// first post-restart meeting would upsert a same-id document and
+    /// clobber earlier history. Also the single point where the 30-day
+    /// retention window is enforced.
+    private func rehydratedMeetingNotesJournal(now: Date) -> PaceMeetingNotesJournal {
+        var journal = PaceMeetingNotesJournal(
+            rehydratingFrom: store.documents(withSource: .meetingNotes),
+            now: now
+        )
+        replaceDocuments(journal.allDocuments(now: now), forSource: .meetingNotes)
         return journal
     }
 

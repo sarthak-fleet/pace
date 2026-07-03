@@ -110,6 +110,9 @@ struct PaceGeneralSettingsTab: View {
             morningBriefSubsection
                 .padding(.top, 18)
 
+            meetingNotesSubsection
+                .padding(.top, 18)
+
             automationSubsection
                 .padding(.top, 18)
         }
@@ -134,12 +137,15 @@ struct PaceGeneralSettingsTab: View {
                     set: { newValue in
                         PaceUserPreferencesStore.setBool(newValue, for: .isMeetingModeEnabled)
                         Task { @MainActor in
+                            let controller = PaceMeetingModeController.shared
                             if newValue {
-                                PaceMeetingModeController.shared.isEnabled = true
-                                await PaceMeetingModeController.shared.start()
+                                controller.isEnabled = true
+                                controller.localRetriever = companionManager.localRetriever
+                                controller.plannerClient = companionManager.plannerClient
+                                await controller.start()
                             } else {
-                                PaceMeetingModeController.shared.isEnabled = false
-                                await PaceMeetingModeController.shared.stop()
+                                controller.isEnabled = false
+                                await controller.stop()
                             }
                         }
                     }
@@ -248,6 +254,94 @@ struct PaceGeneralSettingsTab: View {
                 Spacer()
                 paceSettingsButton("Send it now", systemName: "paperplane") {
                     companionManager.deliverMorningBriefPreviewNow()
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: - Meeting notes subsection
+
+    /// Settings → General → Meeting notes. Retention days, transcription
+    /// backend picker, crash-repair button, and the per-source retrieval
+    /// toggle for `meetingNotes`.
+    private var meetingNotesSubsection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Meeting notes")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(DS.Colors.textSecondary)
+                .padding(.bottom, 6)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Retention")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("Days to keep meeting notes in the retrieval index.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+                Spacer()
+                Stepper(
+                    value: Binding(
+                        get: { PaceUserPreferencesStore.meetingNotesRetentionDays() },
+                        set: { PaceUserPreferencesStore.setMeetingNotesRetentionDays($0) }
+                    ),
+                    in: 1...365
+                ) {
+                    Text("\(PaceUserPreferencesStore.meetingNotesRetentionDays()) days")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                }
+            }
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) {
+                Divider()
+                    .background(DS.Colors.borderSubtle)
+            }
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Transcription backend")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Text("WhisperKit is more accurate on long audio; Apple Speech needs no model download.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+                Spacer()
+                Picker(
+                    "Backend",
+                    selection: Binding(
+                        get: { PaceUserPreferencesStore.meetingNotesTranscriptionBackend() },
+                        set: { PaceUserPreferencesStore.setMeetingNotesTranscriptionBackend($0) }
+                    )
+                ) {
+                    Text("WhisperKit").tag("whisperkit")
+                    Text("Apple Speech").tag("apple")
+                }
+                .labelsHidden()
+                .frame(width: 140)
+            }
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) {
+                Divider()
+                    .background(DS.Colors.borderSubtle)
+            }
+
+            paceSettingsToggleRow(
+                title: "Index meeting notes for recall",
+                subtitle: "When on, synthesized notes are journaled so \"what did we decide in standup?\" answers from local history.",
+                isOn: Binding(
+                    get: { companionManager.isLocalRetrievalSourceEnabled(.meetingNotes) },
+                    set: { companionManager.setLocalRetrievalSourceEnabled($0, for: .meetingNotes) }
+                )
+            )
+
+            HStack {
+                Spacer()
+                paceSettingsButton("Repair crashed recordings", systemName: "wrench.and.screwdriver") {
+                    PaceMeetingAudioRecorder(meetingID: UUID()).crashRepairIfNeeded()
                 }
             }
             .padding(.top, 8)

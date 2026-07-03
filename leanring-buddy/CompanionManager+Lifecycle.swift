@@ -349,9 +349,12 @@ extension CompanionManager {
 
         // 4. Meeting mode: resume across launches when the user left it on.
         if PaceUserPreferencesStore.bool(for: .isMeetingModeEnabled) {
-            PaceMeetingModeController.shared.isEnabled = true
+            let controller = PaceMeetingModeController.shared
+            controller.isEnabled = true
+            controller.localRetriever = localRetriever
+            controller.plannerClient = plannerClient
             Task { @MainActor in
-                await PaceMeetingModeController.shared.start()
+                await controller.start()
             }
         }
 

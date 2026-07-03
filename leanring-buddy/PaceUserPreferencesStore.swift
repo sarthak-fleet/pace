@@ -117,6 +117,16 @@ enum PaceUserPreferenceKey: String {
     /// Dynamic tool plugins: load user-installed shell-command plugins
     /// from ~/Library/Application Support/Pace/plugins/. Default OFF.
     case areDynamicPluginsEnabled
+    /// Meeting notes retention window in days. Default 30 — longer
+    /// than the 7-day watch journal because meeting decisions are
+    /// referenced weeks later. See PRD
+    /// docs/prds/on-device-meeting-notes.md.
+    case meetingNotesRetentionDays
+    /// Which local STT backend to use for meeting transcription.
+    /// "whisperkit" (default) or "apple" — lets users force Apple
+    /// Speech if WhisperKit isn't installed. See PRD
+    /// docs/prds/on-device-meeting-notes.md.
+    case meetingNotesTranscriptionBackend
 }
 
 enum PaceUserPreferencesStore {
@@ -175,6 +185,55 @@ enum PaceUserPreferencesStore {
 
     static func setInt(_ value: Int, for key: PaceUserPreferenceKey) {
         UserDefaults.standard.set(value, forKey: key.rawValue)
+    }
+
+    /// Read a string preference. Returns `defaultValue` if the key has
+    /// never been written.
+    static func string(_ key: PaceUserPreferenceKey, default defaultValue: String) -> String {
+        guard let stored = UserDefaults.standard.string(forKey: key.rawValue) else {
+            return defaultValue
+        }
+        return stored
+    }
+
+    static func setString(_ value: String, for key: PaceUserPreferenceKey) {
+        UserDefaults.standard.set(value, forKey: key.rawValue)
+    }
+
+    /// Read the meeting-notes retention window in days. Default 30,
+    /// clamped to 1...365 so a bad UserDefaults value can't disable
+    /// retention or set an unreasonable window.
+    static func meetingNotesRetentionDays() -> Int {
+        clampedInt(
+            .meetingNotesRetentionDays,
+            default: 30,
+            in: 1...365
+        )
+    }
+
+    /// Read the meeting-notes transcription backend. Default "whisperkit";
+    /// unrecognized values fall back to "whisperkit".
+    static func meetingNotesTranscriptionBackend() -> String {
+        let stored = string(.meetingNotesTranscriptionBackend, default: "whisperkit")
+        let normalized = stored.lowercased()
+        if normalized == "whisperkit" || normalized == "apple" {
+            return normalized
+        }
+        return "whisperkit"
+    }
+
+    /// Write the meeting-notes retention window in days. Clamped to
+    /// 1...365 so the UI stepper can't write an out-of-range value.
+    static func setMeetingNotesRetentionDays(_ value: Int) {
+        setInt(min(365, max(1, value)), for: .meetingNotesRetentionDays)
+    }
+
+    /// Write the meeting-notes transcription backend. Normalized to
+    /// lowercase; unrecognized values are stored as "whisperkit".
+    static func setMeetingNotesTranscriptionBackend(_ value: String) {
+        let normalized = value.lowercased()
+        let safe = (normalized == "whisperkit" || normalized == "apple") ? normalized : "whisperkit"
+        setString(safe, for: .meetingNotesTranscriptionBackend)
     }
 
     /// Read the user-tunable proactivity profile, falling back to

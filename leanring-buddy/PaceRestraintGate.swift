@@ -21,6 +21,11 @@ nonisolated enum PaceProactiveSource: String, Codable, Equatable, CaseIterable {
     /// cooldown, intent confidence) so it stays silent during Zoom
     /// or while the user is mid-input.
     case morningTriage
+    /// Meeting-notes synthesis planner call fired after a meeting
+    /// stops. Goes through the full gate so the planner call stays
+    /// quiet during an active call — though if a meeting just ended,
+    /// the user probably isn't in one. Still, cheap correctness.
+    case meetingNotesSynthesis
 }
 
 /// User-tunable assertiveness profile for proactive speech. Default
@@ -143,7 +148,7 @@ nonisolated enum PaceRestraintGate {
         switch context.proactiveSource {
         case .userPushToTalk, .timerFire:
             return .speak
-        case .wakeWord, .watchNudge, .episodicRecall, .backgroundReminder, .morningTriage:
+        case .wakeWord, .watchNudge, .episodicRecall, .backgroundReminder, .morningTriage, .meetingNotesSynthesis:
             break
         }
 

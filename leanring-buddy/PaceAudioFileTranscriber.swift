@@ -55,6 +55,15 @@ nonisolated enum PaceAudioFileTranscriberError: LocalizedError {
     }
 }
 
+/// A timestamped transcription segment. WhisperKit returns these
+/// directly; the Apple Speech fallback returns a single segment
+/// spanning the whole file (it has no segment API).
+nonisolated struct PaceTranscriptionSegment: Equatable, Sendable {
+    let start: TimeInterval
+    let end: TimeInterval
+    let text: String
+}
+
 enum PaceAudioFileTranscriber {
 
     /// Transcribe an audio file. Tries WhisperKit first if the
@@ -84,6 +93,48 @@ enum PaceAudioFileTranscriber {
         var appleSpeechError: String?
         do {
             return try await transcribeWithAppleSpeech(fileURL: fileURL)
+        } catch {
+            appleSpeechError = error.localizedDescription
+        }
+
+        throw PaceAudioFileTranscriberError.backendsAllFailed(
+            whisperKitError: whisperKitError,
+            appleSpeechError: appleSpeechError
+        )
+    }
+
+    /// Transcribe an audio file and return timestamped segments.
+    ///
+    /// WhisperKit already returns segments — this path returns them
+    /// directly instead of joining. The Apple Speech fallback returns
+    /// a single segment spanning the whole file (it has no segment
+    /// API), so segmented callers degrade to one block on the
+    /// fallback path. Empty audio → empty array (not a crash).
+    static func transcribeAudioFileSegmented(at fileURL: URL) async throws -> [PaceTranscriptionSegment] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw PaceAudioFileTranscriberError.fileNotFound(fileURL)
+        }
+
+        let pcmSamples = try decodeAudioToMonoFloatSamplesAt16kHz(fileURL: fileURL)
+        guard !pcmSamples.isEmpty else { return [] }
+
+        var whisperKitError: String?
+        #if canImport(WhisperKit)
+        do {
+            return try await transcribeWithWhisperKitSegmented(pcmSamples: pcmSamples)
+        } catch {
+            whisperKitError = error.localizedDescription
+            // Fall through to Apple Speech.
+        }
+        #endif
+
+        var appleSpeechError: String?
+        do {
+            let text = try await transcribeWithAppleSpeech(fileURL: fileURL)
+            // Apple Speech has no segment API — return one segment
+            // spanning the whole file.
+            let duration = TimeInterval(pcmSamples.count) / 16_000.0
+            return [PaceTranscriptionSegment(start: 0, end: duration, text: text)]
         } catch {
             appleSpeechError = error.localizedDescription
         }
@@ -214,6 +265,40 @@ enum PaceAudioFileTranscriber {
         return results.map(\.text)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func transcribeWithWhisperKitSegmented(pcmSamples: [Float]) async throws -> [PaceTranscriptionSegment] {
+        guard FileManager.default.fileExists(atPath: WhisperKitTranscriptionProvider.modelFolderURL.path) else {
+            throw PaceAudioFileTranscriberError.unreadableAudio(
+                underlyingErrorDescription: "WhisperKit model not installed at \(WhisperKitTranscriptionProvider.modelFolderURL.path)"
+            )
+        }
+        let pipelineConfig = WhisperKitConfig(
+            model: WhisperKitTranscriptionProvider.modelName,
+            modelFolder: WhisperKitTranscriptionProvider.modelFolderURL.path,
+            download: false
+        )
+        let pipeline = try await WhisperKit(pipelineConfig)
+        var decodingOptions = DecodingOptions()
+        decodingOptions.language = nil
+        decodingOptions.temperature = 0
+        let results = try await pipeline.transcribe(audioArray: pcmSamples, decodeOptions: decodingOptions)
+        // WhisperKit returns one TranscriptionResult per chunk; each
+        // carries its own segments with start/end timestamps in
+        // seconds. Flatten across chunks.
+        var segments: [PaceTranscriptionSegment] = []
+        for result in results {
+            for segment in result.segments {
+                let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                segments.append(PaceTranscriptionSegment(
+                    start: TimeInterval(segment.start),
+                    end: TimeInterval(segment.end),
+                    text: text
+                ))
+            }
+        }
+        return segments
     }
     #endif
 
