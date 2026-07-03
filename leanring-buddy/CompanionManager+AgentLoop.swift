@@ -2082,11 +2082,11 @@ extension CompanionManager {
 
     func handleMeetingModeCommand(_ command: PaceMeetingModeCommand, transcript: String) {
         let controller = PaceMeetingModeController.shared
-        // Inject the retriever + planner so the controller can journal
-        // notes and synthesize them via the active planner. Set before
-        // start so stop() has them available.
+        // Inject the retriever + a privacy-pinned LOCAL planner. Meeting
+        // transcripts never ride the active tier — a Direct API / CLI
+        // bridge selection must not send the whole meeting off-device.
         controller.localRetriever = localRetriever
-        controller.plannerClient = plannerClient
+        controller.plannerClient = BuddyPlannerClientFactory.makeLocalOnlyPlannerForPrivacyPinnedFeatures()
         switch command {
         case .start:
             PaceUserPreferencesStore.setBool(true, for: .isMeetingModeEnabled)

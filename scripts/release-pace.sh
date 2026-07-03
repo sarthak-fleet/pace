@@ -119,6 +119,31 @@ if [ -n "$working_tree_status" ]; then
     exit 1
 fi
 
+# Releases are cut from clean, synced main ONLY (fleet deploy standard:
+# fail closed). v0.3.17 went out from a feature branch whose code had
+# never landed on main — this guard exists so that can't repeat.
+# PACE_RELEASE_ALLOW_NON_MAIN=1 is the explicit, logged escape hatch.
+current_release_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_release_branch" != "main" ] && [ "${PACE_RELEASE_ALLOW_NON_MAIN:-0}" != "1" ]; then
+    echo "❌ Releases are cut from main (currently on '$current_release_branch')." >&2
+    echo "   Merge your branch first, or set PACE_RELEASE_ALLOW_NON_MAIN=1 to override." >&2
+    exit 1
+fi
+git fetch origin main --quiet
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ] && [ "${PACE_RELEASE_ALLOW_NON_MAIN:-0}" != "1" ]; then
+    echo "❌ HEAD is not in sync with origin/main. Pull/push first so the release matches the reviewed code." >&2
+    exit 1
+fi
+
+# Walk the hardware-path smoke checklist before every release — the
+# unit suite injects synthetic samples and is structurally blind to
+# audio/capture defects (the v0.3.17 sample-rate bug shipped 1079-green).
+echo "▶ Pre-release: confirm the hardware smoke checklist has been walked:"
+echo "   docs/release-smoke-checklist.md"
+read -p "Checklist done? (y/N) " -n 1 -r
+echo
+[[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted — walk the checklist first."; exit 0; }
+
 read -p "Proceed? (y/N) " -n 1 -r
 echo
 [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }

@@ -318,6 +318,18 @@ enum BuddyPlannerClientFactory {
         return makeLocalOrFoundationModelsPlanner()
     }
 
+    /// Planner for privacy-pinned features — today, meeting-notes
+    /// synthesis. Always resolves to an on-device planner (bundled MLX /
+    /// LM Studio loopback / Apple FM), never the CLI bridge or Direct
+    /// API, regardless of the user's selected tier. A meeting transcript
+    /// is the most sensitive text Pace handles; the on-device wedge
+    /// against cloud note-takers only holds if it can never ride an
+    /// off-device tier.
+    @MainActor
+    static func makeLocalOnlyPlannerForPrivacyPinnedFeatures() -> any BuddyPlannerClient {
+        makeLocalOrFoundationModelsPlanner()
+    }
+
     // MARK: - Internal factory helpers
 
     /// `requestsStructuredActionOutput` defaults true because every caller of

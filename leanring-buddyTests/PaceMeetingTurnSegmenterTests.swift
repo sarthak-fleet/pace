@@ -162,4 +162,86 @@ struct PaceMeetingTurnSegmenterTests {
         #expect(turn.start.timeIntervalSince(now) < 0.05)
         #expect(turn.end.timeIntervalSince(now) >= 0.9)
     }
+
+    // MARK: - Sample ranges stay inside the track
+
+    @Test func sampleRangesNeverExceedTrackBounds() async throws {
+        // A speech run that ends exactly at the buffer's end, with a
+        // length that does NOT divide evenly into RMS windows — the
+        // final window is zero-padded past the buffer. Unclamped, the
+        // trailing turn's range would exceed the sample count and
+        // crash the slice at transcription time.
+        let micSamples = sineWave(amplitude: 0.2, durationSeconds: 1.003)
+        let mic = makeTrack(micSamples)
+        let turns = PaceMeetingTurnSegmenter.segment(mic: mic, system: nil, now: Date())
+        #expect(!turns.isEmpty)
+        for turn in turns {
+            #expect(turn.sampleRange.lowerBound >= 0)
+            #expect(turn.sampleRange.upperBound <= micSamples.count)
+        }
+    }
+
+    @Test func micTurnRangeStaysInsideMicWhenSystemTrackIsLonger() async throws {
+        // The window count is the max across tracks; a mic turn must
+        // still be clamped to the MIC buffer, not the longer system one.
+        let micSamples = sineWave(amplitude: 0.3, durationSeconds: 1)
+        let systemSamples = silence(durationSeconds: 4)
+        let turns = PaceMeetingTurnSegmenter.segment(
+            mic: makeTrack(micSamples),
+            system: makeTrack(systemSamples),
+            now: Date()
+        )
+        for turn in turns where turn.track == .mic {
+            #expect(turn.sampleRange.upperBound <= micSamples.count)
+        }
+    }
+
+    // MARK: - Cross-track alignment
+
+    @Test func systemStartOffsetShiftsAttributionToTheSameMoment() async throws {
+        // Mic: speech for the first second, then silence. System: its
+        // buffer BEGINS with speech, but the track started 2 s after
+        // the mic. Aligned, the system speech happens at t=2–3 s (no
+        // overlap with mic speech) → two separate turns, one per track.
+        let micSamples = sineWave(amplitude: 0.3, durationSeconds: 1) + silence(durationSeconds: 2)
+        let systemSamples = sineWave(amplitude: 0.3, durationSeconds: 1)
+        let now = Date()
+        let turns = PaceMeetingTurnSegmenter.segment(
+            mic: PaceMeetingAudioTrack(samples: micSamples, sampleRate: sampleRate),
+            system: PaceMeetingAudioTrack(
+                samples: systemSamples,
+                sampleRate: sampleRate,
+                startOffsetSeconds: 2.0
+            ),
+            now: now
+        )
+        #expect(turns.count == 2)
+        let micTurn = try #require(turns.first(where: { $0.track == .mic }))
+        let systemTurn = try #require(turns.first(where: { $0.track == .system }))
+        // The system turn's timestamps sit on the global timeline
+        // (~2 s after now), while its sample range still indexes the
+        // track's own buffer (starting near 0).
+        #expect(systemTurn.start.timeIntervalSince(now) >= 1.9)
+        #expect(systemTurn.sampleRange.lowerBound < Int(0.1 * sampleRate))
+        #expect(micTurn.start.timeIntervalSince(now) < 0.05)
+    }
+
+    @Test func alignedSimultaneousSpeechStillEchoTrimsToLouderTrack() async throws {
+        // Both tracks speak at the same aligned moment (system offset
+        // 1 s; its speech starts at buffer 0 == global t=1; mic speaks
+        // at t=1 too). The louder mic should own the turn.
+        let micSamples = silence(durationSeconds: 1) + sineWave(amplitude: 0.4, durationSeconds: 1)
+        let systemSamples = sineWave(amplitude: 0.2, durationSeconds: 1)
+        let turns = PaceMeetingTurnSegmenter.segment(
+            mic: PaceMeetingAudioTrack(samples: micSamples, sampleRate: sampleRate),
+            system: PaceMeetingAudioTrack(
+                samples: systemSamples,
+                sampleRate: sampleRate,
+                startOffsetSeconds: 1.0
+            ),
+            now: Date()
+        )
+        #expect(turns.count == 1)
+        #expect(turns.first?.track == .mic)
+    }
 }

@@ -200,11 +200,8 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 3. **Permissioned public testimonials** — replace private-beta theme cards when 3+ real quotes exist.
 4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm.
 5. **WhisperKit streaming bridge** — complete scaffold when `TranscriptionProvider=whisperKit` selected.
-6. **Fast-follow release for meeting-notes audio fix** — v0.3.17 shipped with both meeting tracks recorded at hardware rate but labeled 16 kHz (playback ~3× slow, degraded ASR); fixed on `main` post-release. Cut v0.3.18 when convenient.
-7. **Meeting notes: cross-track time alignment** — segmenter assumes mic and system tracks start simultaneously; SCStream starts 0.5–2 s after the mic. Record a first-sample anchor per track and offset window indices so echo trimming compares the same moment.
-8. **Meeting notes: pin synthesis to local tiers** — notes synthesis sends the full transcript through the active planner tier; with Direct API / CLI bridge selected the transcript leaves the machine. Pin to Local/Apple FM or add an explicit per-meeting disclosure.
-9. **Meeting notes: SCStream failure narration** — `didStopWithError` only zeroes the level; the controller never learns the system track died mid-meeting. Route through `PaceFailureNarrator`.
-10. **Meeting audio capture off the main actor** — per-buffer `Task { @MainActor }` hops carry no FIFO guarantee and put PCM conversion + file writes on the main thread; move to an `AsyncStream` on a serial executor.
+6. **Fast-follow release for meeting-notes audio fix** — v0.3.17 shipped with both meeting tracks recorded at hardware rate but labeled 16 kHz (playback ~3× slow, degraded ASR); fixed on `main` post-release. Cut v0.3.18 when convenient (walk `docs/release-smoke-checklist.md`).
+7. **Meeting audio capture off the main actor** — per-buffer `Task { @MainActor }` hops carry no FIFO guarantee and put PCM conversion + file writes on the main thread; move to an `AsyncStream` on a serial executor.
 
 ### Deferred
 

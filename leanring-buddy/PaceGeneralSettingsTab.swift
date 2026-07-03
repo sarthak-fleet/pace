@@ -141,7 +141,9 @@ struct PaceGeneralSettingsTab: View {
                             if newValue {
                                 controller.isEnabled = true
                                 controller.localRetriever = companionManager.localRetriever
-                                controller.plannerClient = companionManager.plannerClient
+                                // Privacy-pinned: meeting synthesis never
+                                // uses the active (possibly off-device) tier.
+                                controller.plannerClient = BuddyPlannerClientFactory.makeLocalOnlyPlannerForPrivacyPinnedFeatures()
                                 await controller.start()
                             } else {
                                 controller.isEnabled = false

@@ -29,11 +29,23 @@ nonisolated struct PaceMeetingAudioTrack: Equatable, Sendable {
     let samples: [Float]
     let sampleRate: Double
     let channelCount: Int
+    /// How long after the meeting's earliest captured sample THIS
+    /// track's first sample arrived. The mic starts recording before
+    /// the SCStream finishes spinning up (0.5–2 s), so without this
+    /// offset the segmenter would align window 0 of both tracks and
+    /// echo trimming would compare different moments in time.
+    let startOffsetSeconds: TimeInterval
 
-    init(samples: [Float], sampleRate: Double, channelCount: Int = 1) {
+    init(
+        samples: [Float],
+        sampleRate: Double,
+        channelCount: Int = 1,
+        startOffsetSeconds: TimeInterval = 0
+    ) {
         self.samples = samples
         self.sampleRate = sampleRate
         self.channelCount = channelCount
+        self.startOffsetSeconds = max(0, startOffsetSeconds)
     }
 }
 
@@ -70,15 +82,31 @@ nonisolated enum PaceMeetingTurnSegmenter {
     ) -> [PaceMeetingTurn] {
         guard mic != nil || system != nil else { return [] }
 
-        let micWindows = mic.map { rmsWindows(for: $0) } ?? []
-        let systemWindows = system.map { rmsWindows(for: $0) } ?? []
-        let windowCount = max(micWindows.count, systemWindows.count)
-        guard windowCount > 0 else { return [] }
-
         let sampleRate = (mic?.sampleRate ?? system?.sampleRate) ?? 0
         guard sampleRate > 0 else { return [] }
         let windowSize = windowSampleCount(sampleRate: sampleRate)
         let windowDuration = TimeInterval(windowSize) / sampleRate
+
+        // Shift each track's windows right by its start offset so window
+        // index N means the same wall-clock moment on both tracks (the
+        // SCStream starts 0.5–2 s after the mic). The pad counts are
+        // remembered per track so turn sample ranges can be mapped back
+        // into per-track sample indices.
+        let micPadWindows = leadingPadWindowCount(for: mic, windowDuration: windowDuration)
+        let systemPadWindows = leadingPadWindowCount(for: system, windowDuration: windowDuration)
+        let micWindows = paddedWindows(mic.map { rmsWindows(for: $0) } ?? [], leadingZeroCount: micPadWindows)
+        let systemWindows = paddedWindows(system.map { rmsWindows(for: $0) } ?? [], leadingZeroCount: systemPadWindows)
+        let windowCount = max(micWindows.count, systemWindows.count)
+        guard windowCount > 0 else { return [] }
+
+        let micTrackWindowContext = TrackWindowContext(
+            padWindows: micPadWindows,
+            sampleCount: mic?.samples.count ?? 0
+        )
+        let systemTrackWindowContext = TrackWindowContext(
+            padWindows: systemPadWindows,
+            sampleCount: system?.samples.count ?? 0
+        )
 
         // Per-window active track after echo trimming. When both
         // tracks exceed the speech threshold in the same window, the
@@ -120,8 +148,6 @@ nonisolated enum PaceMeetingTurnSegmenter {
         var silenceGapWindows = 0
 
         for windowIndex in 0..<windowCount {
-            let micRMS = windowIndex < micWindows.count ? micWindows[windowIndex] : 0
-            let systemRMS = windowIndex < systemWindows.count ? systemWindows[windowIndex] : 0
             let resolved = activeTrackPerWindow[windowIndex]
 
             if let track = resolved {
@@ -139,7 +165,9 @@ nonisolated enum PaceMeetingTurnSegmenter {
                             startWindow: runStartWindow,
                             endWindow: windowIndex,
                             windowSize: windowSize,
-                            sampleRate: sampleRate,
+                            windowDuration: windowDuration,
+                            micContext: micTrackWindowContext,
+                            systemContext: systemTrackWindowContext,
                             now: now
                         )
                         currentTrack = track
@@ -166,7 +194,9 @@ nonisolated enum PaceMeetingTurnSegmenter {
                             startWindow: runStartWindow,
                             endWindow: windowIndex - silenceGapWindows + 1,
                             windowSize: windowSize,
-                            sampleRate: sampleRate,
+                            windowDuration: windowDuration,
+                            micContext: micTrackWindowContext,
+                            systemContext: systemTrackWindowContext,
                             now: now
                         )
                         currentTrack = nil
@@ -184,7 +214,9 @@ nonisolated enum PaceMeetingTurnSegmenter {
                 startWindow: runStartWindow,
                 endWindow: windowCount,
                 windowSize: windowSize,
-                sampleRate: sampleRate,
+                windowDuration: windowDuration,
+                micContext: micTrackWindowContext,
+                systemContext: systemTrackWindowContext,
                 now: now
             )
         }
@@ -244,21 +276,38 @@ nonisolated enum PaceMeetingTurnSegmenter {
 
     // MARK: - Turn building
 
+    /// Per-track mapping info from global (padded) window indices back
+    /// to the track's own sample space.
+    private struct TrackWindowContext {
+        let padWindows: Int
+        let sampleCount: Int
+    }
+
     private static func appendTurn(
         _ turns: inout [PaceMeetingTurn],
         track: PaceMeetingAudioTrackKind,
         startWindow: Int,
         endWindow: Int,
         windowSize: Int,
-        sampleRate: Double,
+        windowDuration: TimeInterval,
+        micContext: TrackWindowContext,
+        systemContext: TrackWindowContext,
         now: Date
     ) {
-        let startSample = startWindow * windowSize
-        let endSample = endWindow * windowSize
+        let context = track == .mic ? micContext : systemContext
+        // Map global window indices into this track's sample space and
+        // clamp to the actual sample count. Clamping matters twice: the
+        // final RMS window is zero-padded past the buffer's end, and
+        // `windowCount` is the max across both tracks — either way an
+        // unclamped range can exceed the buffer and crash at slice time.
+        let startSample = min(max((startWindow - context.padWindows) * windowSize, 0), context.sampleCount)
+        let endSample = min(max((endWindow - context.padWindows) * windowSize, 0), context.sampleCount)
         guard endSample > startSample else { return }
 
-        let startOffset = TimeInterval(startSample) / sampleRate
-        let endOffset = TimeInterval(endSample) / sampleRate
+        // Timestamps stay on the global (aligned) timeline: `now` is the
+        // meeting's earliest captured sample across both tracks.
+        let startOffset = TimeInterval(startWindow) * windowDuration
+        let endOffset = TimeInterval(endWindow) * windowDuration
         turns.append(PaceMeetingTurn(
             start: now.addingTimeInterval(startOffset),
             end: now.addingTimeInterval(endOffset),
@@ -266,5 +315,22 @@ nonisolated enum PaceMeetingTurnSegmenter {
             attributedSpeaker: track == .mic ? "you" : "them",
             sampleRange: startSample..<endSample
         ))
+    }
+
+    // MARK: - Cross-track alignment
+
+    /// Number of leading zero windows that shift a track so its window
+    /// indices line up with the meeting's global timeline.
+    private static func leadingPadWindowCount(
+        for track: PaceMeetingAudioTrack?,
+        windowDuration: TimeInterval
+    ) -> Int {
+        guard let track, windowDuration > 0 else { return 0 }
+        return Int((track.startOffsetSeconds / windowDuration).rounded())
+    }
+
+    private static func paddedWindows(_ windows: [Float], leadingZeroCount: Int) -> [Float] {
+        guard leadingZeroCount > 0, !windows.isEmpty else { return windows }
+        return [Float](repeating: 0, count: leadingZeroCount) + windows
     }
 }

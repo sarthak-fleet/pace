@@ -362,7 +362,9 @@ extension CompanionManager {
             let controller = PaceMeetingModeController.shared
             controller.isEnabled = true
             controller.localRetriever = localRetriever
-            controller.plannerClient = plannerClient
+            // Privacy-pinned: meeting synthesis never uses the active
+            // (possibly off-device) tier.
+            controller.plannerClient = BuddyPlannerClientFactory.makeLocalOnlyPlannerForPrivacyPinnedFeatures()
             Task { @MainActor in
                 await controller.start()
             }

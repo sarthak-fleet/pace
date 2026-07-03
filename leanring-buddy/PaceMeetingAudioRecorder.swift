@@ -31,6 +31,12 @@ nonisolated struct PaceMeetingRecording: Equatable, Sendable {
     let systemFileURL: URL?
     let micTrack: PaceMeetingAudioTrack?
     let systemTrack: PaceMeetingAudioTrack?
+    /// Wall-clock time of the earliest captured sample across both
+    /// tracks. The segmenter's global timeline anchor — turn
+    /// timestamps are offsets from this, and each track's
+    /// `startOffsetSeconds` is relative to it. Nil when neither track
+    /// received any samples.
+    let earliestSampleAnchor: Date?
 }
 
 /// Two-track meeting audio recorder. `@MainActor` because AVAudioEngine
@@ -62,6 +68,11 @@ final class PaceMeetingAudioRecorder {
     private var systemFileHandle: FileHandle?
     private var micDataByteCount: Int = 0
     private var systemDataByteCount: Int = 0
+    /// Wall-clock time each track received its FIRST samples. The mic
+    /// starts before the SCStream finishes spinning up, so these anchors
+    /// let the segmenter align the two tracks on one timeline.
+    private var micFirstSampleAt: Date?
+    private var systemFirstSampleAt: Date?
 
     init(meetingID: UUID, now: Date = Date(), sampleRate: Double = 16_000, channelCount: Int = 1) {
         self.meetingID = meetingID
@@ -198,6 +209,9 @@ final class PaceMeetingAudioRecorder {
             }
         }
         guard !samples.isEmpty else { return }
+        if micFirstSampleAt == nil {
+            micFirstSampleAt = Date()
+        }
         writePCMSamples(samples, to: micFileHandle, byteCount: &micDataByteCount)
     }
 
@@ -215,6 +229,9 @@ final class PaceMeetingAudioRecorder {
             }
         }
         guard !samples.isEmpty else { return }
+        if systemFirstSampleAt == nil {
+            systemFirstSampleAt = Date()
+        }
         writePCMSamples(samples, to: systemFileHandle, byteCount: &systemDataByteCount)
     }
 
@@ -250,10 +267,33 @@ final class PaceMeetingAudioRecorder {
         let micSamplesFromDisk = micFinalURL.flatMap { Self.readMonoFloatSamplesFromPCM16WAV(at: $0) } ?? []
         let systemSamplesFromDisk = systemFinalURL.flatMap { Self.readMonoFloatSamplesFromPCM16WAV(at: $0) } ?? []
 
-        micTrack = PaceMeetingAudioTrack(samples: micSamplesFromDisk, sampleRate: sampleRate, channelCount: channelCount)
+        // Per-track start offsets relative to the earliest captured
+        // sample, so the segmenter can align both tracks on one
+        // timeline (the SCStream starts after the mic).
+        let earliestSampleAnchor = [micFirstSampleAt, systemFirstSampleAt].compactMap { $0 }.min()
+        var micStartOffsetSeconds: TimeInterval = 0
+        if let micFirstSampleAt, let earliestSampleAnchor {
+            micStartOffsetSeconds = micFirstSampleAt.timeIntervalSince(earliestSampleAnchor)
+        }
+        var systemStartOffsetSeconds: TimeInterval = 0
+        if let systemFirstSampleAt, let earliestSampleAnchor {
+            systemStartOffsetSeconds = systemFirstSampleAt.timeIntervalSince(earliestSampleAnchor)
+        }
+
+        micTrack = PaceMeetingAudioTrack(
+            samples: micSamplesFromDisk,
+            sampleRate: sampleRate,
+            channelCount: channelCount,
+            startOffsetSeconds: micStartOffsetSeconds
+        )
         systemTrack = systemSamplesFromDisk.isEmpty
             ? nil
-            : PaceMeetingAudioTrack(samples: systemSamplesFromDisk, sampleRate: sampleRate, channelCount: channelCount)
+            : PaceMeetingAudioTrack(
+                samples: systemSamplesFromDisk,
+                sampleRate: sampleRate,
+                channelCount: channelCount,
+                startOffsetSeconds: systemStartOffsetSeconds
+            )
 
         micPartURL = nil
         systemPartURL = nil
@@ -267,7 +307,8 @@ final class PaceMeetingAudioRecorder {
             micFileURL: micFinalURL,
             systemFileURL: systemFinalURL,
             micTrack: micTrack,
-            systemTrack: systemTrack
+            systemTrack: systemTrack,
+            earliestSampleAnchor: earliestSampleAnchor
         )
     }
 

@@ -48,6 +48,12 @@ final class PaceMeetingModeController: ObservableObject {
     /// panel card can render them after stop. Cleared on the next start.
     @Published private(set) var lastMeetingNotes: PaceMeetingNotes?
 
+    /// True when the SCStream died mid-meeting (didStopWithError). The
+    /// mic track keeps recording, but the "them" side is truncated —
+    /// the notes summary carries a caveat so the user isn't handed
+    /// silently one-sided notes. Reset on the next start.
+    @Published private(set) var systemAudioDroppedMidMeeting = false
+
     /// Publisher for normalized audio levels (0.0...1.0). Consumers
     /// can subscribe to detect speech activity in system audio.
     let audioLevelPublisher = PassthroughSubject<Float, Never>()
@@ -104,6 +110,7 @@ final class PaceMeetingModeController: ObservableObject {
         let thisStartGeneration = lifecycleGeneration
         state = .starting
         lastMeetingNotes = nil
+        systemAudioDroppedMidMeeting = false
 
         // Create the recorder + meeting ID up front so both tracks
         // share one identifier even if the SCStream fails to start.
@@ -166,6 +173,11 @@ final class PaceMeetingModeController: ObservableObject {
                 onAudioSample: { [weak self] level, samples in
                     Task { @MainActor [weak self] in
                         self?.handleAudioSample(level: level, samples: samples)
+                    }
+                },
+                onStreamStopped: { [weak self] errorDescription in
+                    Task { @MainActor [weak self] in
+                        self?.handleSystemAudioStreamStopped(errorDescription: errorDescription)
                     }
                 }
             )
@@ -236,11 +248,13 @@ final class PaceMeetingModeController: ObservableObject {
             return
         }
 
-        // Segment the two tracks into attributed turns.
+        // Segment the two tracks into attributed turns. The timeline
+        // anchor is the earliest captured sample, not the start() call —
+        // each track's startOffsetSeconds is relative to it.
         let turns = PaceMeetingTurnSegmenter.segment(
             mic: recording.micTrack,
             system: recording.systemTrack,
-            now: recording.startedAt
+            now: recording.earliestSampleAnchor ?? recording.startedAt
         )
 
         // Transcribe each turn's audio slice. When segmentation yields
@@ -263,7 +277,11 @@ final class PaceMeetingModeController: ObservableObject {
                 trackSamples = system.samples
                 sampleRate = system.sampleRate
             }
-            let slice = Array(trackSamples[turn.sampleRange])
+            // Defense in depth: the segmenter clamps ranges to the
+            // track, but an out-of-range slice here is an unrecoverable
+            // crash at the end of a long meeting — never trust it blindly.
+            let clampedRange = turn.sampleRange.clamped(to: 0..<trackSamples.count)
+            let slice = Array(trackSamples[clampedRange])
             guard !slice.isEmpty else { continue }
             let sliceURL = Self.sliceToTempWAV(samples: slice, sampleRate: sampleRate)
             do {
@@ -322,11 +340,31 @@ final class PaceMeetingModeController: ObservableObject {
                 synthesisFailed: true
             )
         }
-        lastMeetingNotes = notes
+        // If the system-audio stream died mid-meeting, say so in the
+        // summary itself — the notes otherwise read as a meeting where
+        // only the user spoke.
+        let finalNotes: PaceMeetingNotes
+        if systemAudioDroppedMidMeeting {
+            finalNotes = PaceMeetingNotes(
+                meetingID: notes.meetingID,
+                startedAt: notes.startedAt,
+                endedAt: notes.endedAt,
+                title: notes.title,
+                transcript: notes.transcript,
+                turns: notes.turns,
+                summary: "(System audio dropped partway through — notes may only cover your side.) " + notes.summary,
+                actionItems: notes.actionItems,
+                decisions: notes.decisions,
+                synthesisFailed: notes.synthesisFailed
+            )
+        } else {
+            finalNotes = notes
+        }
+        lastMeetingNotes = finalNotes
 
         // Journal into the retrieval index.
         if let retriever = localRetriever {
-            retriever.recordMeetingNotes(notes)
+            retriever.recordMeetingNotes(finalNotes)
         }
 
         state = .inactive
@@ -343,6 +381,17 @@ final class PaceMeetingModeController: ObservableObject {
     }
 
     // MARK: - Audio handling
+
+    /// SCStream died mid-meeting. The mic keeps recording (better half
+    /// a meeting than none), the panel state reflects the drop, and the
+    /// eventual notes carry a caveat instead of silently reading as a
+    /// one-sided meeting.
+    private func handleSystemAudioStreamStopped(errorDescription: String) {
+        guard state == .active || state == .starting else { return }
+        systemAudioDroppedMidMeeting = true
+        detectedSpeechLevel = 0.0
+        print("⚠️ Meeting mode: system audio stream stopped mid-meeting — \(errorDescription). Mic track continues.")
+    }
 
     private func handleAudioSample(level: Float, samples: [Float]) {
         detectedSpeechLevel = level
@@ -400,9 +449,14 @@ final class PaceMeetingModeController: ObservableObject {
 /// via a callback.
 private final class PaceSystemAudioStreamDelegate: NSObject, SCStreamDelegate {
     private let onAudioSample: (Float, [Float]) -> Void
+    private let onStreamStopped: (String) -> Void
 
-    init(onAudioSample: @escaping (Float, [Float]) -> Void) {
+    init(
+        onAudioSample: @escaping (Float, [Float]) -> Void,
+        onStreamStopped: @escaping (String) -> Void
+    ) {
         self.onAudioSample = onAudioSample
+        self.onStreamStopped = onStreamStopped
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -458,5 +512,6 @@ private final class PaceSystemAudioStreamDelegate: NSObject, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
         onAudioSample(0.0, [])
+        onStreamStopped(error.localizedDescription)
     }
 }
