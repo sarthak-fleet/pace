@@ -19,14 +19,19 @@ A menu-bar voice agent for macOS. Hold a hotkey, talk, and Pace answers — read
 - **Agent mode that acts.** With `EnableActions=true` Pace can click, type, scroll, and press keys — synthesised via AX-tree-first targeting that falls back to CGEvent. The app can ask for approval before executing tools. Plan-act-observe loop re-screenshots between actions; the planner emits `[DONE]` when finished. Capped at 8 steps by default.
 - **Quiet by default.** Action mode off; permissions gated; the local VLM only fires when the transcript references the screen.
 
-## Build from source
+## Install (users)
+
+Grab the latest build from [Releases](https://github.com/sarthakagrawal927/pace/releases/latest) and launch it. On-device models download from **Settings → Models** inside the app (bundled MLX planner/VLM/ASR/TTS manifest, delivered via Sparkle) — no external tools required. Apple Intelligence Macs can talk to Pace immediately via the Apple Foundation Models tier while models download.
+
+## Build from source (developers)
 
 ```bash
-# 1. Provision LM Studio + the two models (idempotent).
-./scripts/setup-local.sh
-
-# 2. Open the project and Cmd+R.
+# Open the project and Cmd+R. Models come from Settings → Models in-app.
 open leanring-buddy.xcodeproj
+
+# OPTIONAL power-user path: LM Studio as the planner/VLM backend
+# (larger models than the bundled defaults). Idempotent provisioner:
+./scripts/setup-local.sh
 ```
 
 Full setup details, switches, and tuning guidance: see [`SETUP_LOCAL.md`](./SETUP_LOCAL.md).
@@ -35,22 +40,21 @@ Architecture and per-file responsibilities: see [`AGENTS.md`](./AGENTS.md).
 
 ## What it runs on
 
-- **Speech-to-text**: Apple `SFSpeechRecognizer` (on-device, instant).
-- **Screen understanding**: a small vision-language model via LM Studio (default: UI-Venus-1.5-2B, the GUI-specialist 2B model) merged with native Apple Vision OCR for text fidelity.
-- **Reasoning / planning**: any OpenAI-compatible reasoner via LM Studio (default: Qwen3-30B-A3B, MoE — 3B active params, scored 15/15 on Pace's eval at ~925ms mean). `cache_prompt: true` sent on every request.
-- **Text-to-speech**: `AVSpeechSynthesizer`, sentence-streamed so audio starts within ~500ms of the planner's first token.
+- **Speech-to-text**: Apple `SFSpeechRecognizer` (on-device, instant); WhisperKit auto-preferred when its model is installed.
+- **Screen understanding**: a small vision-language model — bundled MLX VLM by default, or LM Studio (UI-Venus-1.5-2B, the GUI-specialist 2B model) on the power-user path — merged with native Apple Vision OCR for text fidelity.
+- **Reasoning / planning**: bundled in-process MLX planner (Qwen3-4B) or any OpenAI-compatible local reasoner via LM Studio (Qwen3-30B-A3B MoE scored 15/15 on Pace's eval at ~925ms mean). `cache_prompt: true` sent on every request. Optional tiers: Apple Foundation Models, BYO-key Direct API, CLI bridge — all opt-in, all visibly indicated.
+- **Text-to-speech**: Kokoro-82M via a loopback sidecar (~150 ms/sentence warm) with `AVSpeechSynthesizer` fallback, sentence-streamed so audio starts within ~500ms of the planner's first token.
 - **Click / keystroke synthesis**: `AXUIElement` (semantic press) then `CGEvent` fallback.
-- **Voice input UI**: Whisper Flow-style glassmorphic pill.
+- **Meeting notes**: mic + system audio captured as two 16 kHz tracks, segmented, transcribed, and summarized entirely on-device.
 - **Cursor**: Codex-style arrow with linear gradient + highlight stroke.
-- **Walking avatar**: small SwiftUI character at the bottom of the cursor screen; click to open the menu-bar panel.
 
 ## Requirements
 
 - macOS 14.2+ (ScreenCaptureKit)
-- Xcode 16+ (for SwiftPM synchronized folder groups)
-- Apple Silicon recommended (MLX acceleration in LM Studio)
-- ~20-28 GB free RAM with both LM Studio models loaded (default 2B VLM + 30B MoE planner)
-- Homebrew (for LM Studio install via the setup script)
+- Xcode 16+ to build from source (SwiftPM synchronized folder groups)
+- Apple Silicon recommended (MLX acceleration)
+- ~12–25 GB free RAM with models loaded (bundled defaults; the optional LM Studio 30B planner wants ~20–28 GB)
+- Homebrew only for the optional LM Studio path
 
 ## Benchmark your own latency
 

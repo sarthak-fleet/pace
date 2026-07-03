@@ -216,7 +216,6 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 
 - Live-app click ambiguity smokes not CI-automated.
 - Social proof section gated until real user quotes.
-- README still references LM Studio as primary setup path; bundled MLX + Settings → Models is the shipping path for downloads.
 - Known non-blocking Xcode warnings (Swift 6 concurrency, deprecated onChange) — intentionally not fixed per AGENTS.md.
 - Pace-tuned LoRA run blocked on sufficient exported turn volume.
 - **TCC:** Never run terminal `xcodebuild` for routine dev — re-requests screen recording, accessibility, mic permissions.
