@@ -735,9 +735,21 @@ def main(argv: list[str]) -> int:
         "ensured the model is resident. Use this when chaining from "
         "diag-pace.py so the planner isn't double-loaded into a `:2` slot.",
     )
+    parser.add_argument(
+        "--fixtures-dir",
+        default=str(FIXTURES_DIR),
+        help="Directory of *.txt fixtures to run. Defaults to evals/fm-fixtures; "
+        "pass evals/fm-fixtures-holdout for the never-train holdout sweep "
+        "(docs/plans/pace-tuned-model-v1.md).",
+    )
     args = parser.parse_args(argv)
 
-    fixture_paths = sorted(FIXTURES_DIR.glob("*.txt"))
+    fixtures_directory = Path(args.fixtures_dir)
+    if not fixtures_directory.is_dir():
+        print(f"❌ fixtures dir not found: {fixtures_directory}", file=sys.stderr)
+        return 2
+
+    fixture_paths = sorted(fixtures_directory.glob("*.txt"))
     fixtures = [parse_fixture(path) for path in fixture_paths]
 
     if args.fixtures_only:
