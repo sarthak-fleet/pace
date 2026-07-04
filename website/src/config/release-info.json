@@ -1,18 +1,44 @@
 {
   "latest": {
-    "version": "0.3.16",
-    "build": "16",
-    "title": "Pace 0.3.16",
-    "pubDate": "Tue, 16 Jun 2026 08:50:56 +0000",
-    "isoDate": "2026-06-16T08:50:56+00:00",
-    "displayDate": "Jun 16, 2026",
-    "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.16/Pace-0.3.16.zip",
-    "length": 15530017,
-    "lengthMB": 14.8,
+    "version": "0.3.18",
+    "build": "18",
+    "title": "Pace 0.3.18",
+    "pubDate": "Sat, 04 Jul 2026 09:09:09 +0000",
+    "isoDate": "2026-07-04T09:09:09+00:00",
+    "displayDate": "Jul 4, 2026",
+    "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.18/Pace-0.3.18.zip",
+    "length": 30465970,
+    "lengthMB": 29.1,
     "minimumSystemVersion": "14.0",
-    "edSignature": "QFvb0tLfPtV00X7NqiScuB1dR1J3px7q3E1dG0BsHYPSiwKlvsOThTQ6X3R/PDPFs+zKPFcU7jNuQpzS3hHuCw=="
+    "edSignature": "haSVxTwT40GYvIUCNCvw3y1zA5FqYA8dy/vrrXYAzvDSsIKcwPILcQiW6VuRIQuDFLwsEiSrx9I/H8Nj6DUvDA=="
   },
   "releases": [
+    {
+      "version": "0.3.18",
+      "build": "18",
+      "title": "Pace 0.3.18",
+      "pubDate": "Sat, 04 Jul 2026 09:09:09 +0000",
+      "isoDate": "2026-07-04T09:09:09+00:00",
+      "displayDate": "Jul 4, 2026",
+      "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.18/Pace-0.3.18.zip",
+      "length": 30465970,
+      "lengthMB": 29.1,
+      "minimumSystemVersion": "14.0",
+      "edSignature": "haSVxTwT40GYvIUCNCvw3y1zA5FqYA8dy/vrrXYAzvDSsIKcwPILcQiW6VuRIQuDFLwsEiSrx9I/H8Nj6DUvDA=="
+    },
+    {
+      "version": "0.3.17",
+      "build": "17",
+      "title": "Pace 0.3.17",
+      "pubDate": "Fri, 03 Jul 2026 17:19:18 +0000",
+      "isoDate": "2026-07-03T17:19:18+00:00",
+      "displayDate": "Jul 3, 2026",
+      "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.17/Pace-0.3.17.zip",
+      "length": 30107956,
+      "lengthMB": 28.7,
+      "minimumSystemVersion": "14.0",
+      "edSignature": "8Ud6fzR9zPRMwnWrXXWRDyPU+vDjoAjjO2nsmyY416xpC5aBcdfuYke08utU1gNfRweSOr3nngAcT712RD54DA=="
+    },
     {
       "version": "0.3.16",
       "build": "16",
@@ -116,34 +142,8 @@
       "lengthMB": 13.6,
       "minimumSystemVersion": "14.0",
       "edSignature": "e3GverauBKv44h0kvNjshFPMDSHrXH04d2EbRQh73ZLAM3HQ0090cmhhwLRC3D91jUBalgIGD3wjIEpp4UKEDw=="
-    },
-    {
-      "version": "0.3.8",
-      "build": "8",
-      "title": "Pace 0.3.8",
-      "pubDate": "Thu, 11 Jun 2026 14:03:59 +0000",
-      "isoDate": "2026-06-11T14:03:59+00:00",
-      "displayDate": "Jun 11, 2026",
-      "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.8/Pace-0.3.8.zip",
-      "length": 14315109,
-      "lengthMB": 13.7,
-      "minimumSystemVersion": "14.0",
-      "edSignature": "TZhZ6pyGCFgSmFMCKGh1vcZnWe0we+4HeFfXCj1iiZQcsaYt+fh84uwGW7YZM1d8LVWi58W86yynEQcJK0FWDw=="
-    },
-    {
-      "version": "0.3.5",
-      "build": "7",
-      "title": "Pace 0.3.5",
-      "pubDate": "Thu, 11 Jun 2026 10:28:00 +0000",
-      "isoDate": "2026-06-11T10:28:00+00:00",
-      "displayDate": "Jun 11, 2026",
-      "downloadURL": "https://github.com/sarthakagrawal927/pace/releases/download/v0.3.5/Pace-0.3.5.zip",
-      "length": 14093236,
-      "lengthMB": 13.4,
-      "minimumSystemVersion": "14.0",
-      "edSignature": "2E0jmre8MRhHwJ96YnmoXD9J/3K+72jpzNu+wxRsU4BU/kC3JKAdtfkPXPwZCrmi1UgWRquk3ZYF8L6/rsyaCA=="
     }
   ],
   "releasesPageURL": "https://github.com/sarthakagrawal927/pace/releases",
-  "generatedAt": "2026-06-28T13:23:40.833270Z"
+  "generatedAt": "2026-07-04T09:11:09.908980Z"
 }
