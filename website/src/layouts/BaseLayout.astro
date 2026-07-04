@@ -8,8 +8,8 @@ interface Props {
 }
 
 const { title, description, pathname = "/" } = Astro.props;
-const canonicalURL = new URL(pathname, Astro.site ?? "https://pace.app").toString();
-const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://pace.app").toString();
+const canonicalURL = new URL(pathname, Astro.site ?? "https://pace-6xg.pages.dev").toString();
+const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://pace-6xg.pages.dev").toString();
 
 // JSON-LD structured data — gives Google + LLM crawlers a clean
 // machine-readable picture of what Pace is, what it costs, and how

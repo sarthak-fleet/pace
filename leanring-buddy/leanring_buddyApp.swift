@@ -129,7 +129,18 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             menuBarOverlayManager?.show()
         }
-        companionManager.start()
+        // Unit tests run inside this app as their test host. Skip the full
+        // companion startup there: start() ignites live subsystems (Apple FM
+        // thread-summarizer rehydration, ambient polling, meeting-recording
+        // sweep, permission refreshes) that would run concurrently with
+        // every test — and an intermittent FoundationModels framework trap
+        // in that background activity takes the whole test process, and
+        // every in-flight test in it, down as 0.000s bystander failures.
+        let isRunningAsUnitTestHost =
+            ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        if !isRunningAsUnitTestHost {
+            companionManager.start()
+        }
         if useRightCornerMascot {
             // Mascot is the only surface — silence the cursor-level overlays
             // so nothing renders near the mouse pointer.

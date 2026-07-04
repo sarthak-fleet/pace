@@ -10,7 +10,7 @@ import tailwindcss from "@tailwindcss/vite";
 //
 // Cloudflare Pages deployment: `pages_build_output_dir: dist`.
 export default defineConfig({
-  site: "https://pace.app",
+  site: "https://pace-6xg.pages.dev",
   output: "static",
   build: {
     // Flat-inlines per-page CSS so the LCP element doesn't wait on

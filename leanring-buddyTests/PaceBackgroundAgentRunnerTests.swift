@@ -155,13 +155,22 @@ struct PaceBackgroundAgentRunnerTests {
 
         let id = runner.enqueue(prompt: "clear test", displayName: "Clear Test")
 
-        try? await Task.sleep(for: .seconds(1))
+        // Poll until THIS task reaches a finished state — a fixed sleep
+        // flakes under CI load (the detached execution task may not have
+        // completed yet), and asserting on the task's own id keeps the
+        // test immune to other tests' tasks in the shared runner.
+        for _ in 0..<100 {
+            let enqueuedTask = runner.tasks.first(where: { $0.id == id })
+            if enqueuedTask?.state == .completed {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let enqueuedTaskState = runner.tasks.first(where: { $0.id == id })?.state
+        #expect(enqueuedTaskState == .completed)
 
-        let countBeforeClear = runner.tasks.count
         runner.clearCompleted()
-        let countAfterClear = runner.tasks.count
-
-        #expect(countAfterClear < countBeforeClear)
+        #expect(runner.tasks.contains(where: { $0.id == id }) == false)
     }
 
     // MARK: - Priority queue (Sprint 2.2)
