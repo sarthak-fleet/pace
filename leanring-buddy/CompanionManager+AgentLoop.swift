@@ -899,8 +899,13 @@ extension CompanionManager {
             return
         }
 
-        // Meeting mode: "start meeting mode" / "stop meeting mode"
-        if let meetingCommand = PaceMeetingModeCommandParser.parse(transcript) {
+        // Meeting mode: "start meeting mode" / "start my one-on-one
+        // recording" / "stop the meeting". Profiles are passed so a
+        // spoken profile name pins that note profile for the meeting.
+        if let meetingCommand = PaceMeetingModeCommandParser.parse(
+            transcript,
+            profiles: PaceMeetingNoteProfileLibrary.loadProfiles()
+        ) {
             print("🎙️ Meeting-mode voice command: \(meetingCommand)")
             handleMeetingModeCommand(meetingCommand, transcript: transcript)
             return
@@ -2233,12 +2238,22 @@ extension CompanionManager {
         controller.localRetriever = localRetriever
         controller.plannerClient = BuddyPlannerClientFactory.makeLocalOnlyPlannerForPrivacyPinnedFeatures()
         switch command {
-        case .start:
+        case .start(let profileSlug):
             PaceUserPreferencesStore.setBool(true, for: .isMeetingModeEnabled)
             controller.isEnabled = true
+            // Resolve the named profile (if any) up front so we can both
+            // pin it for this meeting and confirm it by name aloud.
+            let namedProfile = profileSlug.map { PaceMeetingNoteProfileLibrary.profile(forSlug: $0) }
             Task {
                 await controller.start()
-                try? await ttsClient.speakText("Meeting mode on. Recording — I'll generate notes when you stop.")
+                // start() clears any stale per-meeting choice, so set the
+                // explicit profile AFTER start.
+                if let namedProfile {
+                    controller.selectedProfileSlug = namedProfile.slug
+                    try? await ttsClient.speakText("Recording your \(namedProfile.name) — I'll write \(namedProfile.name)-style notes when you stop.")
+                } else {
+                    try? await ttsClient.speakText("Meeting mode on. Recording — I'll generate notes when you stop.")
+                }
                 voiceState = .idle
             }
         case .stop:

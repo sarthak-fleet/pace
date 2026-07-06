@@ -106,31 +106,76 @@ nonisolated enum PaceBackgroundAgentCommandParser {
 
 // MARK: - Meeting mode
 
-enum PaceMeetingModeCommand {
-    case start
+enum PaceMeetingModeCommand: Equatable {
+    /// Start a meeting. `profileSlug` is the note profile named in the
+    /// utterance ("start my one-on-one recording" → "one-on-one"), or
+    /// nil for a generic start (normal profile precedence applies).
+    case start(profileSlug: String?)
     case stop
     case status
 }
 
 nonisolated enum PaceMeetingModeCommandParser {
-    static func parse(_ transcript: String) -> PaceMeetingModeCommand? {
+    /// Parse a meeting-mode voice command. `profiles` supplies the
+    /// available note profiles so a spoken profile name/alias
+    /// ("standup", "1:1") starts a meeting with that profile pinned.
+    /// Pure — the caller loads profiles via `PaceMeetingNoteProfileLibrary`.
+    static func parse(
+        _ transcript: String,
+        profiles: [PaceMeetingNoteProfile] = []
+    ) -> PaceMeetingModeCommand? {
         let lower = transcript.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lower.isEmpty else { return nil }
 
-        if lower.contains("meeting mode") {
-            if lower.contains("start") || lower.contains("begin") || lower.contains("enable") {
-                return .start
-            }
-            if lower.contains("stop") || lower.contains("end") || lower.contains("disable") {
-                return .stop
-            }
-            if lower.contains("status") || lower.contains("is it on") {
-                return .status
-            }
-            // Bare "meeting mode" toggles.
-            return .start
+        let matchedProfileSlug = matchProfileSlug(in: lower, profiles: profiles)
+
+        // A meeting command must be clearly about meetings/recording, so
+        // generic verbs ("record a memo") don't hijack the planner.
+        let hasMeetingContext = lower.contains("meeting")
+            || lower.contains("recording")
+            || matchedProfileSlug != nil
+
+        let hasStartVerb = ["start", "begin", "enable", "record"].contains { lower.contains($0) }
+        let hasStopVerb = ["stop", "finish", "wrap up", "disable", "end the meeting", "end meeting", "end recording", "end my"].contains { lower.contains($0) }
+        let hasStatusWord = lower.contains("status") || lower.contains("is it on") || lower.contains("is meeting mode")
+
+        // Bare "meeting mode" (no verb) still toggles on, preserving the
+        // original behavior.
+        if lower.contains("meeting mode") && !hasStartVerb && !hasStopVerb && !hasStatusWord {
+            return .start(profileSlug: matchedProfileSlug)
         }
 
+        guard hasMeetingContext else { return nil }
+
+        if hasStatusWord && lower.contains("meeting") {
+            return .status
+        }
+        // Stop before start: "stop the meeting recording" contains both.
+        if hasStopVerb {
+            return .stop
+        }
+        if hasStartVerb {
+            return .start(profileSlug: matchedProfileSlug)
+        }
         return nil
+    }
+
+    /// Find the best-matching non-`general` profile for the utterance by
+    /// scanning each profile's name, slug, and `voiceAliases`. When
+    /// several match, the longest matched term wins (most specific).
+    static func matchProfileSlug(in lower: String, profiles: [PaceMeetingNoteProfile]) -> String? {
+        var best: (slug: String, length: Int)?
+        for profile in profiles where profile.slug != "general" {
+            let terms = ([profile.name, profile.slug] + profile.voiceAliases)
+                .map { $0.lowercased() }
+                .filter { !$0.isEmpty }
+            for term in terms where lower.contains(term) {
+                if best == nil || term.count > best!.length {
+                    best = (profile.slug, term.count)
+                }
+            }
+        }
+        return best?.slug
     }
 }
 

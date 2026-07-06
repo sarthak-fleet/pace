@@ -21,5 +21,6 @@
   ],
   "emitsActionItems": true,
   "emitsDecisions": false,
-  "groundsActionItems": true
+  "groundsActionItems": true,
+  "voiceAliases": ["standup", "stand up", "stand-up", "daily standup", "daily stand up", "daily", "scrum"]
 }

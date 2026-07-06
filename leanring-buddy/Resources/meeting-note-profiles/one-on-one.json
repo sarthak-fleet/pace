@@ -26,5 +26,6 @@
   ],
   "emitsActionItems": true,
   "emitsDecisions": false,
-  "groundsActionItems": true
+  "groundsActionItems": true,
+  "voiceAliases": ["one-on-one", "one on one", "1 on 1", "1:1", "one to one", "1-on-1"]
 }

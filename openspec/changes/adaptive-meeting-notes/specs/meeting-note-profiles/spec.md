@@ -59,6 +59,34 @@ precedence SHALL be: (1) a profile explicitly chosen for the active meeting, els
 - **WHEN** any profile selection, inference, or synthesis runs
 - **THEN** zero bytes are sent off the Mac (the `PaceAPIAuditLog` records no off-device entries for the meeting)
 
+### Requirement: Voice-triggered profile selection
+
+A profile SHALL be startable by voice in one phrase, e.g. "start my
+one-on-one recording" or "record this standup". Each profile MAY declare
+`voiceAliases` (natural trigger phrases like "1:1", "one on one",
+"daily standup"); the meeting-mode voice command parser SHALL match the
+transcript against a profile's name, slug, and aliases and start a
+meeting with that profile pre-selected. A start utterance naming no
+profile SHALL start a meeting with the normal precedence (default →
+inference → general), exactly as the panel-only flow does.
+
+#### Scenario: Named profile starts a meeting with that profile
+
+- **WHEN** the user says "start my one-on-one recording"
+- **THEN** meeting mode starts
+- **AND** the meeting's explicit profile is set to `one-on-one` before synthesis
+
+#### Scenario: Generic start uses normal precedence
+
+- **WHEN** the user says "start meeting mode" (no profile named)
+- **THEN** meeting mode starts with no explicit profile
+- **AND** synthesis resolves via default preference → inference → general
+
+#### Scenario: Stop is unaffected
+
+- **WHEN** the user says "stop recording" / "stop meeting mode"
+- **THEN** meeting mode stops and notes are synthesized as before
+
 ### Requirement: Profile-driven synthesis
 
 The notes builder SHALL render the selected profile's sections into the JSON-only

@@ -26,6 +26,13 @@
 - [x] 4.3 `PaceMeetingNotesJournal`: include action-item grounding (timestamp/quote) in the journaled retrieval document text.
 - [x] 4.4 Test: journal document text contains grounding and remains lexically matchable.
 
+## 6. Voice-triggered profile selection
+
+- [x] 6.1 Add optional `voiceAliases: [String]` to `PaceMeetingNoteProfile` (lenient decode, default []); populate standup/one-on-one bundled JSON with natural aliases (1:1, one on one, daily standup, scrum…).
+- [x] 6.2 Extend `PaceMeetingModeCommand.start` to carry `profileSlug: String?`; broaden `PaceMeetingModeCommandParser.parse` to recognize "start/record … <profile> …" and match name/slug/aliases against the available profiles (pure — profiles passed in).
+- [x] 6.3 In `handleMeetingModeCommand`, set `controller.selectedProfileSlug` before `start()` when a profile was named, and confirm by name in the spoken response.
+- [x] 6.4 Tests: parser recognizes the user's phrasings (named + generic start, stop unaffected, alias matching), lenient decode of profiles without `voiceAliases`.
+
 ## 5. Docs + verification
 
 - [x] 5.1 Update `docs/prds/on-device-meeting-notes.md` (or add a short profiles PRD), `docs/key-files.md`, and AGENTS.md architecture note for the new files.

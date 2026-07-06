@@ -68,6 +68,13 @@ nonisolated struct PaceMeetingNoteProfile: Equatable, Codable, Sendable {
     /// identical to the legacy prompt.
     let groundsActionItems: Bool
 
+    /// Natural spoken trigger phrases for starting this profile by voice
+    /// ("start my one-on-one recording"). The parser also matches the
+    /// profile's `name` and `slug`, so aliases only need to cover extra
+    /// phrasings (e.g. "1:1", "daily standup"). Optional in JSON —
+    /// defaults to empty, so user profiles need not declare it.
+    let voiceAliases: [String]
+
     init(
         slug: String,
         name: String,
@@ -75,7 +82,8 @@ nonisolated struct PaceMeetingNoteProfile: Equatable, Codable, Sendable {
         sections: [PaceMeetingNoteSection],
         emitsActionItems: Bool,
         emitsDecisions: Bool,
-        groundsActionItems: Bool
+        groundsActionItems: Bool,
+        voiceAliases: [String] = []
     ) {
         self.slug = slug
         self.name = name
@@ -84,6 +92,22 @@ nonisolated struct PaceMeetingNoteProfile: Equatable, Codable, Sendable {
         self.emitsActionItems = emitsActionItems
         self.emitsDecisions = emitsDecisions
         self.groundsActionItems = groundsActionItems
+        self.voiceAliases = voiceAliases
+    }
+
+    // Lenient decode: `voiceAliases` is optional in the JSON so profiles
+    // authored before it existed (and user profiles that don't need it)
+    // still decode cleanly. All other fields are required.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decode(String.self, forKey: .description)
+        sections = try container.decode([PaceMeetingNoteSection].self, forKey: .sections)
+        emitsActionItems = try container.decode(Bool.self, forKey: .emitsActionItems)
+        emitsDecisions = try container.decode(Bool.self, forKey: .emitsDecisions)
+        groundsActionItems = try container.decode(Bool.self, forKey: .groundsActionItems)
+        voiceAliases = try container.decodeIfPresent([String].self, forKey: .voiceAliases) ?? []
     }
 
     // MARK: - Prompt rendering
