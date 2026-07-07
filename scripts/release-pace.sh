@@ -45,7 +45,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-GITHUB_REPO="sarthakagrawal927/pace"
+GITHUB_REPO="sarthak-fleet/pace"
 APP_NAME="Pace"
 SCHEME="leanring-buddy"
 INFO_PLIST="${PROJECT_DIR}/leanring-buddy/Info.plist"
