@@ -23,6 +23,14 @@ struct PaceTunedTurnExportRow: Equatable, Codable {
         let lane: String
         let exportedAt: Date
         let sourceRecordId: UUID
+        /// Which brain/tier produced this turn (e.g. "cloud bridge (codex)",
+        /// "local", "cli bridge") plus its routing lane. REQUIRED for
+        /// auditability: turns distilled from a commercial model (Codex,
+        /// Claude) can be filtered out before training/shipping a model, so
+        /// the distillation source is never silently baked in. Optional for
+        /// backward-compatible decode of rows written before this field.
+        let plannerProvenance: String?
+        let routing: String?
     }
 }
 
@@ -136,9 +144,14 @@ enum PaceTunedTurnExportTrace {
 }
 
 enum PaceTunedTurnExporter {
-    /// Default OFF — explicit opt-in from Settings → Models.
+    /// Default ON — collects planner turns into the pace-tuned dataset so
+    /// Pace's own model has data to train on. Every non-fast-path turn is
+    /// collected, including cloud/bridge (Codex, Claude) turns, and each row
+    /// is tagged with `plannerProvenance` so distilled-from-commercial turns
+    /// can be filtered before training. Stays fully local + redacted (the
+    /// file never leaves the Mac); opt out in Settings → Models.
     static var isEnabled: Bool {
-        PaceUserPreferencesStore.bool(.isPaceTunedTurnExportEnabled, default: false)
+        PaceUserPreferencesStore.bool(.isPaceTunedTurnExportEnabled, default: true)
     }
 
     static func exportIfEnabled(
@@ -160,17 +173,13 @@ enum PaceTunedTurnExporter {
             return nil
         }
 
-        let routingLower = record.routingDetail.lowercased()
-        if routingLower.contains("research") {
-            return nil
-        }
-        if let plannerPath = record.plannerPathDetail?.lowercased(),
-           plannerPath.contains("cloud bridge")
-            || plannerPath.contains("direct api")
-            || plannerPath.contains("cli bridge") {
-            return nil
-        }
-
+        // NOTE: cloud/bridge/CLI (Codex, Claude) and research turns are now
+        // COLLECTED (they used to be skipped here). This is deliberate — the
+        // strategy is to distill a strong teacher brain into Pace's own local
+        // model. It is ToS-sensitive: OpenAI/Anthropic terms generally forbid
+        // training a competing model on their outputs, so every row is tagged
+        // with `plannerProvenance`/`routing` and can be filtered out before
+        // any model is trained or shipped. The redaction below still applies.
         let userContent = PaceTunedTurnAnonymizer.anonymize(
             record.userPrompt.isEmpty ? record.transcript : record.userPrompt
         )
@@ -186,7 +195,9 @@ enum PaceTunedTurnExporter {
             meta: .init(
                 lane: record.lane.rawValue,
                 exportedAt: Date(),
-                sourceRecordId: record.id
+                sourceRecordId: record.id,
+                plannerProvenance: record.plannerPathDetail ?? "unknown",
+                routing: record.routingDetail
             )
         )
     }

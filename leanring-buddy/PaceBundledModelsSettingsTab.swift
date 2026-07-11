@@ -31,7 +31,7 @@ struct PaceBundledModelsSettingsTab: View {
     @State private var embedderModelIdentifier: String = ""
     @State private var vlmModelIdentifier: String = ""
     @State private var isPaceTunedTurnExportEnabled: Bool = PaceUserPreferencesStore
-        .bool(.isPaceTunedTurnExportEnabled, default: false)
+        .bool(.isPaceTunedTurnExportEnabled, default: true)
 
     // Prefetch state — drives the "Download now" UX so users can
     // warm the model on wifi before the first PTT pays the cost.
@@ -398,7 +398,7 @@ struct PaceBundledModelsSettingsTab: View {
                     Text("Contribute anonymized planner turns")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(DS.Colors.textPrimary)
-                    Text("When ON, local planner turns (not cloud bridge or research) append to ~/Library/Application Support/Pace/pace-tuned-turns.jsonl after emails, phone numbers, and home paths are redacted. Copy into the repo with bash scripts/export-pace-tuned-turns.sh before LoRA training.")
+                    Text("On by default. Planner turns — including cloud ones like Codex — append to ~/Library/Application Support/Pace/pace-tuned-turns.jsonl after emails, phone numbers, and home paths are redacted; each turn is tagged with which brain produced it. The file never leaves your Mac. Copy into the repo with bash scripts/export-pace-tuned-turns.sh before training. Turn off to stop collecting.")
                         .font(.system(size: 12))
                         .foregroundColor(DS.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
