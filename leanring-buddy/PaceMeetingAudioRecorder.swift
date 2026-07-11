@@ -62,17 +62,18 @@ final class PaceMeetingAudioRecorder {
     /// turn timestamps) would run ~3× slow.
     private var micFormatConverter: AVAudioConverter?
     private var micConverterOutputFormat: AVAudioFormat?
-    private var micPartURL: URL?
-    private var systemPartURL: URL?
-    private var micFileHandle: FileHandle?
-    private var systemFileHandle: FileHandle?
-    private var micDataByteCount: Int = 0
-    private var systemDataByteCount: Int = 0
-    /// Wall-clock time each track received its FIRST samples. The mic
-    /// starts before the SCStream finishes spinning up, so these anchors
-    /// let the segmenter align the two tracks on one timeline.
-    private var micFirstSampleAt: Date?
-    private var systemFirstSampleAt: Date?
+    /// Off-main-actor, order-preserving disk writers — one per track.
+    /// These replace the old per-buffer `Task { @MainActor in append(...) }`
+    /// hops, which had two flaws: independently-scheduled tasks carry no
+    /// FIFO guarantee (buffers could land in the WAV out of order), and
+    /// PCM conversion + `FileHandle` writes ran on the main thread. Each
+    /// writer drains its samples on a single serial consumer, off the main
+    /// actor, in exactly the order they were produced. See
+    /// `MeetingTrackWriter` at the bottom of this file. Created lazily on
+    /// first sample so a track that never receives audio (e.g. a one-sided
+    /// meeting) leaves no `.part` file behind.
+    private var micWriter: MeetingTrackWriter?
+    private var systemWriter: MeetingTrackWriter?
 
     init(meetingID: UUID, now: Date = Date(), sampleRate: Double = 16_000, channelCount: Int = 1) {
         self.meetingID = meetingID
@@ -96,8 +97,6 @@ final class PaceMeetingAudioRecorder {
     /// recorder's target sample rate (16 kHz mono) before writing so
     /// the WAV header and the actual PCM data agree.
     func startMicCapture() async throws {
-        try ensureMicPartFile()
-
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
@@ -122,129 +121,88 @@ final class PaceMeetingAudioRecorder {
         }
         micConverterOutputFormat = targetFormat
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            Task { @MainActor [weak self] in
-                self?.appendMicBuffer(buffer)
-            }
+        // Box the converter so the tap block — which runs on AVAudioEngine's
+        // own render thread — can convert samples there without touching the
+        // main actor. `MicSampleConverter` is `@unchecked Sendable` because
+        // the tap block is the ONLY caller and it is invoked serially by the
+        // engine, so the converter's internal filter state stays continuous.
+        let micConverter = MicSampleConverter(
+            converter: micFormatConverter,
+            outputFormat: micConverterOutputFormat
+        )
+        let writer = ensureMicWriter()
+
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [micConverter, writer] buffer, _ in
+            // Convert + downmix on the tap thread, then hand the samples to
+            // the off-main serial writer. No hop through the main actor, and
+            // the writer preserves FIFO order across buffers.
+            let samples = micConverter.monoFloat(from: buffer)
+            guard !samples.isEmpty else { return }
+            writer.append(samples)
         }
 
         audioEngine = engine
         try engine.start()
     }
 
-    private func ensureMicPartFile() throws {
-        let directory = recordingDirectoryURL
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let partURL = directory.appendingPathComponent("mic.wav.part")
-        micPartURL = partURL
-        micDataByteCount = 0
-        try Data(Self.riffHeaderPlaceholder(dataByteCount: 0, sampleRate: sampleRate, channels: UInt16(channelCount)))
-            .write(to: partURL, options: .atomic)
-        micFileHandle = try FileHandle(forWritingTo: partURL)
-        try micFileHandle?.seek(toOffset: 44)
+    /// Lazily build the mic-track writer, capturing the current recording
+    /// directory + format. Called on the main actor before the tap is
+    /// installed and by `appendMicSamples` (the test/internal hook).
+    private func ensureMicWriter() -> MeetingTrackWriter {
+        if let micWriter { return micWriter }
+        let writer = MeetingTrackWriter(
+            directoryURL: recordingDirectoryURL,
+            partFileName: "mic.wav.part",
+            sampleRate: sampleRate,
+            channelCount: channelCount
+        )
+        micWriter = writer
+        return writer
     }
 
-    private func appendMicBuffer(_ buffer: AVAudioPCMBuffer) {
-        // Resample the hardware-format buffer to the target format
-        // first, so downmix and disk writes always operate on samples
-        // that match the WAV header's declared rate.
-        let convertedBuffer: AVAudioPCMBuffer
-        if let converter = micFormatConverter, let outputFormat = micConverterOutputFormat {
-            let rateRatio = outputFormat.sampleRate / buffer.format.sampleRate
-            let outputCapacity = AVAudioFrameCount((Double(buffer.frameLength) * rateRatio).rounded(.up) + 16)
-            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputCapacity) else {
-                return
-            }
-            var didProvideInputBuffer = false
-            var conversionError: NSError?
-            let status = converter.convert(to: outputBuffer, error: &conversionError) { _, inputStatus in
-                if didProvideInputBuffer {
-                    inputStatus.pointee = .noDataNow
-                    return nil
-                }
-                didProvideInputBuffer = true
-                inputStatus.pointee = .haveData
-                return buffer
-            }
-            guard status != .error, conversionError == nil else { return }
-            convertedBuffer = outputBuffer
-        } else {
-            convertedBuffer = buffer
-        }
-
-        guard let channelData = convertedBuffer.floatChannelData else { return }
-        let frameCount = Int(convertedBuffer.frameLength)
-        guard frameCount > 0 else { return }
-        // Mono: take channel 0. Multi-channel: downmix to mono.
-        let incoming: [Float]
-        if convertedBuffer.format.channelCount == 1 {
-            incoming = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
-        } else {
-            var mixed = [Float](repeating: 0, count: frameCount)
-            for channelIndex in 0..<Int(convertedBuffer.format.channelCount) {
-                let channel = channelData[channelIndex]
-                for i in 0..<frameCount {
-                    mixed[i] += channel[i]
-                }
-            }
-            let scale: Float = 1.0 / Float(convertedBuffer.format.channelCount)
-            for i in 0..<frameCount {
-                mixed[i] *= scale
-            }
-            incoming = mixed
-        }
-        appendMicSamples(incoming)
+    /// Lazily build the system-track writer. See `makeSystemSampleSink()`.
+    private func ensureSystemWriter() -> MeetingTrackWriter {
+        if let systemWriter { return systemWriter }
+        let writer = MeetingTrackWriter(
+            directoryURL: recordingDirectoryURL,
+            partFileName: "system.wav.part",
+            sampleRate: sampleRate,
+            channelCount: channelCount
+        )
+        systemWriter = writer
+        return writer
     }
 
-    /// Append mic samples directly (test hook + internal path).
-    /// Samples go straight to the disk writer — nothing accumulates in
-    /// memory, so an hour-long meeting costs disk, not RAM. The tracks
-    /// are read back from the finalized WAVs at `stop()`.
+    /// Returns a `Sendable` sink the SCStream delegate captures to push
+    /// system-track samples straight to the off-main writer, in FIFO order,
+    /// without hopping through the main actor for each buffer. Call this on
+    /// the main actor at capture start; invoke the returned closure from the
+    /// delegate's serial sample-handler queue. Creating the writer here does
+    /// NOT create a file — the `.part` file is written lazily on the first
+    /// sample, so a one-sided meeting (no system audio) leaves no file and
+    /// `stop()` reports a nil system track, exactly as before.
+    func makeSystemSampleSink() -> @Sendable ([Float]) -> Void {
+        let writer = ensureSystemWriter()
+        return { samples in
+            guard !samples.isEmpty else { return }
+            writer.append(samples)
+        }
+    }
+
+    /// Append mic samples directly (test hook + internal path). Samples are
+    /// handed to the off-main serial writer; nothing accumulates on the main
+    /// actor, so an hour-long meeting costs disk, not RAM. The tracks are
+    /// read back from the finalized WAVs at `stop()`.
     func appendMicSamples(_ samples: [Float]) {
-        if micPartURL == nil {
-            do {
-                try ensureMicPartFile()
-            } catch {
-                return
-            }
-        }
         guard !samples.isEmpty else { return }
-        if micFirstSampleAt == nil {
-            micFirstSampleAt = Date()
-        }
-        writePCMSamples(samples, to: micFileHandle, byteCount: &micDataByteCount)
+        ensureMicWriter().append(samples)
     }
 
-    /// Append system samples, called by the SCStream delegate.
+    /// Append system samples. In the live capture path the SCStream delegate
+    /// uses `makeSystemSampleSink()` instead; this remains for the test hook.
     func appendSystemSamples(_ samples: [Float]) {
-        if systemPartURL == nil {
-            // Lazily create the system track file on first sample.
-            do {
-                try ensureSystemPartFile()
-            } catch {
-                // Fail loud: a system-track write failure means the
-                // meeting recording is incomplete. The caller decides
-                // whether to abort.
-                return
-            }
-        }
         guard !samples.isEmpty else { return }
-        if systemFirstSampleAt == nil {
-            systemFirstSampleAt = Date()
-        }
-        writePCMSamples(samples, to: systemFileHandle, byteCount: &systemDataByteCount)
-    }
-
-    private func ensureSystemPartFile() throws {
-        let directory = recordingDirectoryURL
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let partURL = directory.appendingPathComponent("system.wav.part")
-        systemPartURL = partURL
-        systemDataByteCount = 0
-        try Data(Self.riffHeaderPlaceholder(dataByteCount: 0, sampleRate: sampleRate, channels: UInt16(channelCount)))
-            .write(to: partURL, options: .atomic)
-        systemFileHandle = try FileHandle(forWritingTo: partURL)
-        try systemFileHandle?.seek(toOffset: 44)
+        ensureSystemWriter().append(samples)
     }
 
     // MARK: - Stop
@@ -261,8 +219,17 @@ final class PaceMeetingAudioRecorder {
         micFormatConverter = nil
         micConverterOutputFormat = nil
 
-        let micFinalURL = finalizeTrack(partURL: micPartURL, fileHandle: micFileHandle, dataByteCount: micDataByteCount, finalName: "mic.wav")
-        let systemFinalURL = finalizeTrack(partURL: systemPartURL, fileHandle: systemFileHandle, dataByteCount: systemDataByteCount, finalName: "system.wav")
+        // Finish both writers and wait for their consumer tasks to drain
+        // every buffered sample to disk, then read back the finalized state
+        // (part URL, byte count, first-sample time). This await is what lets
+        // stop() see a complete file even though the writes ran async.
+        let micState = await micWriter?.finishAndDrain()
+        let systemState = await systemWriter?.finishAndDrain()
+        micWriter = nil
+        systemWriter = nil
+
+        let micFinalURL = finalizeTrack(state: micState, finalName: "mic.wav")
+        let systemFinalURL = finalizeTrack(state: systemState, finalName: "system.wav")
 
         let micSamplesFromDisk = micFinalURL.flatMap { Self.readMonoFloatSamplesFromPCM16WAV(at: $0) } ?? []
         let systemSamplesFromDisk = systemFinalURL.flatMap { Self.readMonoFloatSamplesFromPCM16WAV(at: $0) } ?? []
@@ -270,6 +237,8 @@ final class PaceMeetingAudioRecorder {
         // Per-track start offsets relative to the earliest captured
         // sample, so the segmenter can align both tracks on one
         // timeline (the SCStream starts after the mic).
+        let micFirstSampleAt = micState?.firstSampleAt
+        let systemFirstSampleAt = systemState?.firstSampleAt
         let earliestSampleAnchor = [micFirstSampleAt, systemFirstSampleAt].compactMap { $0 }.min()
         var micStartOffsetSeconds: TimeInterval = 0
         if let micFirstSampleAt, let earliestSampleAnchor {
@@ -295,11 +264,6 @@ final class PaceMeetingAudioRecorder {
                 startOffsetSeconds: systemStartOffsetSeconds
             )
 
-        micPartURL = nil
-        systemPartURL = nil
-        micFileHandle = nil
-        systemFileHandle = nil
-
         return PaceMeetingRecording(
             meetingID: meetingID,
             startedAt: startedAt,
@@ -312,15 +276,12 @@ final class PaceMeetingAudioRecorder {
         )
     }
 
-    private func finalizeTrack(partURL: URL?, fileHandle: FileHandle?, dataByteCount: Int, finalName: String) -> URL? {
-        guard let partURL else { return nil }
-        // Patch the RIFF header with the real chunk sizes before close.
-        if let fileHandle {
-            try? fileHandle.synchronize()
-            try? fileHandle.close()
-        }
+    private func finalizeTrack(state: MeetingTrackFinalState?, finalName: String) -> URL? {
+        guard let state, let partURL = state.partURL else { return nil }
+        // The writer's consumer already closed its write handle when the
+        // stream finished. Patch the RIFF header with the real chunk sizes.
         let header = Self.riffHeaderPlaceholder(
-            dataByteCount: UInt32(dataByteCount),
+            dataByteCount: UInt32(state.dataByteCount),
             sampleRate: sampleRate,
             channels: UInt16(channelCount)
         )
@@ -491,7 +452,7 @@ final class PaceMeetingAudioRecorder {
 
     // MARK: - PCM writing
 
-    private func writePCMSamples(_ samples: [Float], to fileHandle: FileHandle?, byteCount: inout Int) {
+    nonisolated static func writePCMSamples(_ samples: [Float], to fileHandle: FileHandle?, byteCount: inout Int) {
         guard let fileHandle else { return }
         // Convert Float32 [-1, 1] to 16-bit PCM little-endian.
         var pcmBytes = [UInt8](repeating: 0, count: samples.count * 2)
@@ -546,5 +507,168 @@ final class PaceMeetingAudioRecorder {
 
     nonisolated static func defaultRecordingDirectoryURL(for meetingID: UUID) -> URL {
         meetingsRootDirectoryURL().appendingPathComponent(meetingID.uuidString)
+    }
+}
+
+// MARK: - Off-main-actor track writer
+
+/// The finalized state of one meeting audio track after its writer drains.
+/// `partURL` is nil when the track never received any samples, so `stop()`
+/// reports a nil track (e.g. a one-sided meeting with no system audio).
+nonisolated struct MeetingTrackFinalState: Sendable {
+    let partURL: URL?
+    let dataByteCount: Int
+    let firstSampleAt: Date?
+}
+
+/// Serial, off-main-actor disk writer for ONE meeting audio track.
+///
+/// The previous capture path hopped every incoming buffer to the main actor
+/// with `Task { @MainActor in append(...) }`. That had two problems this
+/// writer fixes:
+///   1. **No FIFO guarantee.** Independently-scheduled tasks can run in any
+///      order, so buffers could be written to the WAV out of sequence and
+///      garble the audio.
+///   2. **Main-thread I/O.** Float32 → PCM16 conversion and `FileHandle`
+///      writes ran on the main thread, competing with UI work.
+///
+/// Samples enter through an `AsyncStream` continuation — `yield` is
+/// thread-safe and preserves call order — and are drained on a single
+/// detached consumer task. Because ONE task owns the file handle and byte
+/// counter, and the stream preserves order, samples always land in the file
+/// in exactly the order they were produced, and never on the main actor.
+/// The `.part` file is created lazily on the first sample, matching the old
+/// lazy behaviour (a track that gets no audio leaves no file behind).
+final class MeetingTrackWriter: Sendable {
+    private let continuation: AsyncStream<[Float]>.Continuation
+    private let consumerTask: Task<MeetingTrackFinalState, Never>
+
+    init(directoryURL: URL, partFileName: String, sampleRate: Double, channelCount: Int) {
+        let (stream, continuation) = AsyncStream<[Float]>.makeStream(bufferingPolicy: .unbounded)
+        self.continuation = continuation
+        self.consumerTask = Task.detached(priority: .userInitiated) {
+            // ALL mutable write state is local to this single consumer, so
+            // there is no data race and the drain order matches the yield
+            // order (the AsyncStream buffers in FIFO).
+            var fileHandle: FileHandle?
+            var partURL: URL?
+            var dataByteCount = 0
+            var firstSampleAt: Date?
+
+            for await samples in stream {
+                guard !samples.isEmpty else { continue }
+                if partURL == nil {
+                    // Lazily create the `.part` file on the first real sample.
+                    do {
+                        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                        let url = directoryURL.appendingPathComponent(partFileName)
+                        let header = PaceMeetingAudioRecorder.riffHeaderPlaceholder(
+                            dataByteCount: 0,
+                            sampleRate: sampleRate,
+                            channels: UInt16(channelCount)
+                        )
+                        try Data(header).write(to: url, options: .atomic)
+                        let handle = try FileHandle(forWritingTo: url)
+                        try handle.seek(toOffset: 44)
+                        partURL = url
+                        fileHandle = handle
+                    } catch {
+                        // File creation failed — drop this buffer and retry
+                        // on the next one, matching the old append path which
+                        // silently returned on a create failure.
+                        continue
+                    }
+                }
+                if firstSampleAt == nil { firstSampleAt = Date() }
+                PaceMeetingAudioRecorder.writePCMSamples(samples, to: fileHandle, byteCount: &dataByteCount)
+            }
+
+            // Stream finished (`finishAndDrain()` called). Close the write
+            // handle; `finalizeTrack` reopens the file to patch the header.
+            try? fileHandle?.synchronize()
+            try? fileHandle?.close()
+            return MeetingTrackFinalState(partURL: partURL, dataByteCount: dataByteCount, firstSampleAt: firstSampleAt)
+        }
+    }
+
+    /// Push samples for writing. Thread-safe and order-preserving; returns
+    /// immediately (the write happens on the consumer task).
+    func append(_ samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        continuation.yield(samples)
+    }
+
+    /// Finish the stream and await the consumer draining every buffered
+    /// sample to disk. Returns the finalized track state.
+    func finishAndDrain() async -> MeetingTrackFinalState {
+        continuation.finish()
+        return await consumerTask.value
+    }
+}
+
+// MARK: - Mic sample conversion
+
+/// Resamples an `AVAudioPCMBuffer` from the mic tap's hardware format to the
+/// recorder's target format and downmixes to mono. `@unchecked Sendable`
+/// because the ONLY caller is the tap block, which AVAudioEngine invokes
+/// serially on a single render thread — so the wrapped `AVAudioConverter`'s
+/// internal filter state stays continuous and is never touched concurrently.
+final class MicSampleConverter: @unchecked Sendable {
+    private let converter: AVAudioConverter?
+    private let outputFormat: AVAudioFormat?
+
+    init(converter: AVAudioConverter?, outputFormat: AVAudioFormat?) {
+        self.converter = converter
+        self.outputFormat = outputFormat
+    }
+
+    /// Convert + downmix the buffer to a mono `[Float]` at the target rate.
+    func monoFloat(from buffer: AVAudioPCMBuffer) -> [Float] {
+        // Resample the hardware-format buffer to the target format first, so
+        // downmix and disk writes always operate on samples that match the
+        // WAV header's declared rate.
+        let convertedBuffer: AVAudioPCMBuffer
+        if let converter, let outputFormat {
+            let rateRatio = outputFormat.sampleRate / buffer.format.sampleRate
+            let outputCapacity = AVAudioFrameCount((Double(buffer.frameLength) * rateRatio).rounded(.up) + 16)
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputCapacity) else {
+                return []
+            }
+            var didProvideInputBuffer = false
+            var conversionError: NSError?
+            let status = converter.convert(to: outputBuffer, error: &conversionError) { _, inputStatus in
+                if didProvideInputBuffer {
+                    inputStatus.pointee = .noDataNow
+                    return nil
+                }
+                didProvideInputBuffer = true
+                inputStatus.pointee = .haveData
+                return buffer
+            }
+            guard status != .error, conversionError == nil else { return [] }
+            convertedBuffer = outputBuffer
+        } else {
+            convertedBuffer = buffer
+        }
+
+        guard let channelData = convertedBuffer.floatChannelData else { return [] }
+        let frameCount = Int(convertedBuffer.frameLength)
+        guard frameCount > 0 else { return [] }
+        // Mono: take channel 0. Multi-channel: downmix to mono.
+        if convertedBuffer.format.channelCount == 1 {
+            return Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+        }
+        var mixed = [Float](repeating: 0, count: frameCount)
+        for channelIndex in 0..<Int(convertedBuffer.format.channelCount) {
+            let channel = channelData[channelIndex]
+            for i in 0..<frameCount {
+                mixed[i] += channel[i]
+            }
+        }
+        let scale: Float = 1.0 / Float(convertedBuffer.format.channelCount)
+        for i in 0..<frameCount {
+            mixed[i] *= scale
+        }
+        return mixed
     }
 }

@@ -178,10 +178,17 @@ final class PaceMeetingModeController: ObservableObject {
             // Low-latency audio capture for real-time VAD.
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: 10)
 
+            // Sendable sink that appends system samples to the recorder's
+            // off-main serial writer in FIFO order. Captured by the delegate
+            // so raw PCM never round-trips through the main actor.
+            let systemSampleSink = newRecorder.makeSystemSampleSink()
             let delegate = PaceSystemAudioStreamDelegate(
                 onAudioSample: { [weak self] level, samples in
+                    // Samples go straight to the off-main writer; only the
+                    // cheap UI level update hops to the main actor.
+                    systemSampleSink(samples)
                     Task { @MainActor [weak self] in
-                        self?.handleAudioSample(level: level, samples: samples)
+                        self?.updateSystemAudioLevel(level)
                     }
                 },
                 onStreamStopped: { [weak self] errorDescription in
@@ -505,17 +512,17 @@ final class PaceMeetingModeController: ObservableObject {
         print("⚠️ Meeting mode: system audio stream stopped mid-meeting — \(errorDescription). Mic track continues.")
     }
 
-    private func handleAudioSample(level: Float, samples: [Float]) {
+    /// Update the UI-facing system-audio level. Raw samples are NOT handled
+    /// here anymore — the SCStream delegate pushes them to the recorder's
+    /// off-main serial writer via the sink from `makeSystemSampleSink()`, so
+    /// PCM conversion and disk writes stay off the main thread and in order.
+    private func updateSystemAudioLevel(_ level: Float) {
         detectedSpeechLevel = level
         audioLevelPublisher.send(level)
 
         if let startedAt = captureStartedAt {
             captureDurationSeconds = Date().timeIntervalSince(startedAt)
         }
-
-        // Forward raw system samples to the recorder for the two-track
-        // disk writer. The recorder lazily creates its system track file.
-        recorder?.appendSystemSamples(samples)
     }
 
     /// Write a slice of Float32 samples to a temp RIFF WAV file for

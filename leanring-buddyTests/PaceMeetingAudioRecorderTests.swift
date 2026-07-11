@@ -121,13 +121,11 @@ struct PaceMeetingAudioRecorderTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let recorder = makeRecorder(in: tempDir)
-        recorder.appendMicSamples(sineWave(amplitude: 0.3, durationSeconds: 1))
-        recorder.appendSystemSamples(sineWave(amplitude: 0.2, durationSeconds: 1))
 
-        // Simulate a crash: stop the recorder WITHOUT finalizing, so
-        // the `.part` files keep their placeholder (zero) header.
-        // We do this by writing the part files manually with a stale
-        // header and PCM data, then calling crashRepairIfNeeded.
+        // Simulate a crash: a `.part` file left on disk with its placeholder
+        // (zero) header and PCM data, but never finalized. We write it
+        // manually — the writer is intentionally NOT used here, so there is
+        // no live async writer racing this manual file write.
         let micPartURL = tempDir.appendingPathComponent("mic.wav.part")
         let samples = sineWave(amplitude: 0.3, durationSeconds: 1)
         var pcmBytes = [UInt8](repeating: 0, count: samples.count * 2)
@@ -195,6 +193,45 @@ struct PaceMeetingAudioRecorderTests {
             .map { abs($0 - $1) }
             .max() ?? 0
         #expect(maxError <= quantizationStep)
+    }
+
+    // MARK: - FIFO write ordering
+
+    /// The off-main serial writer must write appended buffers to disk in the
+    /// exact order they were appended. This is the regression guard for the
+    /// old per-buffer `Task { @MainActor }` hops, which carried no ordering
+    /// guarantee and could interleave buffers in the WAV.
+    @Test func appendedBuffersArePersistedInFIFOOrder() async throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("pace-recorder-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let recorder = makeRecorder(in: tempDir)
+
+        // Each buffer is a distinct, quantization-stable constant so its
+        // position in the finalized WAV reveals whether ordering held.
+        let bufferCount = 50
+        let samplesPerBuffer = 32
+        var expected: [Float] = []
+        for index in 0..<bufferCount {
+            let value = Float(index) / 64.0  // 0 ..< ~0.77, safely within [-1, 1]
+            let buffer = [Float](repeating: value, count: samplesPerBuffer)
+            expected.append(contentsOf: buffer)
+            recorder.appendMicSamples(buffer)
+        }
+
+        let recording = await recorder.stop()
+        let readBack = recording.micTrack?.samples ?? []
+
+        #expect(readBack.count == expected.count)
+        let quantizationStep: Float = 1.0 / Float(Int16.max)
+        // Sample at the start of each buffer must equal that buffer's value,
+        // in order — an out-of-order write would put the wrong constant here.
+        for index in 0..<bufferCount {
+            let sampleValue = readBack[index * samplesPerBuffer]
+            let expectedValue = Float(index) / 64.0
+            #expect(abs(sampleValue - expectedValue) <= quantizationStep)
+        }
     }
 
     // MARK: - Static all-directories crash repair
