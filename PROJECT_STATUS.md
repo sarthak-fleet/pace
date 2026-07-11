@@ -1,6 +1,6 @@
 # pace — PROJECT STATUS
 
-Last updated: 2026-07-04
+Last updated: 2026-07-11
 
 ## Why/What
 
@@ -15,7 +15,7 @@ Last updated: 2026-07-04
 ### External
 
 - **Platform:** macOS 14.2+, Apple Silicon recommended, Xcode 16+, ~12–25 GB RAM with models loaded.
-- **On-device models:** MLX Qwen3-4B planner, Qwen3-VL-4B VLM, WhisperKit Large ASR, TTSKit Qwen3 TTS, Apple Speech default.
+- **On-device models (default vs opt-in):** planner default is Apple Foundation Models (Apple Intelligence Macs) or LM Studio Qwen3-30B-A3B; the bundled in-process **MLX Qwen3-4B planner, Qwen3-VL-4B VLM, and TTSKit Qwen3 TTS are opt-in** (Settings → Models, default OFF). ASR default Apple Speech; WhisperKit Large opt-in. TTS default Kokoro-82M via the mlx-audio sidecar → AVSpeechSynthesizer fallback.
 - **Optional cloud:** Direct API BYO-key (Keychain); CLI bridge; Apple Foundation Models tier.
 - **Legacy path:** LM Studio optional OpenAI-compatible localhost — `./scripts/setup-local.sh`.
 - **Landing deploy:** Cloudflare Pages project `pace`.
@@ -32,14 +32,14 @@ Last updated: 2026-07-04
 | Surface | Stack | Commands |
 | --- | --- | --- |
 | macOS app | Swift/SwiftUI, Xcode `leanring-buddy.xcodeproj` | Open in Xcode → Cmd+R (**do not** `xcodebuild` — invalidates TCC) |
-| Tests | XCTest via isolated DerivedData | `bash scripts/test-pace.sh` — **1283 tests, all passing (~21 s locally)** |
+| Tests | XCTest via isolated DerivedData | `bash scripts/test-pace.sh` — **~1358 tests, all passing (~21 s locally)** |
 | Local models | MLX, WhisperKit, TTSKit, Apple Speech | Settings → Models; Sparkle manifest in Info.plist |
 | Landing | Astro 5 + Tailwind v4 + Lightning CSS | `cd website && npm install && npm run dev` (:4321) |
 | Deploy landing | Cloudflare Pages project `pace` | `npm run build && npm run deploy` |
 | Eval / smoke | Shell harnesses | `bash scripts/eval-v10-gate.sh`, `scripts/smoke-executor-surface.sh`, `scripts/benchmark_ttfsw.sh` |
 | Pace-tuned export | Local JSONL → repo | `bash scripts/export-pace-tuned-turns.sh` |
 
-**Docs:** `AGENTS.md` (canonical agent instructions), `SETUP_LOCAL.md`, `docs/key-files.md`, `docs/info-plist-switches.md`, `docs/brand/`.
+**Docs:** `AGENTS.md` (canonical agent instructions), `SETUP_LOCAL.md`, `docs/key-files.md`, `docs/info-plist-switches.md`, `docs/learning/` (learning roadmap — every novel framework/algorithm/pattern), `docs/brand/`.
 
 **Pricing posture (landing):** Try (free) / Pace ($29 one-time) / Studio ($5/mo Composio routing). Checkout via `PUBLIC_PACE_CHECKOUT_URL` (mailto fallback until set).
 
@@ -67,8 +67,9 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 - **2026-06-20:** Restraint policy, episodic memory, wake word, proactive nudges, barge-in VAD, demonstration replay, trust-and-failures, recipe library, planner tier picker, cloud-bridge toggle, chat interface, conversational thread memory, first-run experience, morning triage, inclusivity surface, always-listening mode, unified memory, local RAG layer (substrate), local VLM runtime port, WhisperKit streaming scaffold, HUD intent disambiguator, dictation postproc, v8/v9/v10 planner iterations, click executor improvements, set-of-mark click recovery, executor surface, Her-arc roadmap meta — all landed.
 - **2026-07-04:** Quality overhaul — sprint payload reviewed + fixed (speculative fast-action double-execution, dead dual-agent prefetch removed, dictation trigger tightening); meeting-notes shipping bugs fixed (16 kHz sample-rate labeling, stop-time OOB crash, crash repair, O(1) memory, cross-track alignment, privacy-pinned synthesis); amber indicator extended to headless planner turns; release-from-main guard + hardware smoke checklist; premium chat panel phase 1 (flag-gated); landing meeting-notes wedge + /privacy + /terms; PRs #57–#63 landed. Teachable skills shipped — describe a `.skill.md` skill by voice or typed form, structured on-device by the privacy-pinned local planner (`docs/prds/teachable-skills.md`).
 - **2026-07-06:** Adaptive meeting-note profiles shipped (meetily-informed, Pace-native; OpenSpec adopted as the fleet spec workflow — `openspec/changes/adaptive-meeting-notes`). Notes now shaped by a selectable `PaceMeetingNoteProfile` (bundled general/standup/one-on-one + user overrides), selection precedence explicit → default pref → optional local inference → general (`general` reproduces the legacy output byte-for-byte, default). Action items are transcript-grounded (`quote` → `PaceMeetingActionItemSource{timestamp, quote}`) with a panel jump-to-transcript control and grounding in the retrieval doc. Fully on-device. Rejected as non-fits from meetily: its 7 markdown-table templates, VAD (segmenter already covers it), RMS ducking (two-track is better), real-time transcription + diarization (separate large efforts).
+- **2026-07-11:** Planned-backlog closeout — WhisperKit streaming bridge confirmed fully wired (was Planned #5); meeting-notes audio fast-follow shipped (v0.3.18/v0.3.19, was #6); meeting audio capture moved off the main actor to a per-track `AsyncStream` serial writer with FIFO guarantee (was #7, hardware smoke pending); bundled-MLX planner default decided to stay opt-in with drift copy aligned (was #8); speaking-time RAG prefetch deferred with rationale (was #9). Learning roadmap expanded to cover the whole project — `docs/learning/` now indexes 9 themed pages (60+ concepts, all "Why here" filled, DRY, cross-linked). Doc drift fixed: MCP bundled catalog is 4 servers (composio supersedes github/slack/linear), not six.
 - **Active plan:** `docs/plans/pace-tuned-model-v1.md` — export wired; LoRA pending data.
-- **Test suite:** 1349 test cases via `scripts/test-pace.sh`; CI runs the full suite on every push/PR via `.github/workflows/ci.yml` (macos-latest, `xcodebuild test` with `CODE_SIGNING_ALLOWED=NO`).
+- **Test suite:** ~1358 test cases via `scripts/test-pace.sh`; CI runs the full suite on every push/PR via `.github/workflows/ci.yml` (macos-latest, `xcodebuild test` with `CODE_SIGNING_ALLOWED=NO`, Metal Toolchain installed first). Local isolated-DerivedData builds also require the Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`) because the `mlx-swift` dependency compiles Metal shaders.
 
 ## Products
 
@@ -139,7 +140,7 @@ Menu bar capsule (PaceMenuBarOverlay) → floating panel + optional cursor overl
 ### MCP & recipes
 
 - MCP stdio bridge with fixture server integration tests; example config for filesystem/fetch/github/applescript.
-- Bundled catalog (filesystem, fetch, github, applescript, slack, linear) — atomic install into `mcp-servers.json`.
+- Bundled catalog — 4 one-tap servers (filesystem, fetch, applescript, composio); github/slack/linear now route through the composio OAuth bridge (`PaceMCPServerCatalog.supersededBySlug`) — atomic install into `mcp-servers.json`.
 - Recipe library: 5 bundled flows (morning-standup, weekly-review, email-zero, focus-mode, end-of-day); voice install/uninstall.
 
 ### Skills — flows vs recipes vs skills vs tools
@@ -161,7 +162,7 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 - Astro landing deployed to Cloudflare Pages (`pace` project).
 - Sections: Nav, Hero (CSS demo), OnDevice, Features, Comparison, Pricing, FAQ, Footer ("0 bytes" counter).
 - OG PNG at `website/public/og-image.png`; regenerate via `scripts/generate-og-image.sh`.
-- Social proof section gated (`showSocialProofSection = false`) until 3+ permissioned quotes.
+- Social proof section is live (`showSocialProofSection = true`) showing 3 **anonymized theme cards** (no fictional names, per the fleet landing standard); a flag-gated dummy attributed layout (`showDummyAttributedTestimonials`, default OFF) exists for local preview only. Real attributed quotes pending permission.
 - Commerce config: `src/config/commerce.ts` — mailto checkout fallback.
 
 ### Pace-tuned model scaffold
@@ -203,20 +204,23 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 
 ## Todo / Planned / Deferred / Blocked
 
-### Planned
+### Planned (remaining — each blocked on an external input, not on code)
 
-1. **First pace-tuned model** — collect turns via Settings export, LoRA train + eval gate per `docs/plans/pace-tuned-model-v1.md`.
-2. **Stripe checkout URL** — set `PUBLIC_PACE_CHECKOUT_URL` (and optional `PUBLIC_STUDIO_CHECKOUT_URL`) in Pages build env.
-3. **Permissioned public testimonials** — replace private-beta theme cards when 3+ real quotes exist.
-4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm.
-5. **WhisperKit streaming bridge** — complete scaffold when `TranscriptionProvider=whisperKit` selected.
-6. **Fast-follow release for meeting-notes audio fix** — v0.3.17 shipped with both meeting tracks recorded at hardware rate but labeled 16 kHz (playback ~3× slow, degraded ASR); fixed on `main` post-release. Cut v0.3.18 when convenient (walk `docs/release-smoke-checklist.md`).
-7. **Meeting audio capture off the main actor** — per-buffer `Task { @MainActor }` hops carry no FIFO guarantee and put PCM conversion + file writes on the main thread; move to an `AsyncStream` on a serial executor.
-8. **Bundled-MLX planner default decision** — the site and PROJECT_STATUS described the in-process Qwen3-4B planner as the shipping default; in code it is opt-in (`isUsingMLXInProcessPlanner`, UserDefaults default false). Either flip the default using the WhisperKit precedent (downloaded-model-on-disk = opt-in signal, explicit setting always wins) or keep it opt-in and align the copy — needs an eval-gate check (4B vs 30B planner quality) before flipping.
-9. **Speaking-time context prefetch (episodic/RAG)** — the dual-agent prefetch implementation was removed (unwired callbacks, self-cancelling VLM task, and it duplicated `prewarmScreenContext`); the right shape is folding episodic-memory + RAG prewarm into the existing `prewarmScreenContext` path keyed off stable partials. Idea tracked in `docs/competitive/steal-catalog.md`.
+1. **First pace-tuned model** — collect turns via Settings export, LoRA train + eval gate per `docs/plans/pace-tuned-model-v1.md`. Blocked on exported turn volume (see Blocked). Per project memory, Pace-side model work is otherwise concluded — this is a data-collection milestone, not new model engineering.
+2. **Stripe checkout URL** — set `PUBLIC_PACE_CHECKOUT_URL` (and optional `PUBLIC_STUDIO_CHECKOUT_URL`) in the Pages build env. Blocked on the real Stripe URL; the mailto checkout fallback ships until it is set.
+3. **Permissioned public testimonials** — replace private-beta theme cards when 3+ real quotes exist. Blocked on real permissioned quotes.
+4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm. Turnkey runbook written (`docs/voice-mail-latency-demo.md`); blocked only on the one hardware measurement run (enable `PrewarmMailForDrafts`, do 8–10 voice→Mail turns, `bash scripts/benchmark_ttfsw.sh --last 10m`).
+
+### Resolved this cycle (2026-07-11)
+
+- **WhisperKit streaming bridge (was Planned #5)** — DONE. `WhisperKitTranscriptionProvider.isRuntimeAvailable = true`; the full streaming session (`startStreamingSession` / `appendAudioBuffer` / `requestFinalTranscript`) is wired and the factory selects it when `TranscriptionProvider=whisperKit` and the model is present. Model is still pre-placed (`download: false`) — no silent fetch.
+- **Meeting-notes audio fast-follow (was Planned #6)** — DONE. v0.3.18 (build 18) and v0.3.19 (build 19) shipped; appcast is current at build 19.
+- **Meeting audio capture off the main actor (was Planned #7)** — DONE (code). Per-buffer `Task { @MainActor }` hops replaced by a per-track `MeetingTrackWriter` (an `AsyncStream` drained by a single detached consumer): Float32→PCM16 conversion and `FileHandle` writes now run off the main actor and land in FIFO order by construction; the SCStream delegate pushes system samples through a `@Sendable` sink (`makeSystemSampleSink()`) instead of hopping to main. Mic conversion is boxed in `MicSampleConverter`. Unit suite green with a new `appendedBuffersArePersistedInFIFOOrder` regression guard. **Requires hardware meeting-recording smoke before release** (`docs/release-smoke-checklist.md`) — unit tests inject synthetic samples and cannot see capture-timing defects.
+- **Bundled-MLX planner default decision (was Planned #8)** — RESOLVED: keep the in-process MLX Qwen3-4B planner **opt-in** (default OFF). Rationale: WhisperKit precedent (a downloaded model on disk is an opt-in signal; an explicit Settings choice always wins), flipping would need a 4B-vs-30B eval-gate run on real hardware, and per project memory Pace-side model work is concluded. Stale "default" copy aligned in this file and `docs/PROJECT_RECOMMENDATION_CONTEXT.md`; the site FAQ/Features already say "one toggle in Settings → Models."
 
 ### Deferred
 
+- **Speaking-time context prefetch (episodic/RAG) (was Planned #9)** — Deferred, not built. The expensive prewarm (VLM screen context) already runs at PTT press via `PaceScreenContextService.prewarmScreenContext`, and local retrieval (BM25 + in-memory episodic) is already sub-millisecond, so a partial-transcript-keyed RAG prewarm adds hot-path complexity for negligible, unmeasurable TTFSW upside — and it mirrors the dual-agent prefetch already removed as dead code. Revisit only if a `benchmark_ttfsw.sh` run shows retrieval on the critical path. Idea tracked in `docs/competitive/steal-catalog.md`.
 - **Persistent KV planner backend** — blocked on TinyGPT oMLX qualification. (Note: the in-process MLX planner is available behind the Settings → Models toggle, NOT the default — fresh installs talk via Apple FM or LM Studio.)
 - **Grammar-constrained v10 runtime default** — TinyGPT/eval gated; shipping planner remains current MLX/Qwen stack.
 - **Real-app AX smokes in CI** — manual-only; TCC makes automated live-app tests fragile.
@@ -226,7 +230,7 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 ### Blocked
 
 - Live-app click ambiguity smokes not CI-automated.
-- Social proof section gated until real user quotes.
+- Real attributed testimonials pending permission — the live section uses anonymized theme cards (dummy attributed layout is preview-only behind a default-OFF flag).
 - Known non-blocking Xcode warnings (Swift 6 concurrency, deprecated onChange) — intentionally not fixed per AGENTS.md.
 - Pace-tuned LoRA run blocked on sufficient exported turn volume.
 - **TCC:** Never run terminal `xcodebuild` for routine dev — re-requests screen recording, accessibility, mic permissions.

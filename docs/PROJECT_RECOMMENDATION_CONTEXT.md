@@ -12,10 +12,13 @@ A local-only macOS menu-bar voice agent. Talk to it via push-to-talk
 (`ctrl+option`) or system Siri/Shortcuts (`AppIntent`); it listens with
 on-device ASR (Apple Speech or bundled WhisperKit-Large), reads the
 current screen with a local vision model + Apple Vision OCR + the
-Accessibility tree, plans with a local LLM (default: bundled MLX
-Qwen3-4B-Instruct-2507 bf16; LM Studio remains a power-user option),
-speaks with TTS (default: WhisperKit's TTSKit Qwen3 TTS in-process;
-Kokoro sidecar + Apple AVSpeechSynthesizer remain as fallbacks), and
+Accessibility tree, plans with a local LLM (default: Apple Foundation
+Models on Apple Intelligence Macs, otherwise LM Studio Qwen3-30B-A3B —
+the bundled in-process MLX Qwen3-4B-Instruct-2507 planner is an opt-in
+toggle in Settings → Models, default OFF), speaks with TTS (default:
+Kokoro-82M via the mlx-audio sidecar, with Apple AVSpeechSynthesizer as
+the per-utterance fallback; WhisperKit's TTSKit Qwen3 TTS is an opt-in
+in-process toggle), and
 executes macOS actions through Accessibility, EventKit, AppleScript-
 style first-party integrations, and an MCP bridge.
 
