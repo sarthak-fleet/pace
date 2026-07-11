@@ -121,13 +121,11 @@ final class DirectAPIPlannerClient: BuddyPlannerClient {
             throw PaceDirectAPIError.missingAPIKey(provider: provider)
         }
 
-        var messages: [[String: Any]] = []
-        messages.append(["role": "system", "content": systemPrompt])
-        for (userPlaceholder, assistantResponse) in conversationHistory {
-            messages.append(["role": "user", "content": userPlaceholder])
-            messages.append(["role": "assistant", "content": assistantResponse])
-        }
-        messages.append(["role": "user", "content": userPrompt])
+        let messages = PaceOpenAIChatMessages.build(
+            systemPrompt: systemPrompt,
+            conversationHistory: conversationHistory,
+            userPrompt: userPrompt
+        )
 
         let requestBody: [String: Any] = [
             "model": modelIdentifier,
