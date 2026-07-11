@@ -140,13 +140,11 @@ final class LocalPlannerClient: BuddyPlannerClient {
 
         let chatCompletionsURL = baseURL.appendingPathComponent("chat/completions")
 
-        var messages: [[String: Any]] = []
-        messages.append(["role": "system", "content": systemPrompt])
-        for (userPlaceholder, assistantResponse) in conversationHistory {
-            messages.append(["role": "user", "content": userPlaceholder])
-            messages.append(["role": "assistant", "content": assistantResponse])
-        }
-        messages.append(["role": "user", "content": userPrompt])
+        let messages = PaceOpenAIChatMessages.build(
+            systemPrompt: systemPrompt,
+            conversationHistory: conversationHistory,
+            userPrompt: userPrompt
+        )
 
         // 1024 max_tokens balances "thinking models need room for the
         // <think> block + answer" against "shorter cap = faster end-to-
