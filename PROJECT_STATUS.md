@@ -162,7 +162,7 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 - Astro landing deployed to Cloudflare Pages (`pace` project).
 - Sections: Nav, Hero (CSS demo), OnDevice, Features, Comparison, Pricing, FAQ, Footer ("0 bytes" counter).
 - OG PNG at `website/public/og-image.png`; regenerate via `scripts/generate-og-image.sh`.
-- Social proof section gated (`showSocialProofSection = false`) until 3+ permissioned quotes.
+- Social proof section is live (`showSocialProofSection = true`) showing 3 **anonymized theme cards** (no fictional names, per the fleet landing standard); a flag-gated dummy attributed layout (`showDummyAttributedTestimonials`, default OFF) exists for local preview only. Real attributed quotes pending permission.
 - Commerce config: `src/config/commerce.ts` — mailto checkout fallback.
 
 ### Pace-tuned model scaffold
@@ -209,7 +209,7 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 1. **First pace-tuned model** — collect turns via Settings export, LoRA train + eval gate per `docs/plans/pace-tuned-model-v1.md`. Blocked on exported turn volume (see Blocked). Per project memory, Pace-side model work is otherwise concluded — this is a data-collection milestone, not new model engineering.
 2. **Stripe checkout URL** — set `PUBLIC_PACE_CHECKOUT_URL` (and optional `PUBLIC_STUDIO_CHECKOUT_URL`) in the Pages build env. Blocked on the real Stripe URL; the mailto checkout fallback ships until it is set.
 3. **Permissioned public testimonials** — replace private-beta theme cards when 3+ real quotes exist. Blocked on real permissioned quotes.
-4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm. Blocked on a hardware measurement run (use `scripts/benchmark_ttfsw.sh`).
+4. **Voice Mail latency demo** — manual `<700 ms` check with Mail prewarm. Turnkey runbook written (`docs/voice-mail-latency-demo.md`); blocked only on the one hardware measurement run (enable `PrewarmMailForDrafts`, do 8–10 voice→Mail turns, `bash scripts/benchmark_ttfsw.sh --last 10m`).
 
 ### Resolved this cycle (2026-07-11)
 
@@ -230,7 +230,7 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 ### Blocked
 
 - Live-app click ambiguity smokes not CI-automated.
-- Social proof section gated until real user quotes.
+- Real attributed testimonials pending permission — the live section uses anonymized theme cards (dummy attributed layout is preview-only behind a default-OFF flag).
 - Known non-blocking Xcode warnings (Swift 6 concurrency, deprecated onChange) — intentionally not fixed per AGENTS.md.
 - Pace-tuned LoRA run blocked on sufficient exported turn volume.
 - **TCC:** Never run terminal `xcodebuild` for routine dev — re-requests screen recording, accessibility, mic permissions.

@@ -22,6 +22,41 @@ const voices = [
 ];
 
 const showSocialProofSection = true;
+
+// --- DUMMY attributed testimonials (LOCAL PREVIEW ONLY) ---
+// Placeholder data so you can preview the attributed-quote layout (name +
+// role) before real testimonials exist. These names are FICTIONAL and MUST
+// NOT SHIP: the fleet landing standard forbids fictional names/companies,
+// and publishing fake social proof is misleading. This flag is `false` for
+// production — flip it locally (`npm run dev`) to preview, then flip back.
+// Replace with real permissioned quotes (see #3 in PROJECT_STATUS).
+const showDummyAttributedTestimonials = false;
+const dummyAttributedVoices = [
+  {
+    quote:
+      "Pace reads my screen and clicks the button locally — I stopped copy-pasting between a dictation app and Siri.",
+    name: "Placeholder Person",
+    role: "PLACEHOLDER — replace before launch",
+  },
+  {
+    quote:
+      "The plan-then-execute step means I see what it's about to do. Nothing leaves my Mac and it's genuinely fast.",
+    name: "Sample Reviewer",
+    role: "PLACEHOLDER — replace before launch",
+  },
+  {
+    quote:
+      "One menu-bar stack replaced three tools. Zero cloud round trips on my turns is the whole point.",
+    name: "Demo Tester",
+    role: "PLACEHOLDER — replace before launch",
+  },
+];
+
+// One template renders both shapes: attributed dummies (name + role) when
+// the preview flag is on, otherwise the real anonymized theme cards.
+const displayedVoices = showDummyAttributedTestimonials
+  ? dummyAttributedVoices
+  : voices;
 ---
 
 {
@@ -36,7 +71,7 @@ const showSocialProofSection = true;
         </h2>
 
         <div class="grid md:grid-cols-3 gap-5">
-          {voices.map((voice, index) => (
+          {displayedVoices.map((voice, index) => (
             <figure
               class="pace-testimonial-card pace-fade-up"
               style={`animation-delay: ${index * 60}ms`}
@@ -46,10 +81,10 @@ const showSocialProofSection = true;
               </blockquote>
               <figcaption class="pt-5 border-t border-[var(--color-border-subtle)]">
                 <div class="text-xs font-mono uppercase tracking-wider text-[var(--color-text-muted)]">
-                  {voice.theme}
+                  {voice.name ?? voice.theme}
                 </div>
                 <div class="text-xs text-[var(--color-text-muted)] mt-1">
-                  Private beta feedback
+                  {voice.role ?? "Private beta feedback"}
                 </div>
               </figcaption>
             </figure>
