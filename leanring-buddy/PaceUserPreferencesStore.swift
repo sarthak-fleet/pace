@@ -94,9 +94,11 @@ enum PaceUserPreferenceKey: String {
     /// `click`/`type`. The `draw_annotation` and `clear_annotations` tools
     /// are ALWAYS available regardless of this flag. Default OFF.
     case isTuitionModeEnabled
-    /// Opt-in: append anonymized local planner turns to
+    /// Append anonymized LOCAL planner turns to
     /// `~/Library/Application Support/Pace/pace-tuned-turns.jsonl` for the
-    /// first pace-tuned LoRA dataset. Default OFF — see
+    /// first pace-tuned LoRA dataset. Default ON (local + redacted, never
+    /// leaves the Mac); opt out in Settings → Models. Cloud/bridge/CLI and
+    /// research turns are skipped regardless — see
     /// docs/plans/pace-tuned-model-v1.md.
     case isPaceTunedTurnExportEnabled
     /// Screen-edge glow border that shifts color with the agent's

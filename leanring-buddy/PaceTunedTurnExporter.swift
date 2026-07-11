@@ -136,9 +136,13 @@ enum PaceTunedTurnExportTrace {
 }
 
 enum PaceTunedTurnExporter {
-    /// Default OFF — explicit opt-in from Settings → Models.
+    /// Default ON — collects local (on-device) planner turns into the
+    /// pace-tuned dataset so the LoRA has data to train on. Stays fully
+    /// local + redacted; opt out in Settings → Models. Cloud/bridge/CLI
+    /// and research turns are still skipped in `makeExportRow` regardless
+    /// of this flag (see the skip guards there).
     static var isEnabled: Bool {
-        PaceUserPreferencesStore.bool(.isPaceTunedTurnExportEnabled, default: false)
+        PaceUserPreferencesStore.bool(.isPaceTunedTurnExportEnabled, default: true)
     }
 
     static func exportIfEnabled(
