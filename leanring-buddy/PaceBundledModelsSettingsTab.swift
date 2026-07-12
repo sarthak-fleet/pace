@@ -43,6 +43,8 @@ struct PaceBundledModelsSettingsTab: View {
         VStack(alignment: .leading, spacing: 18) {
             runtimeStatusSection
             Divider().background(DS.Colors.borderSubtle)
+            memoryBudgetSection
+            Divider().background(DS.Colors.borderSubtle)
             plannerSection
             Divider().background(DS.Colors.borderSubtle)
             embedderSection
@@ -59,6 +61,376 @@ struct PaceBundledModelsSettingsTab: View {
             loadCurrentSettings()
             downloadManager.refreshStates()
         }
+    }
+
+    // MARK: - Memory budget section (RAM-aware provider budget)
+    //
+    // Pace loads several models that share physical RAM at once. The
+    // planner is the biggest lever: offloading it to the cloud or to
+    // Apple Foundation Models frees its RAM for a larger local vision
+    // model — exactly where Pace most needs quality. This section makes
+    // that budget + tradeoff visible and lets the user pick a VLM size
+    // whose fit math updates live. It is advisory only — it never
+    // changes model defaults or the actual loading paths; the one thing
+    // it writes is the chosen VLM identifier through the existing
+    // PaceBundledModelsSettings setter.
+
+    private var memoryBudgetSection: some View {
+        let configuration = currentMemoryConfiguration
+        let usableBudgetGB = PaceModelMemoryBudget.usableBudgetGBForThisMachine
+        let budgetResult = PaceModelMemoryBudget.evaluate(
+            configuration: configuration,
+            usableBudgetGB: usableBudgetGB
+        )
+        let plannerVariant = configuration.plannerVariant
+
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Memory budget")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                Text("These on-device models share your Mac's RAM. Estimates are for resident memory while each model is loaded — advisory only, they don't change what runs.")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            memoryTotalRAMRow(usableBudgetGB: usableBudgetGB)
+            memoryPerModelBreakdown(budgetResult: budgetResult)
+            memoryTotalVersusBudgetRow(budgetResult: budgetResult)
+
+            if plannerVariant.runsWithoutLocalPlannerRAM {
+                offDevicePlannerCallout(
+                    configuration: configuration,
+                    usableBudgetGB: usableBudgetGB,
+                    plannerVariant: plannerVariant
+                )
+            } else {
+                localPlannerConsumesBudgetCallout(plannerVariant: plannerVariant)
+            }
+
+            vlmSizePicker(
+                configuration: configuration,
+                usableBudgetGB: usableBudgetGB
+            )
+        }
+    }
+
+    /// Total physical RAM + usable-budget headline row.
+    private func memoryTotalRAMRow(usableBudgetGB: Double) -> some View {
+        let totalPhysicalRAMGB = PaceModelMemoryBudget.totalPhysicalRAMGB
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "memorychip")
+                .font(.system(size: 12))
+                .foregroundColor(DS.Colors.textSecondary)
+            Text("\(formatGB(totalPhysicalRAMGB)) total RAM")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(DS.Colors.textPrimary)
+            Text("· \(formatGB(usableBudgetGB)) spendable on models")
+                .font(.system(size: 12))
+                .foregroundColor(DS.Colors.textSecondary)
+            Spacer()
+        }
+    }
+
+    /// Per-model breakdown: role → chosen model → GB.
+    private func memoryPerModelBreakdown(budgetResult: PaceModelMemoryBudgetResult) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(budgetResult.perModelBreakdown, id: \.role) { lineItem in
+                HStack(spacing: 8) {
+                    Text(lineItem.role.displayLabel)
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textSecondary)
+                        .frame(width: 120, alignment: .leading)
+                    Text(lineItem.chosenModelLabel)
+                        .font(.system(size: 12))
+                        .foregroundColor(DS.Colors.textPrimary)
+                    Spacer()
+                    Text(formatGB(lineItem.estimatedResidentRAMGB))
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundColor(
+                            lineItem.estimatedResidentRAMGB > 0
+                                ? DS.Colors.textPrimary
+                                : DS.Colors.textTertiary
+                        )
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(DS.Colors.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    /// Total-vs-budget bar + fits/over-budget verdict.
+    private func memoryTotalVersusBudgetRow(budgetResult: PaceModelMemoryBudgetResult) -> some View {
+        let fits = budgetResult.fits
+        let verdictColor = fits ? DS.Colors.success : DS.Colors.warning
+        // Fraction of the usable budget the total occupies, clamped to
+        // [0, 1] so the fill never overruns the track when over budget.
+        let fillFraction = budgetResult.usableBudgetGB > 0
+            ? min(max(budgetResult.totalGB / budgetResult.usableBudgetGB, 0), 1)
+            : 1
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: fits ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(verdictColor)
+                Text(fits ? "Fits" : "Over budget")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(verdictColor)
+                Spacer()
+                Text("\(formatGB(budgetResult.totalGB)) / \(formatGB(budgetResult.usableBudgetGB))")
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundColor(DS.Colors.textSecondary)
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(verdictColor.opacity(0.85))
+                        .frame(width: geometry.size.width * fillFraction)
+                }
+            }
+            .frame(height: 8)
+            Text(
+                fits
+                    ? "\(formatGB(budgetResult.headroomGB)) headroom"
+                    : "\(formatGB(-budgetResult.headroomGB)) over — shrink the vision model or offload the planner"
+            )
+            .font(.system(size: 11))
+            .foregroundColor(DS.Colors.textSecondary)
+        }
+    }
+
+    /// The key callout: planner runs off-device, so the freed RAM is
+    /// available for a bigger local vision model.
+    private func offDevicePlannerCallout(
+        configuration: PaceModelMemoryConfiguration,
+        usableBudgetGB: Double,
+        plannerVariant: PacePlannerMemoryVariant
+    ) -> some View {
+        // How much a larger VLM can now claim: the budget minus the
+        // non-VLM footprint (the VLM's own share of the spendable RAM).
+        let nonVLMFootprintGB = PaceModelMemoryBudget.nonVLMFootprintGB(configuration: configuration)
+        let freeForVLMGB = max(usableBudgetGB - nonVLMFootprintGB, 0)
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13))
+                .foregroundColor(DS.Colors.accent)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Planner runs off-device")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                Text("\(plannerVariant.displayLabel) uses ~0 GB of local RAM, so about \(formatGB(freeForVLMGB)) is free for a larger local vision model — where quality matters most.")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(DS.Colors.accent.opacity(0.10))
+        )
+    }
+
+    /// The honest tradeoff when the planner is local: it's consuming the
+    /// budget, so a big VLM won't fit alongside it.
+    private func localPlannerConsumesBudgetCallout(
+        plannerVariant: PacePlannerMemoryVariant
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 13))
+                .foregroundColor(DS.Colors.textSecondary)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Local planner is using the budget")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                Text("\(plannerVariant.displayLabel) holds ~\(formatGB(plannerVariant.estimatedResidentRAMGB)) resident. Switch the planner to a cloud tier or Apple Foundation Models (Settings → Planner) to free that RAM for a larger vision model.")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.03))
+        )
+    }
+
+    /// Vision-model size picker. Updates the fit math live and writes the
+    /// chosen VLM identifier through PaceBundledModelsSettings. Each tier
+    /// button shows the tier's own fit verdict against the current budget,
+    /// and the largest-that-fits tier is called out as the recommendation.
+    private func vlmSizePicker(
+        configuration: PaceModelMemoryConfiguration,
+        usableBudgetGB: Double
+    ) -> some View {
+        let nonVLMFootprintGB = PaceModelMemoryBudget.nonVLMFootprintGB(configuration: configuration)
+        let recommendedTier = PaceModelMemoryBudget.largestVLMThatFits(
+            givenNonVLMFootprintGB: nonVLMFootprintGB,
+            usableBudgetGB: usableBudgetGB
+        )
+        let selectedTier = configuration.visionTier
+        // Only the tiers that map to a concrete identifier are pickable —
+        // `.off` is owned by the VLM enable toggle above, not this picker.
+        let pickableTiers = PaceVisionModelSizeTier.allCases.filter { $0 != .off }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("Vision model size")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DS.Colors.textSecondary)
+                Spacer()
+                Text("Recommended: \(recommendedTier.displayLabel)")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.accent)
+            }
+            HStack(spacing: 8) {
+                ForEach(pickableTiers, id: \.self) { visionTier in
+                    vlmSizeButton(
+                        visionTier: visionTier,
+                        selectedTier: selectedTier,
+                        nonVLMFootprintGB: nonVLMFootprintGB,
+                        usableBudgetGB: usableBudgetGB
+                    )
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func vlmSizeButton(
+        visionTier: PaceVisionModelSizeTier,
+        selectedTier: PaceVisionModelSizeTier,
+        nonVLMFootprintGB: Double,
+        usableBudgetGB: Double
+    ) -> some View {
+        let isSelected = visionTier == selectedTier
+        let tierFits = (nonVLMFootprintGB + visionTier.estimatedResidentRAMGB) <= usableBudgetGB + 0.0001
+        let borderColor = isSelected ? DS.Colors.accent : DS.Colors.borderSubtle
+        return Button(action: { selectVisionTier(visionTier) }) {
+            VStack(spacing: 3) {
+                Text(visionTier.displayLabel)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? DS.Colors.textPrimary : DS.Colors.textSecondary)
+                HStack(spacing: 3) {
+                    Image(systemName: tierFits ? "checkmark" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(tierFits ? DS.Colors.success : DS.Colors.warning)
+                    Text(formatGB(visionTier.estimatedResidentRAMGB))
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? DS.Colors.accent.opacity(0.14) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(borderColor, lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+        .help(
+            tierFits
+                ? "Fits in the current budget"
+                : "Larger than the current budget — offload the planner first"
+        )
+    }
+
+    /// Write the picked VLM size tier's identifier through the existing
+    /// PaceBundledModelsSettings setter and refresh the local field so the
+    /// VLM section's text field stays in sync.
+    private func selectVisionTier(_ visionTier: PaceVisionModelSizeTier) {
+        guard let identifier = visionTier.vlmModelIdentifier else { return }
+        PaceBundledModelsSettings.setVLMModelIdentifier(identifier)
+        vlmModelIdentifier = PaceBundledModelsSettings.vlmModelIdentifier()
+    }
+
+    /// Build the live memory configuration from the current planner tier
+    /// (read from the published CompanionManager state so the section
+    /// reacts to tier changes without a reload) and the bundled-model +
+    /// provider settings.
+    private var currentMemoryConfiguration: PaceModelMemoryConfiguration {
+        let plannerVariant = PaceModelMemoryBudget.plannerMemoryVariant(
+            forTier: companionManager.activePlannerTier,
+            usesBundledMLXPlanner: isUsingMLXPlanner,
+            bundledMLXPlannerModelIdentifier: plannerModelIdentifier
+        )
+        // Vision tier: off when the VLM path is disabled, otherwise
+        // derived from the chosen VLM identifier so the picker and the
+        // breakdown agree on the current size.
+        let visionTier: PaceVisionModelSizeTier = isUsingMLXVLM
+            ? PaceVisionModelSizeTier.tier(forVLMModelIdentifier: vlmModelIdentifier)
+            : .off
+        // ASR / TTS / embedder: honest estimates from the active provider
+        // choices. WhisperKit is the declared transcription provider (it
+        // currently falls back to Apple Speech at runtime, but we cost it
+        // as WhisperKit-large since that's the model it will load once the
+        // streaming bridge lands). TTS is the Qwen3 TTSKit variant when
+        // the in-process toggle is on, else the Kokoro sidecar default.
+        let speechToTextVariant: PaceSpeechToTextMemoryVariant = currentTranscriptionUsesWhisperKit
+            ? .whisperKitLarge
+            : .appleSpeech
+        let textToSpeechVariant: PaceTextToSpeechMemoryVariant = {
+            if isUsingQwen3TTS { return .ttsKitQwen3 }
+            return currentTTSUsesAppleDirectly ? .appleAVSpeechSynthesizer : .kokoroSidecar
+        }()
+        let embedderVariant: PaceEmbedderMemoryVariant = isUsingMLXEmbedder ? .mlxNomic : .appleNaturalLanguage
+
+        return PaceModelMemoryConfiguration(
+            plannerVariant: plannerVariant,
+            visionTier: visionTier,
+            speechToTextVariant: speechToTextVariant,
+            textToSpeechVariant: textToSpeechVariant,
+            embedderVariant: embedderVariant
+        )
+    }
+
+    /// True when the declared transcription provider is WhisperKit (the
+    /// Info.plist default). Read here so the budget reflects the model the
+    /// ASR path is configured to load.
+    private var currentTranscriptionUsesWhisperKit: Bool {
+        let provider = (Bundle.main.object(forInfoDictionaryKey: "TranscriptionProvider") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return provider == "whisperkit"
+    }
+
+    /// True when the TTS provider is `apple` (always AVSpeechSynthesizer).
+    /// Otherwise the Kokoro sidecar default is assumed.
+    private var currentTTSUsesAppleDirectly: Bool {
+        let provider = (Bundle.main.object(forInfoDictionaryKey: "TTSProvider") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return provider == "apple"
+    }
+
+    /// Format a GB value for display: one decimal, dropping a trailing
+    /// ".0" so "8 GB" reads cleaner than "8.0 GB" while "18.6 GB" keeps
+    /// its precision.
+    private func formatGB(_ gigabytes: Double) -> String {
+        let rounded = (gigabytes * 10).rounded() / 10
+        if rounded == rounded.rounded() {
+            return String(format: "%.0f GB", rounded)
+        }
+        return String(format: "%.1f GB", rounded)
     }
 
     // MARK: - VLM section (Phase C)
