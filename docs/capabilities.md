@@ -61,11 +61,14 @@ local evidence/world-model and silence-first intervention-policy foundations are
 implemented. Deterministic companion memory can promote typed evidence into
 episodic, semantic, spatial, and routine records and render a dedicated local
 retrieval source. Settings/menu-bar transparency and default-off lifecycle are
-wired for existing ambient/watch sources; camera/ambient-voice adapters remain
-behind injected boundaries and visibly degrade until hardware acceptance.
-Silent cards, speech, and routine learning remain locked off.
-See [companion-mode-privacy.md](companion-mode-privacy.md) for capture,
-retention, local-only, correction, and threat-model details.
+wired for existing ambient/watch sources and a production low-rate
+AVFoundation/Vision camera source that emits non-identifying ephemeral person
+presence. Ambient voice remains visibly degraded until a true pre-STT keyword
+gate exists; user-taught object tracking and hardware acceptance remain open.
+Silent cards, speech, and routine learning remain locked off. See
+[companion-mode-privacy.md](companion-mode-privacy.md) for capture, retention,
+local-only, correction, and threat-model details and
+[companion-mode-dogfood.md](companion-mode-dogfood.md) for acceptance thresholds.
 
 **Proactive surfaces (all default OFF)** — posture watch, focus-fatigue nudges,
 calendar pre-meeting nudges, watch-mode observation nudges, the weekday morning

@@ -123,11 +123,11 @@ xcodebuild test \
     -derivedDataPath "$DERIVED_DATA_PATH" \
     -resultBundlePath "$RESULT_BUNDLE_PATH" \
     -only-testing:"$TEST_TARGET" \
-    "${ONLY_TESTING_ARGS[@]}" \
+    "${ONLY_TESTING_ARGS[@]+"${ONLY_TESTING_ARGS[@]}"}" \
     CODE_SIGN_IDENTITY="" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
-    "${COVERAGE_ARGS[@]}" \
+    "${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"}" \
     > "$BUILD_LOG_FILE" 2>&1
 EXIT_CODE=$?
 set -e

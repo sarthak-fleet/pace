@@ -229,17 +229,20 @@ classifier). All default OFF except barge-in echo rejection (always on).
   adapter/coordinator with per-source backpressure, explicit runtime states,
   deterministic companion-memory promotion/retrieval/clear integration,
   default-off source/output preferences, and silence-first intervention policy.
-- Concrete but not app-wired adapters: separately permissioned, low-rate and
-  motion-gated camera capture; wake-gated bounded ambient-voice sessions;
-  ephemeral diarization; non-identifying person and user-taught object records.
+- Production camera + injected audio seams: separately permissioned low-rate
+  AVFoundation capture now performs a cheap luma-motion gate and Vision
+  person detection; the bounded ambient-voice session contract, ephemeral
+  diarization, and user-taught object records remain dependency-injected.
 - App wiring now starts/stops the default-off observe-only runtime and exposes
   Settings plus menu-bar state/active-source indicators. Existing ambient/watch
-  adapters can run; camera/voice remain visibly degraded until real hardware
-  clients and manual acceptance are complete. Silent cards and speech remain off.
+  adapters and the non-identifying camera client can run; camera capture
+  suspends for system sleep and resumes once after wake. Ambient voice remains
+  visibly degraded pending a true pre-STT wake gate. Silent cards and speech remain off.
 - Privacy/resource threat model and deterministic denial, redaction, buffer,
   device-loss, false-wake/continuity, source-clear, and degradation fixtures are
   in place. See `docs/companion-mode-privacy.md`.
-- Remaining: real camera/audio hardware clients and observe-only dogfood;
+- Remaining: production user-taught object tracking, a privacy-compliant
+  pre-STT ambient wake client, and the documented observe-only dogfood;
   measured accuracy/resource/sleep-wake/permission acceptance; then separately
   gated cards, speech, and routine learning; full Xcode tests and manual smokes.
 - Source of truth: OpenSpec change `always-on-companion-mode`.

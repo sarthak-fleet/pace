@@ -46,10 +46,15 @@ protocol PacePerceptionSourceAdapter: AnyObject, Sendable {
 actor PacePerceptionCoordinator {
     typealias CandidateAnalyzer = @Sendable (PaceObservationCandidate) async throws -> PaceWorldObservation?
     typealias ObservationConsumer = @Sendable (PaceWorldObservation) -> Void
+    typealias SourceFailureConsumer = @Sendable (
+        PacePerceptionSourceKind,
+        PacePerceptionSourceFailure
+    ) -> Void
 
     private let sourceAdapters: [any PacePerceptionSourceAdapter]
     private let candidateAnalyzer: CandidateAnalyzer
     private let observationConsumer: ObservationConsumer
+    private let sourceFailureConsumer: SourceFailureConsumer
     private let now: @Sendable () -> Date
     private let maximumCandidateAge: TimeInterval
     private let resourceDecisionProvider: @Sendable () -> PaceCompanionResourceDecision
@@ -74,7 +79,8 @@ actor PacePerceptionCoordinator {
             )
         },
         candidateAnalyzer: @escaping CandidateAnalyzer,
-        observationConsumer: @escaping ObservationConsumer
+        observationConsumer: @escaping ObservationConsumer,
+        sourceFailureConsumer: @escaping SourceFailureConsumer = { _, _ in }
     ) {
         self.sourceAdapters = sourceAdapters
         self.maximumCandidateAge = max(0, maximumCandidateAge)
@@ -82,6 +88,7 @@ actor PacePerceptionCoordinator {
         self.resourceDecisionProvider = resourceDecisionProvider
         self.candidateAnalyzer = candidateAnalyzer
         self.observationConsumer = observationConsumer
+        self.sourceFailureConsumer = sourceFailureConsumer
     }
 
     func start(enabledSources: Set<PacePerceptionSourceKind>) {
@@ -100,7 +107,8 @@ actor PacePerceptionCoordinator {
                 } catch {
                     await coordinator.sourceStoppedUnexpectedly(
                         sourceKind: sourceAdapter.sourceKind,
-                        generation: generationAtStart
+                        generation: generationAtStart,
+                        failure: Self.normalizedFailure(error)
                     )
                 }
             }
@@ -198,9 +206,23 @@ actor PacePerceptionCoordinator {
         }
     }
 
-    private func sourceStoppedUnexpectedly(sourceKind: PacePerceptionSourceKind, generation: Int) {
+    private func sourceStoppedUnexpectedly(
+        sourceKind: PacePerceptionSourceKind,
+        generation: Int,
+        failure: PacePerceptionSourceFailure
+    ) {
         guard generation == lifecycleGeneration else { return }
         sourceTasks[sourceKind] = nil
+        sourceFailureConsumer(sourceKind, failure)
+    }
+
+    private nonisolated static func normalizedFailure(_ error: Error) -> PacePerceptionSourceFailure {
+        switch error as? PacePerceptionSourceError {
+        case .permissionDenied: return .permissionDenied
+        case .deviceUnavailable: return .deviceUnavailable
+        case .sourceDisabled: return .sourceDisabled
+        case nil: return .stoppedUnexpectedly
+        }
     }
 
     private func shouldReplace(
@@ -216,4 +238,11 @@ actor PacePerceptionCoordinator {
         }
         return newCandidate.capturedAt >= existingCandidate.capturedAt
     }
+}
+
+nonisolated enum PacePerceptionSourceFailure: Equatable, Sendable {
+    case sourceDisabled
+    case permissionDenied
+    case deviceUnavailable
+    case stoppedUnexpectedly
 }

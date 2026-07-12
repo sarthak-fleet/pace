@@ -87,6 +87,11 @@ nonisolated final class PaceCompanionModeController {
         state = .observing
     }
 
+    func recordObservation(at observedAt: Date) {
+        guard state != .off, state != .paused else { return }
+        lastObservationAt = observedAt
+    }
+
     func pause() {
         cancelAllSourceWork()
         discardQueuedInterventions()
