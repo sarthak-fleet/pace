@@ -144,6 +144,8 @@ jobs:
             -resultBundlePath "$RESULT_BUNDLE" \
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count 3 \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             CLANG_ENABLE_CODE_COVERAGE=${{ env.ENABLE_COVERAGE }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
