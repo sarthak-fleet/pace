@@ -21,7 +21,7 @@ const features = [
   },
   {
     verb: "Teaches",
-    body: "Learn Figma. Learn Cursor. Learn the obscure internal tool nobody documented. Pace draws on your screen, points at the next thing to click, waits for you to do it, then advances. Step-by-step, at your pace.",
+    body: "Learn Figma. Learn Cursor. Learn the obscure internal tool nobody documented. Pace draws on your screen, points at the next thing to click, waits for you to do it, then advances. Step-by-step, at your pace. This is live coaching on your real screen — not a saved macro.",
     margin: "Click-follow-along is verification-driven: Pace knows when you actually clicked the right thing and moves you to the next step automatically.",
   },
   {
@@ -30,9 +30,24 @@ const features = [
     margin: "Two-tier memory: last four turns verbatim, everything older rolls into a summary. One JSON file, your home directory, your eyes only.",
   },
   {
+    verb: "Watches",
+    body: "Turn on watch mode and Pace notices when your screen meaningfully changes — nothing stored unless something happened. Even with watch mode off, it keeps a passive log of which apps had focus and for how long, using notifications macOS hands out for free.",
+    margin: "Ask \"what did I do today?\" and Pace answers from the screen-watch and app-usage journals. 7-day retention, per-source enable and clear in Settings.",
+  },
+  {
+    verb: "Automates",
+    body: "Three ways to make Pace do more than talk, and they're different on purpose. Record a sequence once and replay it verbatim. Install a pre-built recipe by voice. Or teach a skill in plain language — Pace re-reads your screen and re-plans it every run instead of blindly repeating clicks.",
+    margin: "Flows replay pixels. Skills replay intent. \"Teach a skill\" is structured into a file on-device — by voice or a typed form.",
+  },
+  {
+    verb: "Schedules",
+    body: "\"Every weekday at nine, draft my standup.\" Pace runs recurring tasks on a cron schedule and lists them in the Tasks tab with their last run and a delete button. Past research turns are browsable too — ask what you looked into last week and it answers from history.",
+    margin: "New in 0.3.20. Recurring background fires stay on the local planner unless you've explicitly consented to a cloud brain — an unattended fire never silently goes off-device.",
+  },
+  {
     verb: "Connects",
-    body: "Calendar, Reminders, Notes, Mail, Things, Shortcuts, Messages — first-class, through EventKit and AppleScript. Anything beyond Apple's native data goes through Composio's OAuth gateway when you choose to enable it.",
-    margin: "Apple-native stays local. External SaaS is your choice, off by default.",
+    body: "Calendar, Reminders, Notes, Mail, Things, Shortcuts, Messages — first-class, through EventKit and AppleScript. Broad external integrations run through open Model Context Protocol servers; anything beyond Apple's native data goes through Composio's OAuth gateway when you choose to enable it.",
+    margin: "Apple-native stays local. External SaaS is your choice, off by default. MCP servers install one-tap in Settings.",
   },
   {
     verb: "Upgrades",
@@ -49,7 +64,7 @@ const features = [
     </p>
 
     <h2 class="pace-display text-4xl md:text-6xl text-white mb-16 max-w-3xl">
-      Seven verbs. <em>That's the whole product.</em>
+      Ten verbs. <em>That's the whole product.</em>
     </h2>
 
     <div class="space-y-16 md:space-y-20">

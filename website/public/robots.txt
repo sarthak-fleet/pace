@@ -1,0 +1,52 @@
+# Pace — allow everyone, including AI crawlers.
+# The whole product is on-device and open; there's nothing to hide from
+# a crawler, and we want the answer engines to read the on-device pitch
+# and the honest competitor comparisons.
+
+User-agent: *
+Allow: /
+
+# AI / answer-engine crawlers, allowed explicitly so there's no ambiguity.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+Sitemap: https://pace-6xg.pages.dev/sitemap.xml

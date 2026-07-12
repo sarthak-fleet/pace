@@ -26,6 +26,18 @@ export type License =
 export interface Competitor {
   /** Display name. */
   name: string;
+  /**
+   * URL slug for the dedicated /compared/<slug> page. Must equal the
+   * anchor id used on the /compared hub so hub anchors and per-page
+   * routes derive from one value. Kept explicit (not derived) so the
+   * generated URL is greppable and stable if a display name changes.
+   */
+  slug: string;
+  /**
+   * One short clause for the per-page <title>: "Pace vs <Name> — <angle>".
+   * The single sharpest axis of difference, not a full sentence.
+   */
+  angle: string;
   /** One-line tagline, the way the product describes itself. */
   tagline: string;
   /** Author / maintainer handle or org. */
@@ -55,6 +67,8 @@ export interface Competitor {
 export const competitors: Competitor[] = [
   {
     name: "Clicky / HeyClicky",
+    slug: "clicky-heyclicky",
+    angle: "on-device $29 vs cloud subscription",
     tagline: "AI teacher that lives next to your cursor.",
     author: "Farza Majeed",
     url: "https://www.heyclicky.com/",
@@ -75,6 +89,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "OpenClicky",
+    slug: "openclicky",
+    angle: "on-device-first vs Claude + ElevenLabs default",
     tagline: "The other open-source Clicky fork, by Jason Kneen.",
     author: "Jason Kneen",
     url: "https://github.com/jasonkneen/openclicky",
@@ -95,6 +111,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Ora",
+    slug: "ora",
+    angle: "tier picker + trust surfaces vs single-tier local",
     tagline: "Privacy-first macOS voice assistant, on-device AI.",
     author: "benedict2310",
     url: "https://github.com/benedict2310/ora",
@@ -116,6 +134,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "OpenFelix",
+    slug: "openfelix",
+    angle: "MCP + journals vs cron + proactive alerts",
     tagline: "Voice-first AI agent for macOS that actually runs locally.",
     author: "fspecii / @AmbsdOP",
     url: "https://github.com/fspecii/openfelix",
@@ -137,6 +157,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "ORB",
+    slug: "orb",
+    angle: "heavier reasoner + trust surfaces vs lean single-purpose",
     tagline: "Fully on-device voice agent — hears, sees, operates your Mac.",
     author: "settylokesh",
     url: "https://github.com/settylokesh/ORB",
@@ -157,6 +179,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Impulse",
+    slug: "impulse",
+    angle: "conversation-wide memory vs per-project SwiftData",
     tagline: "Native macOS assistant — sees, hears, remembers your projects.",
     author: "section9-lab",
     url: "https://github.com/section9-lab/Impulse",
@@ -178,6 +202,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Agent! (macOS26)",
+    slug: "agent-macos26",
+    angle: "on-device-first default vs 18-provider breadth + hotword",
     tagline: "18 LLM providers, hotword-anchored, free on Apple Intelligence.",
     author: "macOS26 / Todd Bruss",
     url: "https://github.com/macOS26/agent",
@@ -198,6 +224,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Cursor Voice",
+    slug: "cursor-voice",
+    angle: "fully on-device vs OpenAI Realtime per turn",
     tagline: "Native macOS voice assistant next to your cursor, powered by OpenAI Realtime API.",
     author: "cursorvoice",
     url: "https://github.com/cursorvoice/cursor-voice",
@@ -218,6 +246,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Dottie",
+    slug: "dottie",
+    angle: "open source + tier picker vs closed 134-tool app",
     tagline: "Free AI voice assistant — talk to your Mac, watch it work.",
     author: "stevederico",
     url: "https://www.dottie.ai",
@@ -238,6 +268,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Fazm",
+    slug: "fazm",
+    angle: "on-device speech vs Deepgram-cloud STT/TTS",
     tagline: "The fastest AI computer agent — controls your browser, writes code, handles documents.",
     author: "mediar-ai",
     url: "https://github.com/mediar-ai/fazm",
@@ -258,6 +290,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Vox",
+    slug: "vox",
+    angle: "tier picker + memory + watch mode vs 48 tools",
     tagline: "The first local AI that actually does things on your Mac — no cloud, no subscription.",
     author: "vox-ai-app",
     url: "https://github.com/vox-ai-app/vox",
@@ -278,6 +312,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "RCLI",
+    slug: "rcli",
+    angle: "tier picker + trust surfaces vs MetalRT speed + RAG",
     tagline: "Talk to your Mac, query your docs — on-device voice AI + RAG, no cloud required.",
     author: "RunanywhereAI",
     url: "https://github.com/RunanywhereAI/RCLI",
@@ -298,6 +334,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Samuel",
+    slug: "samuel",
+    angle: "fully on-device vs cloud self-modifying plugins",
     tagline: "Voice-first AI companion — wake-word activated, sees screen, hears system audio, writes plugins.",
     author: "sambuild04",
     url: "https://github.com/sambuild04/screen-voice-agent",
@@ -318,6 +356,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "Shiro",
+    slug: "shiro",
+    angle: "tier picker + recipes vs parallel sub-agents + RAG",
     tagline: "Local-first autonomous agent — watches screen, spawns parallel sub-agents, MCP ecosystem.",
     author: "abhisheksharma001",
     url: "https://github.com/abhisheksharma001/shiro",
@@ -338,6 +378,8 @@ export const competitors: Competitor[] = [
   },
   {
     name: "LocalNotch",
+    slug: "localnotch",
+    angle: "voice-first vs hover-and-type notch",
     tagline: "Local AI assistant that lives in your MacBook's notch — chat, vision, file agent, all on-device.",
     author: "arshawnarbabi",
     url: "https://github.com/arshawnarbabi/LocalNotch",
@@ -360,3 +402,22 @@ export const competitors: Competitor[] = [
 
 /** When this comparison was last rechecked. Rendered on the page. */
 export const comparisonRechecked = "June 2026";
+
+/**
+ * Derive a URL-safe anchor id / slug from a competitor display name.
+ * This is the exact transform the /compared hub already used inline for
+ * its <article> anchor ids. The per-competitor `slug` field is authored
+ * to match this output so the hub anchor (#clicky-heyclicky) and the
+ * dedicated route (/compared/clicky-heyclicky) are the same string.
+ */
+export function anchorIdForCompetitorName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** All dedicated comparison-page paths, for the sitemap endpoint. */
+export function comparisonPagePaths(): string[] {
+  return competitors.map((competitor) => `/compared/${competitor.slug}`);
+}

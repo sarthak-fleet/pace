@@ -50,6 +50,18 @@ const qas = [
     q: "Can I leave it always-on?",
     a: "Yes. Press ctrl three times to toggle wake-word mode — Pace listens passively and only reacts when it hears its name. Most users keep push-to-talk (ctrl+option) because it's clearer about when you're talking to it, but always-on is one shortcut away.",
   },
+  {
+    q: "Can it tell me what I did today?",
+    a: "Yes, from passive local journals. Watch mode logs when your screen meaningfully changes; a separate app-usage journal tracks which apps had focus and for how long, using notifications macOS hands out without any extra permission. Research turns get their own history. Ask \"what did I do today?\" or \"what did I research about X?\" and Pace answers from those journals — all on disk, 7-day retention for the screen/app logs, per-source enable and clear in Settings. Nothing is uploaded.",
+  },
+  {
+    q: "Can I trigger it from Raycast or Shortcuts?",
+    a: "Yes. Pace registers `pace://` deeplinks — `pace://listen`, `pace://chat?text=...`, `pace://watch?enabled=true`, and `pace://panel` — plus App Intents for Siri, Shortcuts, and Spotlight. Wire a Raycast script or a Shortcut to any of them. A deeplink runs the same intent and approval pipeline your own voice would, so it can't do anything you couldn't do yourself.",
+  },
+  {
+    q: "What happens if it clicks the wrong thing?",
+    a: "Every change Pace can reverse leaves a 5-second undo banner next to the cursor — tap it and it rolls back. If a click misses entirely, Pace says so in plain language rather than pretending it worked. And there's a 30-second replay button that speaks the exact same answer back without re-running the planner, in case you missed it.",
+  },
 ];
 ---
 

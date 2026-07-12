@@ -1,0 +1,94 @@
+---
+// Trust surfaces + the privacy dashboard. Pace does things on your Mac,
+// so it has to be reversible, replayable, honest about failure, and honest
+// about bytes. This section names the four surfaces that make an agent you
+// can actually let touch your machine:
+//
+//   Undo banner       — every reversible mutation raises a 5s tap-to-undo
+//   Reply replay       — 30s replay of the exact spoken text, no re-plan
+//   Failure narration  — plain-language, deterministic, silenced on calls
+//   Privacy dashboard  — reads the local audit log; "0 bytes" until proven otherwise
+//
+// Same shape as OnDevice: one claim, prose left, an artifact right. The
+// artifact is a privacy-dashboard readout, because the headline number is
+// the point. All claims verified against AGENTS.md / PROJECT_STATUS.md.
+---
+
+<section id="trust" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      Trust
+    </p>
+
+    <h2 class="pace-display text-4xl md:text-6xl text-white mb-12 max-w-3xl">
+      An agent that touches your Mac <em>has to be reversible.</em>
+    </h2>
+
+    <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+      <div class="pace-prose">
+        <p>
+          Every change Pace can undo leaves a <strong>5-second undo
+          banner</strong> next to the cursor — created a note, drafted a mail,
+          added a reminder, edited a field. Tap it and the change rolls back.
+          You don't have to remember what it did; the escape hatch shows up on
+          its own.
+        </p>
+        <p>
+          Missed the answer? A <strong>replay button</strong> sits under the
+          panel for 30 seconds and speaks the exact same words back — it
+          replays the audio, it doesn't re-run the planner, so you hear what
+          you already heard, not a fresh guess.
+        </p>
+        <p>
+          When something breaks — planner offline, a permission missing, a
+          click that didn't land, the TTS sidecar down — Pace says so in
+          <strong>plain language</strong>. That copy is written
+          deterministically, not by a model, and it stays quiet when you're on
+          a call.
+        </p>
+        <p>
+          And the whole privacy claim is <strong>measured, not asserted.</strong>
+          The in-app Privacy dashboard reads a local audit log and shows the
+          exact bytes sent off your Mac, broken out by surface. It says zero
+          until an off-device tier you turned on actually fires — then it says
+          how much, and to whom.
+        </p>
+      </div>
+
+      <div>
+        <p class="text-xs font-mono text-[var(--color-text-muted)] mb-3 uppercase tracking-wider">
+          Privacy dashboard — illustrative
+        </p>
+        <div
+          class="font-mono text-sm bg-black border border-[var(--color-border-subtle)] rounded-lg p-5 leading-relaxed"
+        >
+          <div class="text-[var(--color-text-muted)]">Pace › Privacy</div>
+          <div class="mt-3 text-white/90">
+            <span class="text-[var(--color-positive)] font-semibold text-base">0 bytes</span>
+            sent off this Mac
+          </div>
+          <div class="mt-3 text-[var(--color-text-muted)]">this session</div>
+          <div class="mt-1">
+            <span class="text-white/70">voice · screen · planner · tts </span>
+            <span class="text-[var(--color-positive)]">local</span>
+          </div>
+          <div>
+            <span class="text-white/70">meeting notes </span>
+            <span class="text-[var(--color-positive)]">local (pinned)</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-[var(--color-text-muted)]">
+            turn on a cloud tier and this flips to
+          </div>
+          <div>
+            <span class="text-[var(--color-warning)]">14 KB → codex</span>
+            <span class="text-white/60"> · capsule amber</span>
+          </div>
+        </div>
+        <p class="pace-margin-note mt-5">
+          The number is computed from the audit log,<br />
+          not a promise on a marketing page.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
