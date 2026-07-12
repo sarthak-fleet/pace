@@ -26,6 +26,30 @@ struct PaceAnnotationOverlayControllerTests {
         #expect(overlayController.activeAnnotations.count == 1)
     }
 
+    @Test func presenceCallbackFiresOnSetAndClearTransitions() async throws {
+        // Regression (live-diagnosed 2026-07-12): mascot mode hides the
+        // cursor overlay window that HOSTS the annotation layer, so
+        // CompanionManager listens to this callback to transiently reveal
+        // the window while annotations are present. Set(non-empty) → true,
+        // clear → false; a second set while already present must NOT
+        // re-fire (no transition).
+        let overlayController = PaceAnnotationOverlayController(autoFadeDelaySeconds: 10)
+        var recordedPresenceTransitions: [Bool] = []
+        overlayController.onActiveAnnotationsPresenceChanged = { annotationsArePresent in
+            recordedPresenceTransitions.append(annotationsArePresent)
+        }
+        let renderedAnnotation = PaceRenderedAnnotation(
+            geometry: .rect(CGRect(x: 0, y: 0, width: 10, height: 10)),
+            style: .default,
+            screenIndex: 1
+        )
+        overlayController.setAnnotations([renderedAnnotation])
+        overlayController.setAnnotations([renderedAnnotation, renderedAnnotation])  // still present — no transition
+        overlayController.clear(reason: "test")
+        overlayController.clear(reason: "already empty — no callback")
+        #expect(recordedPresenceTransitions == [true, false])
+    }
+
     @Test func clearEmptiesActiveLayer() async throws {
         let overlayController = PaceAnnotationOverlayController(autoFadeDelaySeconds: 10)
         overlayController.setAnnotations([

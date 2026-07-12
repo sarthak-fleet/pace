@@ -75,6 +75,15 @@ final class PaceAnnotationOverlayController: ObservableObject {
     /// always get a fresh 30 s window.
     private var pendingAutoFadeTask: Task<Void, Never>?
 
+    /// Fired whenever the layer transitions between "has annotations" and
+    /// "empty". CompanionManager uses this to TRANSIENTLY REVEAL the cursor
+    /// overlay window in mascot mode: mascot mode suppresses the whole
+    /// cursor overlay (`suppressCursorOverlaysForMascotMode`), and the
+    /// annotation layer lives INSIDE that window — without this hook, a
+    /// perfectly-executed `draw_annotation` renders into a hidden window
+    /// and the user sees nothing (live-diagnosed 2026-07-12).
+    var onActiveAnnotationsPresenceChanged: ((Bool) -> Void)?
+
     init(autoFadeDelaySeconds: TimeInterval = 30.0) {
         self.autoFadeDelaySeconds = autoFadeDelaySeconds
     }
@@ -84,8 +93,13 @@ final class PaceAnnotationOverlayController: ObservableObject {
     /// it has converted the planner's screenshot pixels to AppKit
     /// globals for the matching screen.
     func setAnnotations(_ renderedAnnotations: [PaceRenderedAnnotation]) {
+        let hadAnnotationsBefore = !activeAnnotations.isEmpty
         activeAnnotations = renderedAnnotations
         scheduleAutoFade()
+        let hasAnnotationsNow = !renderedAnnotations.isEmpty
+        if hadAnnotationsBefore != hasAnnotationsNow {
+            onActiveAnnotationsPresenceChanged?(hasAnnotationsNow)
+        }
     }
 
     /// Wipe all annotations. `reason` is logged but not exposed in the
@@ -96,6 +110,7 @@ final class PaceAnnotationOverlayController: ObservableObject {
         guard !activeAnnotations.isEmpty else { return }
         print("🧽 Clearing \(activeAnnotations.count) annotation(s): \(reason)")
         activeAnnotations = []
+        onActiveAnnotationsPresenceChanged?(false)
     }
 
     /// Convenience: called by CompanionManager at PTT-release of the

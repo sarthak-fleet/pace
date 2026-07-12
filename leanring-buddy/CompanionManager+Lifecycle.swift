@@ -138,6 +138,26 @@ extension CompanionManager {
     func start() {
         refreshAllPermissions()
         loadPersistedToolCallDebugRecords()
+        // Mascot mode suppresses the whole cursor overlay window — but the
+        // tuition-annotation layer LIVES in that window, so a planner
+        // `draw_annotation` would render into a hidden panel and the user
+        // would see nothing (live-diagnosed 2026-07-12: the entire draw
+        // pipeline worked; only the window was hidden). Transiently reveal
+        // the overlay while annotations are present, and re-suppress when
+        // they clear (next user turn / 30 s auto-fade / explicit clear).
+        annotationOverlayController.onActiveAnnotationsPresenceChanged = { [weak self] annotationsArePresent in
+            guard let self, self.mascotModeActive else { return }
+            if annotationsArePresent {
+                overlayWindowManager.isSuppressed = false
+                overlayWindowManager.hasShownOverlayBefore = true
+                overlayWindowManager.showOverlay(onScreens: NSScreen.screens, companionManager: self)
+                isOverlayVisible = true
+            } else {
+                overlayWindowManager.hideOverlay()
+                overlayWindowManager.isSuppressed = true
+                isOverlayVisible = false
+            }
+        }
         // Meeting recordings launch sweep, off the main actor (file IO):
         // repair any `.part` WAVs a force-quit left behind, then prune
         // recording directories past the retention window — continuous
