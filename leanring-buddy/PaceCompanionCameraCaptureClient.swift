@@ -222,9 +222,16 @@ nonisolated final class PaceAVFoundationCameraCaptureClient:
 {
     private let captureSession = AVCaptureSession()
     private let captureQueue = DispatchQueue(label: "com.pace.companion-camera")
-    private let state = PaceCameraCaptureState()
-    private lazy var outputDelegate = PaceCameraCaptureOutputDelegate(state: state)
+    private let state: PaceCameraCaptureState
+    private let outputDelegate: PaceCameraCaptureOutputDelegate
     private var runtimeErrorObserver: NSObjectProtocol?
+
+    override init() {
+        let state = PaceCameraCaptureState()
+        self.state = state
+        self.outputDelegate = PaceCameraCaptureOutputDelegate(state: state)
+        super.init()
+    }
 
     func permissionState() async -> PacePerceptionPermissionState {
         guard AVCaptureDevice.default(for: .video) != nil else { return .unavailable }

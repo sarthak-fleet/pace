@@ -106,7 +106,7 @@ struct PacePerceptionCoordinatorTests {
         await coordinator.stop()
     }
 
-    @Test func sourceFailuresAreNormalizedForRuntimePrivacyAndDegradedState() async {
+    @Test func sourceFailuresAreNormalizedForRuntimePrivacyAndDegradedState() async throws {
         let failureCollector = PerceptionSourceFailureCollector()
         let source = FailingPerceptionSource(
             sourceKind: .camera,
