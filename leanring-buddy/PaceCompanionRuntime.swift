@@ -29,7 +29,7 @@ final class PaceCompanionRuntime {
     private var activeSources: Set<PacePerceptionSourceKind> = []
 
     init(
-        ambientContextStore: PaceAmbientContextStore = .shared,
+        ambientContextStore: PaceAmbientContextStore,
         watchModeController: PaceScreenWatchModeController,
         localRetriever: PaceLocalRetriever,
         statusConsumer: @escaping StatusConsumer
@@ -96,12 +96,13 @@ final class PaceCompanionRuntime {
         }
 
         let runtime = self
+        let resolvedScreenInterpreter = screenInterpreter
         let coordinator = PacePerceptionCoordinator(
             sourceAdapters: adapters,
             candidateAnalyzer: { candidate in
                 try await Self.interpretCandidate(
                     candidate,
-                    screenInterpreter: screenInterpreter
+                    screenInterpreter: resolvedScreenInterpreter
                 )
             },
             observationConsumer: { observation in

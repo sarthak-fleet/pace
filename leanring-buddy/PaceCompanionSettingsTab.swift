@@ -63,7 +63,7 @@ struct PaceCompanionSettingsTab: View {
             }
         }
         .padding(12)
-        .background(DS.Colors.surface)
+        .background(Color.white.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

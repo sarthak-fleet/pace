@@ -385,7 +385,8 @@ nonisolated enum PaceCompanionMemoryDocumentRenderer {
     }
 }
 
-nonisolated final class PaceCompanionMemoryCoordinator {
+@MainActor
+final class PaceCompanionMemoryCoordinator {
     let observationStore: PaceWorldObservationStore
     let memoryPolicy: PaceCompanionMemoryPolicy
     private let replaceRetrievalDocuments: ([PaceRetrievalDocument]) -> Void
