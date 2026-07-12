@@ -753,6 +753,52 @@ extension CompanionManager {
         }
     }
 
+    /// Deterministic "find text on screen" fast path: capture the
+    /// screen(s), OCR them, and draw red rectangles over every substring
+    /// match of the query via the annotation overlay — no planner, no
+    /// coordinate guessing. Speaks a plain confirmation of the match
+    /// count. The whole run is off the planner pipeline, so it finishes
+    /// its own turn (drives the response overlay + TTS + voiceState),
+    /// mirroring `handleWatchModeCommand`.
+    func handleVisualFindCommand(_ command: PaceVisualFindCommand, transcript: String) {
+        let searchQuery = command.searchQuery
+        currentResponseTask = Task { [weak self] in
+            guard let self else { return }
+            self.voiceState = .responding
+
+            let spokenText: String
+            do {
+                let outcome = try await PaceVisualFindService.findAndMark(
+                    query: searchQuery,
+                    overlayController: self.annotationOverlayController,
+                    visionOCRClient: self.visionOCRClient
+                )
+                spokenText = PaceVisualFindService.spokenConfirmation(
+                    query: searchQuery,
+                    totalMatches: outcome.totalMatches,
+                    renderedMatches: outcome.renderedMatches
+                )
+            } catch {
+                print("⚠️ Visual-find capture failed: \(error.localizedDescription)")
+                spokenText = "i couldn't read your screen to search for \(searchQuery)."
+            }
+
+            self.currentTurnHUDState = .done(spokenText)
+            self.recordConversationTurn(userTranscript: transcript, assistantResponse: spokenText)
+            self.responseOverlayManager.showOverlayAndBeginStreaming()
+            self.responseOverlayManager.updateStreamingText(spokenText)
+            await self.streamingSentenceTTSPipeline.flushFinal(finalSpokenText: spokenText)
+            while self.ttsClient.isPlaying {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
+            self.responseOverlayManager.finishStreaming()
+            self.voiceState = .idle
+            if self.isWalkingAvatarEnabled {
+                self.avatarOverlayManager?.show()
+            }
+        }
+    }
+
     /// Multi-step agent loop: capture screens → optional local VLM →
     /// planner → execute actions → re-screenshot → repeat. Each step is
     /// at most one planner round-trip and one action sequence. The loop
@@ -923,6 +969,19 @@ extension CompanionManager {
            let skillCommand = PaceSkillCommandParser.parse(transcript) {
             print("📋 Skill voice command: \(skillCommand)")
             handleSkillCommand(skillCommand, transcript: transcript)
+            return
+        }
+
+        // Visual find: "find <text> on screen" / "show me where <text> is".
+        // Deterministic OCR-grounded text search — screenshot → Vision OCR
+        // → draw red rectangles at the matches. NO planner, NO coordinate
+        // guessing. Routed AFTER the skill parser so "run the find skill"
+        // stays a skill run; the parser itself requires an explicit
+        // "on screen" marker (or the "show me where … is" form) so plain
+        // "find my keys" chitchat never lands here.
+        if let visualFindCommand = PaceVisualFindCommandParser.parse(transcript) {
+            print("🔎 Visual-find voice command: \(visualFindCommand.searchQuery)")
+            handleVisualFindCommand(visualFindCommand, transcript: transcript)
             return
         }
 
