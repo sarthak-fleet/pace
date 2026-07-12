@@ -108,7 +108,15 @@ struct PaceAudioFileTranscriberSegmentedTests {
 
     // MARK: - Apple Speech fallback returns single segment (when available)
 
-    @Test func appleSpeechFallbackReturnsSingleSegmentSpanningFile() async throws {
+    /// Skipped in CI: this drives the real `PaceAudioFileTranscriber`
+    /// through WhisperKit → Apple Speech on-device recognition, which is
+    /// framework/hardware-bound wall-clock work (measured ~48s locally,
+    /// and it stalls the headless runner without speech permission). The
+    /// test already tolerates a thrown backend failure as a valid
+    /// outcome, so its CI coverage is minimal. Runs normally on every
+    /// developer machine and in `scripts/test-pace.sh`.
+    @Test(.disabled(if: PaceTestEnvironment.isRunningInCI, "Real Apple Speech / WhisperKit recognition is framework-bound wall-clock work (~48s)"))
+    func appleSpeechFallbackReturnsSingleSegmentSpanningFile() async throws {
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("pace-segmented-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)

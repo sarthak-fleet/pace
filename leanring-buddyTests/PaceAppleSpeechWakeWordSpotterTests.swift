@@ -161,7 +161,12 @@ struct PaceAppleSpeechWakeWordSpotterTests {
     /// the spotter's hard-stop semantics — after stop, any further
     /// transcription deliveries should still process safely (don't
     /// crash) but the buffer must remain nil.
-    @Test
+    ///
+    /// Skipped in CI: `start()` brings up a real `AVAudioEngine` +
+    /// `SFSpeechRecognizer`, which blocks on the CoreAudio HAL for the
+    /// full CI time budget on the headless (no-microphone) runner. Runs
+    /// normally on every developer machine and in `scripts/test-pace.sh`.
+    @Test(.disabled(if: PaceTestEnvironment.isRunningInCI, "AVAudioEngine.start() blocks on the audio HAL on the headless CI runner"))
     func stopHaltsPublicationAndNilsRollingBuffer() {
         let spotter = PaceAppleSpeechWakeWordSpotter()
         spotter.start()
@@ -199,7 +204,12 @@ struct PaceAppleSpeechWakeWordSpotterTests {
     /// recognition task is cancelled and `isRunning` reports false.
     /// This mirrors the PTT-bridge bind in CompanionManager — when
     /// PTT starts recording, we tell the spotter to back off.
-    @Test
+    ///
+    /// Skipped in CI: `start()` brings up a real `AVAudioEngine` +
+    /// `SFSpeechRecognizer`, which blocks on the CoreAudio HAL for the
+    /// full CI time budget on the headless (no-microphone) runner. Runs
+    /// normally on every developer machine and in `scripts/test-pace.sh`.
+    @Test(.disabled(if: PaceTestEnvironment.isRunningInCI, "AVAudioEngine.start() blocks on the audio HAL on the headless CI runner"))
     func pauseAfterStartCancelsRecognitionTask() {
         let spotter = PaceAppleSpeechWakeWordSpotter()
         spotter.start()
