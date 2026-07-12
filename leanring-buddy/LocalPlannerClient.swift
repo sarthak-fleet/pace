@@ -273,6 +273,33 @@ final class LocalPlannerClient: BuddyPlannerClient {
             let duration = Date().timeIntervalSince(startTime)
             let strippedFinalText = LocalPlannerClient.stripThinkingBlocks(from: accumulatedResponseText)
             if !strippedFinalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Structured turns are decode-constrained to the v10 envelope,
+                // so the final text MUST parse as JSON. Live-observed failure
+                // mode (2026-07-12): under prompt-cache reuse / server load the
+                // constrained stream occasionally comes back as escaped-quote
+                // soup with trailing junk — technically non-empty, so the old
+                // "non-empty means success" check returned garbage the action
+                // parser then dropped ("no actions parsed"). Treat invalid JSON
+                // like an empty stream: retry (attempt 2+ already disables
+                // cache_prompt, which is the suspected trigger).
+                let structuredOutputIsInvalidJSON: Bool = {
+                    guard requestsStructuredActionOutput else { return false }
+                    guard let finalTextData = strippedFinalText.data(using: .utf8) else { return true }
+                    return (try? JSONSerialization.jsonObject(with: finalTextData)) == nil
+                }()
+                if structuredOutputIsInvalidJSON {
+                    print("⚠️ LocalPlannerClient: structured stream returned invalid JSON (attempt \(plannerAttemptNumber)); retrying without prompt cache")
+                    PaceAPIAuditLog.shared.record(
+                        subsystem: "planner",
+                        operation: "chat.completions.stream",
+                        target: modelIdentifier,
+                        durationMilliseconds: Int(duration * 1000),
+                        outcome: "invalid_structured_json",
+                        outputCharacterCount: strippedFinalText.count,
+                        detail: "attempt \(plannerAttemptNumber)"
+                    )
+                    continue
+                }
                 PaceAPIAuditLog.shared.record(
                     subsystem: "planner",
                     operation: "chat.completions.stream",
