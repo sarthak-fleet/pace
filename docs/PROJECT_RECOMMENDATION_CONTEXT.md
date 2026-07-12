@@ -40,12 +40,14 @@ style first-party integrations, and an MCP bridge.
 - Quick Actions (Finder service for transcribe-audio-file)
 
 An opt-in Always-On Companion Mode is under implementation. Its typed local
-world-model, perception-coordinator contract, default-off preferences, and
+world-model, perception-coordinator contract, default-off preferences,
 silence-first intervention policy, Settings/menu-bar controls, and default-off
-app lifecycle exist. Existing ambient/watch adapters can run; camera/ambient-
-voice adapters remain behind injected boundaries and visibly degrade without
-real hardware clients. Do not recommend or describe room-companion capture as
-shipped until the OpenSpec acceptance work is complete.
+app lifecycle exist. Existing ambient/watch adapters and a production low-rate
+AVFoundation/Vision camera source can run; the camera emits non-identifying
+ephemeral person-presence only. Ambient voice remains degraded until a true
+pre-STT keyword gate exists, and production object teaching/tracking plus
+hardware thresholds remain open. Do not recommend or describe room-companion
+capture as shipped until the OpenSpec acceptance work is complete.
 
 ## Default-on dependencies (no install required for fresh setup)
 

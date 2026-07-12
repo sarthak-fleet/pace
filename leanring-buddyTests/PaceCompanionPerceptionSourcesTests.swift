@@ -7,6 +7,35 @@ import Testing
 struct PaceCompanionPerceptionSourcesTests {
     private let now = Date(timeIntervalSince1970: 2_000_000_000)
 
+    @Test func productionCameraMotionEstimatorIsBoundedAndDetectsChange() {
+        #expect(PaceCameraMotionEstimator.normalizedDifference(previous: nil, current: []) == 0)
+        #expect(PaceCameraMotionEstimator.normalizedDifference(
+            previous: nil,
+            current: [0, 0]
+        ) == 1)
+        #expect(PaceCameraMotionEstimator.normalizedDifference(
+            previous: [0, 255],
+            current: [0, 255]
+        ) == 0)
+        #expect(PaceCameraMotionEstimator.normalizedDifference(
+            previous: [0, 0],
+            current: [255, 255]
+        ) == 1)
+    }
+
+    @Test func productionCameraPersonTrackerKeepsOnlyEphemeralSessionLocalContinuity() {
+        var tracker = PaceEphemeralPersonTracker(maximumCenterDistance: 0.2)
+        let first = tracker.identifiers(for: [(x: 0.2, y: 0.4), (x: 0.8, y: 0.4)])
+        let second = tracker.identifiers(for: [(x: 0.23, y: 0.42), (x: 0.79, y: 0.42)])
+        #expect(first == ["person-1", "person-2"])
+        #expect(second == first)
+
+        let farAway = tracker.identifiers(for: [(x: 0.5, y: 0.9)])
+        #expect(farAway == ["person-3"])
+        tracker.reset()
+        #expect(tracker.identifiers(for: [(x: 0.5, y: 0.9)]) == ["person-1"])
+    }
+
     @Test func cameraRequiresIndependentPermissionAndStopsCaptureImmediately() async throws {
         let deniedCapture = TestCameraCaptureClient(permission: .denied)
         let deniedSource = PaceCameraPerceptionSource(

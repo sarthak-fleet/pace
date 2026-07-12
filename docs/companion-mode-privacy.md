@@ -58,6 +58,8 @@ retrieval documents, and pending candidates together.
 
 Routine learning is also disabled in the shipping policy configuration until
 the four room-companion outcomes meet their documented accuracy/resource gates.
+The measurement protocol and literal unlock order live in
+[`companion-mode-dogfood.md`](companion-mode-dogfood.md).
 
 Companion Mode is not a security camera, identity system, meeting recorder,
 safety monitor, robotics controller, or click/action automation path.
