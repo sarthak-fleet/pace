@@ -358,10 +358,20 @@ fi
 # ── Publish GitHub Release ─────────────────────────────────────────────────
 
 echo "🏷  Publishing GitHub Release $tag..."
+# Use hand-written release notes from docs/release-notes/<version>.md when
+# present (so the GitHub release + Sparkle changelog show a real "what's new"
+# instead of a generic string); otherwise fall back to the generic note.
+notes_file="${PROJECT_DIR}/docs/release-notes/${next_version}.md"
+if [ -f "$notes_file" ]; then
+    echo "   using release notes from ${notes_file}"
+    release_notes_args=(--notes-file "$notes_file")
+else
+    release_notes_args=(--notes "Pace ${next_version} (build ${next_build}) — auto-update enabled.")
+fi
 gh release create "$tag" "$package_path" \
     --repo "$GITHUB_REPO" \
     --title "Pace ${next_version}" \
-    --notes "Pace ${next_version} (build ${next_build}) — auto-update enabled." \
+    "${release_notes_args[@]}" \
     --latest
 
 download_url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${package_name}"
