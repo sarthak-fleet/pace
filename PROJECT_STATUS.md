@@ -212,6 +212,10 @@ Four complementary "do more than talk" layers, from most literal to most flexibl
 
 ## Todo / Planned / Deferred / Blocked
 
+### Active implementation
+
+- **Always-On Companion Mode OpenSpec** — 33/40 tasks complete. The typed world model, multimodal coordinator/adapters, targeted local visual interpretation, non-identifying/context-enriched physical-world mapping, companion memory/retrieval, restraint-gated policy, privacy/resource budgets, Settings/menu-bar transparency, default-off app lifecycle, privacy threat model, and resource/privacy fixture coverage are implemented. The shipped lifecycle starts only existing ambient/watch adapters selected by the user; camera/voice selections visibly degrade because real hardware clients/manual acceptance remain pending. Silent cards and speech are compile-time locked until their acceptance gates pass.
+
 ### Planned (remaining — each blocked on an external input, not on code)
 
 1. **First pace-tuned model** — collect turns via Settings export, LoRA train + eval gate per `docs/plans/pace-tuned-model-v1.md`. Blocked on exported turn volume (see Blocked). Per project memory, Pace-side model work is otherwise concluded — this is a data-collection milestone, not new model engineering.

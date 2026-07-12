@@ -50,6 +50,7 @@ private enum PaceSettingsTab: String, CaseIterable, Identifiable {
     case models = "Models"
     case research = "Research"
     case proactive = "Proactive"
+    case companion = "Companion"
     case mcp = "MCP"
     case permissions = "Permissions"
     case voice = "Voice"
@@ -75,6 +76,8 @@ private enum PaceSettingsTab: String, CaseIterable, Identifiable {
             return "magnifyingglass.circle"
         case .proactive:
             return "bell.badge"
+        case .companion:
+            return "sensor.tag.radiowaves.forward"
         case .mcp:
             return "point.3.connected.trianglepath.dotted"
         case .permissions:
@@ -170,6 +173,8 @@ struct PaceSettingsWindowView: View {
                     PaceResearchSettingsTab(companionManager: companionManager)
                 case .proactive:
                     PaceProactiveSettingsTab(companionManager: companionManager)
+                case .companion:
+                    PaceCompanionSettingsTab(controlCenter: companionManager.companionControlCenter)
                 case .mcp:
                     PaceMCPSettingsTab(companionManager: companionManager)
                 case .permissions:

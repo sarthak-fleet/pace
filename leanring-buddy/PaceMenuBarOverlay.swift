@@ -145,7 +145,15 @@ final class PaceMenuBarOverlayManager {
 
 private struct PaceMenuBarOverlayView: View {
     @ObservedObject var companionManager: CompanionManager
+    @ObservedObject private var companionControlCenter: PaceCompanionControlCenter
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(companionManager: CompanionManager) {
+        self.companionManager = companionManager
+        self._companionControlCenter = ObservedObject(
+            wrappedValue: companionManager.companionControlCenter
+        )
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -156,6 +164,12 @@ private struct PaceMenuBarOverlayView: View {
                         reduceMotion: reduceMotion
                     )
                         .frame(width: 18, height: 18)
+                        .overlay(alignment: .topTrailing) {
+                            PaceCompanionCaptureIndicators(
+                                controlCenter: companionControlCenter
+                            )
+                            .offset(x: 4, y: -3)
+                        }
                 }
             }
             .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.74), value: isConversationActive)
@@ -191,6 +205,9 @@ private struct PaceMenuBarOverlayView: View {
         )
         .contentShape(PaceMenuBarBottomRoundedShape(bottomCornerRadius: PaceMenuBarOverlayMetrics.bottomCornerRadius))
         .pointerCursor()
+        .help(companionControlCenter.preferences.isCompanionModeEnabled
+            ? companionControlCenter.runtimeStatusText
+            : statusText)
         .accessibilityLabel(statusText)
     }
 
@@ -205,6 +222,9 @@ private struct PaceMenuBarOverlayView: View {
 
         switch companionManager.voiceState {
         case .idle:
+            if companionControlCenter.preferences.isCompanionModeEnabled {
+                return "Pace — \(companionControlCenter.runtimeStatusText)"
+            }
             return companionManager.isLMStudioReachable ? "Pace" : "Local offline"
         case .listening:
             return "Listening"
@@ -215,6 +235,46 @@ private struct PaceMenuBarOverlayView: View {
         }
     }
 
+}
+
+private struct PaceCompanionCaptureIndicators: View {
+    @ObservedObject var controlCenter: PaceCompanionControlCenter
+
+    var body: some View {
+        HStack(spacing: 1.5) {
+            if controlCenter.activeSources.contains(.camera) {
+                indicator(color: .green, label: "Camera active")
+            }
+            if controlCenter.activeSources.contains(.screen) {
+                indicator(color: .cyan, label: "Screen active")
+            }
+            if controlCenter.preferences.isCompanionModeEnabled,
+               controlCenter.activeSources.contains(.camera) == false,
+               controlCenter.activeSources.contains(.screen) == false {
+                indicator(color: runtimeColor, label: controlCenter.runtimeStatusText)
+            }
+        }
+        .help(controlCenter.runtimeStatusText)
+    }
+
+    private func indicator(color: Color, label: String) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 5, height: 5)
+            .overlay(Circle().stroke(Color.black.opacity(0.8), lineWidth: 0.5))
+            .accessibilityLabel(label)
+    }
+
+    private var runtimeColor: Color {
+        switch controlCenter.runtimeState {
+        case .observing: return .green
+        case .interpreting: return .cyan
+        case .paused: return .yellow
+        case .degraded: return .orange
+        case .privacyBlocked: return .red
+        case .off, .starting: return .gray
+        }
+    }
 }
 
 private struct PaceMenuBarIconCluster<Content: View>: View {

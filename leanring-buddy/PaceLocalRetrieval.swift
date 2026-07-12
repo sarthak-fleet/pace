@@ -23,6 +23,7 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
     case screenTime
     case localPreference
     case episodicMemory
+    case companionMemory
     case meetingNotes
 
     var displayName: String {
@@ -55,6 +56,8 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
             return "Preference"
         case .episodicMemory:
             return "Episodic memory"
+        case .companionMemory:
+            return "Companion memory"
         case .meetingNotes:
             return "Meeting notes"
         }

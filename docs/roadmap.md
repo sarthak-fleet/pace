@@ -222,6 +222,28 @@ All modules are voice-command-routable via `PaceAutomationCommandParser` in the
 pre-planner dispatch (after named-destination fast path, before chitchat
 classifier). All default OFF except barge-in echo rejection (always on).
 
+## Priority 12b: Always-On Companion Mode — IN PROGRESS
+
+- Completed foundation: typed observations, bounded atomic evidence storage,
+  derived current-state and time-aware queries, an event-driven perception
+  adapter/coordinator with per-source backpressure, explicit runtime states,
+  deterministic companion-memory promotion/retrieval/clear integration,
+  default-off source/output preferences, and silence-first intervention policy.
+- Concrete but not app-wired adapters: separately permissioned, low-rate and
+  motion-gated camera capture; wake-gated bounded ambient-voice sessions;
+  ephemeral diarization; non-identifying person and user-taught object records.
+- App wiring now starts/stops the default-off observe-only runtime and exposes
+  Settings plus menu-bar state/active-source indicators. Existing ambient/watch
+  adapters can run; camera/voice remain visibly degraded until real hardware
+  clients and manual acceptance are complete. Silent cards and speech remain off.
+- Privacy/resource threat model and deterministic denial, redaction, buffer,
+  device-loss, false-wake/continuity, source-clear, and degradation fixtures are
+  in place. See `docs/companion-mode-privacy.md`.
+- Remaining: real camera/audio hardware clients and observe-only dogfood;
+  measured accuracy/resource/sleep-wake/permission acceptance; then separately
+  gated cards, speech, and routine learning; full Xcode tests and manual smokes.
+- Source of truth: OpenSpec change `always-on-companion-mode`.
+
 ## Priority 13: Premium Conversational UI
 
 Status: unstarted. Biggest remaining quality lever toward "best local tool."

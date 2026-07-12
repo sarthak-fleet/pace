@@ -175,6 +175,10 @@ extension CompanionManager {
         // system prompt so the planner has instant context without a
         // VLM round-trip.
         PaceAmbientContextStore.shared.start()
+        // Default-off observe-only companion runtime. This reads the explicit
+        // companion/source preferences and remains inert on every existing
+        // installation until the user opts in.
+        startCompanionRuntimeIfEnabled()
         // Begin observing macOS Focus state. Idempotent — only the
         // first call triggers the one-shot INFocusStatus permission
         // ask; the rest are no-ops. Denied permission means the
@@ -600,6 +604,7 @@ extension CompanionManager {
     }
 
     func stop() {
+        stopCompanionRuntime()
         appUsageTracker?.stop()
         if isPostureWatchEnabled {
             postureMonitor.stop()

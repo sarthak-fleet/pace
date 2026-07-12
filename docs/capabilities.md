@@ -56,6 +56,17 @@ playback), watch mode (observe the screen and emit change events), meeting mode
 (capture system audio excluding Pace's own output), in-window chat (text instead
 of voice).
 
+**Always-On Companion Mode (implementation in progress; default OFF)** — the
+local evidence/world-model and silence-first intervention-policy foundations are
+implemented. Deterministic companion memory can promote typed evidence into
+episodic, semantic, spatial, and routine records and render a dedicated local
+retrieval source. Settings/menu-bar transparency and default-off lifecycle are
+wired for existing ambient/watch sources; camera/ambient-voice adapters remain
+behind injected boundaries and visibly degrade until hardware acceptance.
+Silent cards, speech, and routine learning remain locked off.
+See [companion-mode-privacy.md](companion-mode-privacy.md) for capture,
+retention, local-only, correction, and threat-model details.
+
 **Proactive surfaces (all default OFF)** — posture watch, focus-fatigue nudges,
 calendar pre-meeting nudges, watch-mode observation nudges, the weekday morning
 brief. Every one flows through `PaceRestraintGate` (stays silent during a

@@ -161,7 +161,7 @@ extension CompanionManager {
             refreshLocalRetrievalPublishedState()
         case .file:
             refreshFileRetrievalDocumentsIfAllowed(force: true)
-        case .paceHistory, .screenWatchHistory, .researchHistory, .episodicMemory, .meetingNotes:
+        case .paceHistory, .screenWatchHistory, .researchHistory, .episodicMemory, .companionMemory, .meetingNotes:
             // All are recorded passively as turns/watch/research events
             // happen — nothing to refresh on re-enable.
             break

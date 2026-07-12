@@ -26,6 +26,10 @@ nonisolated enum PaceProactiveSource: String, Codable, Equatable, CaseIterable {
     /// quiet during an active call — though if a meeting just ended,
     /// the user probably isn't in one. Still, cheap correctness.
     case meetingNotesSynthesis
+    /// An intervention proposed by default-off Always-On Companion Mode.
+    /// Every spoken or clarifying companion event must use this source so it
+    /// cannot bypass active-call, Focus, input, confidence, or cooldown policy.
+    case companionEvent
 }
 
 /// User-tunable assertiveness profile for proactive speech. Default
@@ -148,7 +152,7 @@ nonisolated enum PaceRestraintGate {
         switch context.proactiveSource {
         case .userPushToTalk, .timerFire:
             return .speak
-        case .wakeWord, .watchNudge, .episodicRecall, .backgroundReminder, .morningTriage, .meetingNotesSynthesis:
+        case .wakeWord, .watchNudge, .episodicRecall, .backgroundReminder, .morningTriage, .meetingNotesSynthesis, .companionEvent:
             break
         }
 

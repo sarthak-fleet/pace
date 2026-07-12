@@ -211,6 +211,35 @@ final class PaceProactivityPipeline {
         }
     }
 
+    /// The only spoken/clarifying exit from Always-On Companion Mode. The
+    /// candidate has already passed companion information-value policy; this
+    /// second gate applies the live call/Focus/input/cooldown restraint contract
+    /// and folds allowed output into the existing proactive queue/TTS path.
+    func routeCompanionUtterance(
+        spokenText: String,
+        confidence: Double,
+        expiresAt: Date?,
+        restraintContext: PaceRestraintContext? = nil
+    ) {
+        let utterance = PaceProactiveUtterance(
+            spokenText: spokenText,
+            source: .companionEvent,
+            confidence: confidence,
+            relevanceWindowExpiresAt: expiresAt
+        )
+        let context = restraintContext ?? buildProactiveRestraintContext(
+            proactiveSource: .companionEvent
+        )
+        switch PaceRestraintGate.decide(context) {
+        case .speak:
+            emitProactiveUtterance(utterance)
+        case .queueUntilIdle:
+            enqueueProactiveUtterance(utterance)
+        case .stayQuiet:
+            break
+        }
+    }
+
     /// Test seam: read the queue contents without depending on
     /// internal ordering invariants.
     func proactiveUtteranceQueueSnapshot() -> [PaceProactiveUtterance] {

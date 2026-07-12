@@ -389,6 +389,39 @@ final class CompanionManager: ObservableObject {
         PaceScreenWatchModeController()
     }()
 
+    lazy var companionControlCenter: PaceCompanionControlCenter = {
+        PaceCompanionControlCenter(
+            onModePreferenceChanged: { [weak self] preferences in
+                self?.companionPreferencesChanged(preferences)
+            },
+            onPauseRequested: { [weak self] in
+                Task { @MainActor [weak self] in
+                    await self?.companionRuntime.pause()
+                }
+            },
+            onSourceClearRequested: { [weak self] source in
+                self?.companionRuntime.clear(source: source)
+            },
+            onClearAllRequested: { [weak self] in
+                self?.companionRuntime.clearAll()
+            }
+        )
+    }()
+
+    lazy var companionRuntime: PaceCompanionRuntime = {
+        PaceCompanionRuntime(
+            watchModeController: screenWatchModeController,
+            localRetriever: localRetriever,
+            statusConsumer: { [weak self] state, activeSources, lastObservationAt in
+                self?.companionControlCenter.updateRuntime(
+                    state: state,
+                    activeSources: activeSources,
+                    lastObservationAt: lastObservationAt
+                )
+            }
+        )
+    }()
+
     /// Fast-tier screen reader. AX tree of the focused window in 5-50ms,
     /// vs 800ms-3s for the VLM. If AX returns ≥1 element we use it +
     /// OCR enrichment and skip the VLM entirely — the common path on

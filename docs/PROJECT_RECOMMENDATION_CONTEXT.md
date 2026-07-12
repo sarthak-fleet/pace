@@ -39,6 +39,14 @@ style first-party integrations, and an MCP bridge.
 - App Intents (Siri, Shortcuts, Spotlight)
 - Quick Actions (Finder service for transcribe-audio-file)
 
+An opt-in Always-On Companion Mode is under implementation. Its typed local
+world-model, perception-coordinator contract, default-off preferences, and
+silence-first intervention policy, Settings/menu-bar controls, and default-off
+app lifecycle exist. Existing ambient/watch adapters can run; camera/ambient-
+voice adapters remain behind injected boundaries and visibly degrade without
+real hardware clients. Do not recommend or describe room-companion capture as
+shipped until the OpenSpec acceptance work is complete.
+
 ## Default-on dependencies (no install required for fresh setup)
 
 - macOS 14+ frameworks: ScreenCaptureKit, Vision, Speech, EventKit,
