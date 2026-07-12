@@ -161,10 +161,3 @@ class WindowPositionManager {
 
 // MARK: - NSScreen Extension
 
-extension NSScreen {
-    /// The CGDirectDisplayID for this screen.
-    var displayID: CGDirectDisplayID {
-        let key = NSDeviceDescriptionKey("NSScreenNumber")
-        return deviceDescription[key] as? CGDirectDisplayID ?? 0
-    }
-}

@@ -183,22 +183,6 @@ nonisolated enum PaceMCPJSONValue: Codable, Equatable, Sendable {
         }
     }
 
-    var shortDisplayText: String {
-        switch self {
-        case .string(let value):
-            return value
-        case .number(let value):
-            return String(value)
-        case .bool(let value):
-            return String(value)
-        case .object(let value):
-            return "{\(value.keys.sorted().joined(separator: ", "))}"
-        case .array(let value):
-            return "[\(value.count)]"
-        case .null:
-            return "null"
-        }
-    }
 }
 
 nonisolated enum PaceMCPServerRegistry {

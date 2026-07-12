@@ -83,14 +83,6 @@ nonisolated struct PaceToolPreflightEnvironment {
     let hasCalendarPermission: Bool
     let hasRemindersPermission: Bool
     let configuredMCPServerNames: Set<String>
-
-    static let fullyGranted = PaceToolPreflightEnvironment(
-        actionsAreEnabled: true,
-        hasAccessibilityPermission: true,
-        hasCalendarPermission: true,
-        hasRemindersPermission: true,
-        configuredMCPServerNames: []
-    )
 }
 
 nonisolated enum PaceToolPreflight {

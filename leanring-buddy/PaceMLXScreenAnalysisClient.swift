@@ -75,24 +75,6 @@ final class PaceMLXScreenAnalysisClient: PaceScreenAnalysisClient, @unchecked Se
             .replacingOccurrences(of: "-Instruct", with: "")
     }
 
-    /// Pre-fetch the model — surfaces NSProgress so the Settings UI
-    /// can render a real download percentage instead of an
-    /// indeterminate spinner.
-    static func prefetchModel(
-        modelIdentifier: String,
-        progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
-    ) async throws {
-        #if canImport(MLXVLM)
-        _ = try await sharedModelContainer(
-            modelIdentifier: modelIdentifier,
-            progressHandler: progressHandler
-        )
-        #else
-        _ = (modelIdentifier, progressHandler)
-        throw PaceMLXScreenAnalysisError.runtimeNotLinked
-        #endif
-    }
-
     // MARK: - PaceScreenAnalysisClient
 
     func analyzeScreenshot(

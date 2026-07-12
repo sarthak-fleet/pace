@@ -15,19 +15,6 @@ extension PaceActionExecutor {
 
     // MARK: - High-level entry point
 
-    /// Executes a serial sequence of actions parsed from legacy inline tags.
-    /// Kept as a compatibility wrapper around the richer tool-plan shape.
-    @discardableResult
-    func executeActionSequence(
-        _ actions: [PaceParsedAction],
-        screenCaptures: [CompanionScreenCapture]
-    ) async -> [PaceActionExecutionObservation] {
-        await executeActionPlan(
-            PaceActionExecutionPlan.serial(actions: actions),
-            screenCaptures: screenCaptures
-        )
-    }
-
     /// Executes a tool plan: outer steps are sequential; actions within one
     /// step are a parallel group at the planner contract level. UI-mutating
     /// actions still run in source order because macOS focus/cursor state is
