@@ -65,6 +65,62 @@ Field reference:
 | `expectations.must_contain_patterns` | List of regexes that MUST appear (case-insensitive) in the response. |
 | `expectations.must_not_contain_patterns` | List of regexes that MUST NOT appear. |
 
+## VLM screen-grounding measurement
+
+Pace's Set-of-Mark click recovery (`leanring-buddy/PaceSetOfMarkRenderer.swift`,
+`PaceSetOfMarkClickRecovery.swift`, `LocalVLMClient.groundMarkedClickTarget`)
+draws numbered magenta marks on a screenshot and asks the local VLM which mark
+sits on a target element. That VLM path — mark reading and element grounding —
+was never measured. Three steps close the gap, isolating each failure mode:
+
+1. **Synthetic mark-reading micro-eval** — `scripts/eval-vlm-mark-reading.py`.
+   Generates deterministic synthetic UI mockups (PIL) and draws numbered marks
+   with the exact `PaceSetOfMarkRenderer` convention (2px `systemPink` outline +
+   white-on-`systemPink` index chip at each box's top-left, top-left-origin
+   coordinates). It then asks the VLM which mark is on a named element and scores
+   exact integer match — the pure "can the model read the number I drew?" skill,
+   with ground truth we control.
+
+   ```bash
+   ./scripts/eval-vlm-mark-reading.py                       # default ui-venus-1.5-2b
+   ./scripts/eval-vlm-mark-reading.py --models ui-venus-1.5-2b,qwen3-vl-8b-instruct
+   ./scripts/eval-vlm-mark-reading.py --generate-only --image-dir /tmp/marks  # inspect only
+   ```
+
+2. **Capture the real corpus** — `scripts/capture-grounding-corpus.sh`.
+   Interactive helper you run on your Mac: for each `fm-vlm-fixtures-v1` fixture
+   that lacks a screenshot, it prints the scenario, captures the screen with
+   `screencapture -x` into `fm-vlm-fixtures-v1/screenshots/<name>.png`, and
+   records a `SCREENSHOT_PATH:` line in the fixture. Skip-if-exists; `--status`
+   lists what's still missing without capturing.
+
+   ```bash
+   ./scripts/capture-grounding-corpus.sh --status   # list missing
+   ./scripts/capture-grounding-corpus.sh            # capture them
+   ```
+
+3. **Real-VLM fixture eval** — `scripts/eval-vlm-grounding.py`.
+   For fixtures that carry a `SCREENSHOT_PATH`, runs the full flow against LM
+   Studio: (a) element-map extraction (`analyzeScreenshot`), (b) target-found
+   check, (c) Set-of-Mark mark-reading on the extracted map (same renderer
+   convention as step 1). Scores per fixture, prints an **AX-blind-only** row,
+   and compares against the AX+OCR baseline (`ax-blind-*` fixtures fail it).
+   Graceful when zero screenshots exist (prints the step-2 instruction, exits 0);
+   fails loud if LM Studio is down while screenshots exist.
+
+   ```bash
+   ./scripts/eval-vlm-grounding.py
+   ```
+
+**Acceptance bar** (from `fm-vlm-fixtures-v1/README.md`): the real VLM must beat
+the AX+OCR baseline by **> 30 percentage points on the AX-blind cases** to claim
+real screen-grounding contribution. The step-3 summary prints this delta and a
+MEETS / BELOW verdict.
+
+Both eval scripts hit the real `localhost:1234` LM Studio and NEVER fabricate
+results — if the server is unreachable they print a "start LM Studio and load
+`<model>`" message and exit nonzero.
+
 ## V10 Schema Fixtures
 
 `v10-schema-fixtures/` contains deterministic planner-response JSON examples.
