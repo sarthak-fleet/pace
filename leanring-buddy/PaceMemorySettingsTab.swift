@@ -19,6 +19,7 @@ struct PaceMemorySettingsTab: View {
     @State private var useUnifiedMemoryRecallForSettings: Bool = PaceUserPreferencesStore
         .bool(.useUnifiedMemoryRecall, default: true)
     @State private var memoryRefreshTick: Int = 0
+    @State private var researchHistoryRefreshTick: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -74,6 +75,12 @@ struct PaceMemorySettingsTab: View {
 
             episodicFactRosterSection
                 .id(memoryRefreshTick)
+
+            Divider()
+                .background(DS.Colors.borderSubtle)
+
+            pastResearchSection
+                .id(researchHistoryRefreshTick)
 
             Divider()
                 .background(DS.Colors.borderSubtle)
@@ -163,4 +170,77 @@ struct PaceMemorySettingsTab: View {
             Divider().background(DS.Colors.borderSubtle)
         }
     }
+
+    // MARK: - Past research subsection
+
+    private var pastResearchSection: some View {
+        let researchEntries = companionManager.researchHistoryEntries()
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Past research")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(DS.Colors.textSecondary)
+                Spacer()
+                if !researchEntries.isEmpty {
+                    paceSettingsButton("Clear all", systemName: "trash.slash") {
+                        companionManager.clearResearchHistory()
+                        researchHistoryRefreshTick &+= 1
+                    }
+                }
+            }
+
+            Text("Research turns Pace has run for you, newest first. Kept for 30 days (up to 100 entries) so \"what did I research about X?\" can recall them.")
+                .font(.system(size: 12))
+                .foregroundColor(DS.Colors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if researchEntries.isEmpty {
+                Text("No research yet. Ask Pace to research something and it'll show up here after the turn finishes.")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 6)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(researchEntries, id: \.id) { entry in
+                        pastResearchRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pastResearchRow(_ entry: PaceResearchJournalEntry) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.question)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(DS.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(entry.answer)
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.Colors.textTertiary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Self.researchTimestampFormatter.localizedString(for: entry.recordedAt, relativeTo: Date()))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(DS.Colors.textTertiary)
+            }
+            Spacer(minLength: 0)
+            paceSettingsButton("Delete", systemName: "trash") {
+                companionManager.deleteResearchHistoryEntry(id: entry.id)
+                researchHistoryRefreshTick &+= 1
+            }
+        }
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Divider().background(DS.Colors.borderSubtle)
+        }
+    }
+
+    private static let researchTimestampFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 }

@@ -368,6 +368,68 @@ struct PaceLocalRetrievalTests {
         #expect(store.documents(withSource: .screenWatchHistory).isEmpty)
     }
 
+    @Test func researchHistorySourceHasDisplayName() async throws {
+        #expect(PaceRetrievalSource.researchHistory.displayName == "Research history")
+        // The source participates in the allCases-driven enable/clear loop.
+        #expect(PaceRetrievalSource.allCases.contains(.researchHistory))
+    }
+
+    @Test func researchHistorySourceIsEnableableAndClearable() async throws {
+        let store = PaceInMemoryRetrievalStore()
+        let retriever = PaceLocalRetriever(
+            store: store,
+            appliesPersistedSourcePreferences: false
+        )
+        // Enable/disable toggles like every other allCases source.
+        retriever.setSourceEnabled(false, for: .researchHistory)
+        #expect(!retriever.isSourceEnabled(.researchHistory))
+        retriever.setSourceEnabled(true, for: .researchHistory)
+        #expect(retriever.isSourceEnabled(.researchHistory))
+
+        retriever.recordResearchTurn(
+            question: "what is a vector database",
+            answer: "a database that indexes embeddings for similarity search"
+        )
+        #expect(!store.documents(withSource: .researchHistory).isEmpty)
+        #expect(retriever.researchHistoryEntries().count == 1)
+
+        // Clear drops both the index docs and the roster.
+        retriever.clearResearchHistory()
+        #expect(store.documents(withSource: .researchHistory).isEmpty)
+        #expect(retriever.researchHistoryEntries().isEmpty)
+    }
+
+    @Test func disabledResearchHistorySourceSkipsRecording() async throws {
+        let store = PaceInMemoryRetrievalStore()
+        let retriever = PaceLocalRetriever(
+            store: store,
+            appliesPersistedSourcePreferences: false
+        )
+        retriever.setSourceEnabled(false, for: .researchHistory)
+        retriever.recordResearchTurn(
+            question: "what is a bloom filter",
+            answer: "a probabilistic set-membership data structure"
+        )
+        #expect(store.documents(withSource: .researchHistory).isEmpty)
+    }
+
+    @Test func recordedResearchIsRecallableByQuestion() async throws {
+        let store = PaceInMemoryRetrievalStore()
+        let retriever = PaceLocalRetriever(
+            store: store,
+            appliesPersistedSourcePreferences: false
+        )
+        retriever.recordResearchTurn(
+            question: "research the tradeoffs of SQLite versus Postgres for embeddings",
+            answer: "SQLite is simpler to embed; Postgres scales further with pgvector"
+        )
+        let contextBlock = retriever.localContextBlock(
+            for: PaceRetrievalQuery(text: "what did I research about SQLite Postgres embeddings")
+        )
+        #expect(contextBlock?.contains("Research history") == true)
+        #expect(contextBlock?.contains("Postgres") == true)
+    }
+
     @Test func flushedAppUsageDocumentIsRetrievableByTimeQuery() async throws {
         let store = PaceInMemoryRetrievalStore()
         let retriever = PaceLocalRetriever(

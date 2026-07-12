@@ -19,6 +19,7 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
     case paceHistory
     case screenWatchHistory
     case appUsageHistory
+    case researchHistory
     case screenTime
     case localPreference
     case episodicMemory
@@ -46,6 +47,8 @@ nonisolated enum PaceRetrievalSource: String, CaseIterable, Codable, Equatable {
             return "Screen watch journal"
         case .appUsageHistory:
             return "App usage journal"
+        case .researchHistory:
+            return "Research history"
         case .screenTime:
             return "Screen Time (system)"
         case .localPreference:
@@ -321,7 +324,7 @@ enum PaceRetrievalContextPolicy {
         "calendar", "contact", "contacts", "deck", "document", "documents",
         "email", "emails", "event", "events", "file", "files", "folder",
         "folders", "mail", "meeting", "meetings", "message", "messages",
-        "note", "notes", "reminder", "reminders"
+        "note", "notes", "reminder", "reminders", "research"
     ]
 
     private static let offscreenReferencePhrases: [String] = [
@@ -331,7 +334,9 @@ enum PaceRetrievalContextPolicy {
         "previous", "recent", "said about", "that email", "that note",
         "did i use", "earlier today", "my time", "this morning", "using my",
         "we discussed", "what apps", "what did", "what have i been",
-        "what was", "where is", "which apps", "yesterday"
+        "what was", "where is", "which apps", "yesterday",
+        "did i research", "i looked into", "i researched", "past research",
+        "what did i research", "what did we research"
     ]
 
     private static let localPreferencePhrases: [String] = [
@@ -837,6 +842,7 @@ final class PaceLocalRetriever: PaceRetriever {
     private(set) var lastQueryDurationMilliseconds: Int?
     private var screenWatchJournal: PaceScreenWatchJournal?
     private var meetingNotesJournal: PaceMeetingNotesJournal?
+    private var researchJournal: PaceResearchJournal?
 
     init(
         store: PaceRetrievalStore? = nil,
@@ -987,6 +993,67 @@ final class PaceLocalRetriever: PaceRetriever {
             retentionDays: PaceUserPreferencesStore.meetingNotesRetentionDays()
         )
         replaceDocuments(journal.allDocuments(now: now), forSource: .meetingNotes)
+        return journal
+    }
+
+    /// Journals a completed research turn so "what did I research about X?"
+    /// questions can be answered from local history AND the user can browse
+    /// past research in Settings → Memory. Recording is free of model calls —
+    /// the question and answer come from the caller's already-finished turn.
+    func recordResearchTurn(question: String, answer: String, now: Date = Date()) {
+        guard isSourceEnabled(.researchHistory) else { return }
+        var journal = researchJournal ?? rehydratedResearchJournal(now: now)
+        let changedDocument = journal.record(PaceResearchJournalEntry(
+            id: "research-\(Int(now.timeIntervalSince1970))-\(abs(question.hashValue))",
+            recordedAt: now,
+            question: question,
+            answer: answer
+        ))
+        researchJournal = journal
+        if let changedDocument {
+            store.upsertDocuments([changedDocument])
+        }
+    }
+
+    /// Reverse-chronological list of past research turns for the Settings →
+    /// Memory roster. Rehydrates the journal on first access after launch.
+    func researchHistoryEntries(now: Date = Date()) -> [PaceResearchJournalEntry] {
+        var journal = researchJournal ?? rehydratedResearchJournal(now: now)
+        researchJournal = journal
+        return journal.entriesReverseChronological()
+    }
+
+    /// Removes a single past-research entry (from the Settings → Memory
+    /// per-entry delete) and syncs the retrieval index for the affected day.
+    func deleteResearchHistoryEntry(withId entryId: String, now: Date = Date()) {
+        var journal = researchJournal ?? rehydratedResearchJournal(now: now)
+        let removal = journal.removeEntry(withId: entryId)
+        researchJournal = journal
+        guard removal.didRemove else { return }
+        // The whole source is rewritten so a day bucket that became empty is
+        // dropped from the index too, not just the still-populated ones.
+        replaceDocuments(journal.allDocuments(now: now), forSource: .researchHistory)
+    }
+
+    /// Clears all past research: drops the retrieval documents AND the
+    /// in-memory journal cache so a subsequent `researchHistoryEntries()`
+    /// reflects the empty state instead of the stale cache.
+    func clearResearchHistory() {
+        store.removeDocuments(withSource: .researchHistory)
+        researchJournal = nil
+    }
+
+    /// Rebuilds the in-memory research journal from persisted documents on
+    /// the first record/read after launch — without this, the first
+    /// post-restart entry would upsert a same-id day bucket and clobber
+    /// earlier history. Also the single point where retention (30 days /
+    /// 100 entries) is enforced.
+    private func rehydratedResearchJournal(now: Date) -> PaceResearchJournal {
+        var journal = PaceResearchJournal(
+            rehydratingFrom: store.documents(withSource: .researchHistory),
+            now: now
+        )
+        replaceDocuments(journal.allDocuments(now: now), forSource: .researchHistory)
         return journal
     }
 

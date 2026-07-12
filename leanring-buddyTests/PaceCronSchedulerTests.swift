@@ -171,4 +171,75 @@ struct PaceCronSchedulerTests {
         #expect(decoded.skipWeekends == task.skipWeekends)
         #expect(decoded.taskPrompt == task.taskPrompt)
     }
+
+    // MARK: - lastRunAt (last-run tracking)
+
+    /// OLD persisted JSON — written before `lastRunAt` existed, so the key
+    /// is entirely absent — still decodes, with `lastRunAt == nil`.
+    @Test
+    func cronTaskDecodesLegacyJSONWithoutLastRunAtKey() throws {
+        let legacyJSON = """
+        {
+            "id": "legacy-task",
+            "displayName": "Legacy Task",
+            "intervalSeconds": 1800,
+            "skipWeekends": false,
+            "taskPrompt": "check calendar"
+        }
+        """
+        let data = try #require(legacyJSON.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(PaceCronTask.self, from: data)
+
+        #expect(decoded.id == "legacy-task")
+        #expect(decoded.intervalSeconds == 1800)
+        #expect(decoded.lastRunAt == nil)
+    }
+
+    /// A `lastRunAt` value survives an encode/decode round-trip.
+    @Test
+    func cronTaskLastRunAtSurvivesRoundTrip() throws {
+        let lastRunAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let task = PaceCronTask(
+            id: "lastrun-test",
+            displayName: "Last Run Test",
+            intervalSeconds: 3600,
+            skipWeekends: false,
+            taskPrompt: "test",
+            lastRunAt: lastRunAt
+        )
+
+        let data = try JSONEncoder().encode(task)
+        let decoded = try JSONDecoder().decode(PaceCronTask.self, from: data)
+
+        #expect(decoded.lastRunAt == lastRunAt)
+    }
+
+    /// A brand-new task (no explicit `lastRunAt`) starts with nil.
+    @Test
+    func cronTaskDefaultsToNilLastRunAt() {
+        let task = PaceCronTask(
+            id: "default-lastrun",
+            displayName: "Default",
+            intervalSeconds: 3600,
+            skipWeekends: false,
+            taskPrompt: "test"
+        )
+        #expect(task.lastRunAt == nil)
+    }
+
+    // MARK: - humanizedInterval formatting
+
+    @Test
+    func humanizedIntervalFormatsCommonCadences() {
+        #expect(PaceTasksSettingsTab.humanizedInterval(30 * 60) == "Every 30 minutes")
+        #expect(PaceTasksSettingsTab.humanizedInterval(60) == "Every minute")
+        #expect(PaceTasksSettingsTab.humanizedInterval(3_600) == "Every hour")
+        #expect(PaceTasksSettingsTab.humanizedInterval(2 * 3_600) == "Every 2 hours")
+        #expect(PaceTasksSettingsTab.humanizedInterval(86_400) == "Daily")
+        #expect(PaceTasksSettingsTab.humanizedInterval(2 * 86_400) == "Every 2 days")
+        #expect(PaceTasksSettingsTab.humanizedInterval(15) == "Every 15 seconds")
+        #expect(PaceTasksSettingsTab.humanizedInterval(1) == "Every second")
+        // Non-round intervals fall through to raw seconds.
+        #expect(PaceTasksSettingsTab.humanizedInterval(90) == "Every 90 seconds")
+    }
 }

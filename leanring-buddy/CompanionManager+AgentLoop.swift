@@ -1181,6 +1181,10 @@ extension CompanionManager {
             var currentTurnUserPrompt = transcript
             var pendingPostActionFeedbackText: String?
             var turnFullResponseText: String = ""
+            // The most recent step's cleaned spoken text. Research turns
+            // journal ONE entry per turn using this final answer (see the
+            // finalization block below) — never one per agent step.
+            var latestSpokenTextForResearchJournal: String = ""
             let streamingMailDraftDetector = PaceStreamingMailDraftDetector()
             let streamingPlannerFieldDetector = PaceStreamingPlannerFieldDetector()
 
@@ -1607,6 +1611,12 @@ extension CompanionManager {
                         userTranscript: isFirstStep ? transcript : "(agent step \(stepIndex))",
                         assistantResponse: spokenText
                     )
+                    // Track the latest step's spoken text so a research turn
+                    // can journal ONE entry (question = original transcript,
+                    // answer = final spoken text) after the loop finalizes.
+                    if !spokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        latestSpokenTextForResearchJournal = spokenText
+                    }
                     print("🧠 Conversation history: \(conversationHistory.count) exchanges")
                     PaceAnalytics.trackAIResponseReceived(response: spokenText)
 
@@ -1904,6 +1914,22 @@ extension CompanionManager {
 
             if !Task.isCancelled {
                 voiceState = .idle
+                // Journal a research turn ONCE per completed turn so past
+                // research is browsable + recallable. Question = the ORIGINAL
+                // user transcript (not the "(agent step N)" placeholder);
+                // answer = the final spoken text. Strictly guarded on
+                // `isResearchTurn`, additive (no control-flow change), and
+                // non-blocking — `recordResearchTurn` is a non-throwing
+                // best-effort recorder that fires-and-persists inline like the
+                // sibling journals, so it cannot throw back into the loop.
+                if isResearchTurn,
+                   !latestSpokenTextForResearchJournal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    localRetriever.recordResearchTurn(
+                        question: transcript,
+                        answer: latestSpokenTextForResearchJournal
+                    )
+                    refreshLocalRetrievalPublishedState()
+                }
                 // Record end-to-end turn latency: from the moment the
                 // agent loop Task started to the moment we flip to idle.
                 // This is the metric that matters to users — "how long

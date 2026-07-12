@@ -161,9 +161,9 @@ extension CompanionManager {
             refreshLocalRetrievalPublishedState()
         case .file:
             refreshFileRetrievalDocumentsIfAllowed(force: true)
-        case .paceHistory, .screenWatchHistory, .episodicMemory, .meetingNotes:
-            // Both are recorded passively as turns/watch events happen —
-            // nothing to refresh on re-enable.
+        case .paceHistory, .screenWatchHistory, .researchHistory, .episodicMemory, .meetingNotes:
+            // All are recorded passively as turns/watch/research events
+            // happen — nothing to refresh on re-enable.
             break
         case .appUsageHistory:
             appUsageTracker?.start()
@@ -221,8 +221,38 @@ extension CompanionManager {
         localRetriever.isSourceEnabled(source)
     }
 
+    // MARK: - Past research history (Settings → Memory)
+
+    /// Reverse-chronological list of past research turns for the
+    /// "Past research" roster in Settings → Memory.
+    func researchHistoryEntries() -> [PaceResearchJournalEntry] {
+        localRetriever.researchHistoryEntries()
+    }
+
+    /// Deletes a single past-research entry from the roster and keeps the
+    /// retrieval index in sync.
+    func deleteResearchHistoryEntry(id entryId: String) {
+        localRetriever.deleteResearchHistoryEntry(withId: entryId)
+        refreshLocalRetrievalPublishedState()
+    }
+
+    /// Clears all past research. Drops both the retrieval index documents
+    /// and the in-memory journal cache so the index + roster stay in
+    /// lockstep, then refreshes the published Settings state.
+    func clearResearchHistory() {
+        localRetriever.clearResearchHistory()
+        refreshLocalRetrievalPublishedState()
+        currentTurnHUDState = .done("research history cleared")
+        print("🔎 Local retrieval source cleared: \(PaceRetrievalSource.researchHistory.displayName)")
+    }
+
     func clearLocalRetrievalSource(_ source: PaceRetrievalSource) {
         localRetriever.clearDocuments(forSource: source)
+        // Research history keeps an in-memory journal cache; drop it too so
+        // the Activity-tab per-source clear can't leave a stale roster behind.
+        if source == .researchHistory {
+            localRetriever.clearResearchHistory()
+        }
         refreshLocalRetrievalPublishedState()
         currentTurnHUDState = .done("\(source.displayName.lowercased()) retrieval cleared")
         print("🔎 Local retrieval source cleared: \(source.displayName)")

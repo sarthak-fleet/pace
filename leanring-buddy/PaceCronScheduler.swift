@@ -28,6 +28,27 @@ struct PaceCronTask: Identifiable, Equatable, Codable {
     /// The prompt to send to the planner when this task fires.
     /// The planner generates the spoken response.
     let taskPrompt: String
+    /// When this task most recently fired, or nil if it has never run.
+    /// Optional so tasks persisted before this field existed still decode:
+    /// Swift's synthesized `Codable` maps a missing key for an Optional to
+    /// nil, so old `pace.cronScheduler.tasks` JSON stays readable.
+    var lastRunAt: Date?
+
+    init(
+        id: String,
+        displayName: String,
+        intervalSeconds: TimeInterval,
+        skipWeekends: Bool,
+        taskPrompt: String,
+        lastRunAt: Date? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.intervalSeconds = intervalSeconds
+        self.skipWeekends = skipWeekends
+        self.taskPrompt = taskPrompt
+        self.lastRunAt = lastRunAt
+    }
 
     static func == (lhs: PaceCronTask, rhs: PaceCronTask) -> Bool {
         lhs.id == rhs.id
@@ -125,6 +146,16 @@ final class PaceCronScheduler: ObservableObject {
         lastFireDates[task.id] = Date()
 
         await executeTaskCallback?(task)
+
+        // Record when this task last ran so the Settings → Tasks tab can
+        // show "Last ran <relative>". Runs after the callback so the
+        // timestamp reflects the completed fire. Whole-app stays on the
+        // MainActor, so this array mutation + persist cannot race with the
+        // timers that also mutate `tasks`.
+        if let indexOfFiredTask = tasks.firstIndex(where: { $0.id == task.id }) {
+            tasks[indexOfFiredTask].lastRunAt = Date()
+            persistTasks()
+        }
     }
 
     // MARK: - Persistence

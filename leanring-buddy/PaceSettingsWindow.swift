@@ -55,6 +55,7 @@ private enum PaceSettingsTab: String, CaseIterable, Identifiable {
     case voice = "Voice"
     case cloudBridge = "Cloud bridge"
     case flows = "Flows"
+    case tasks = "Tasks"
     case memory = "Memory"
     case activity = "Activity"
     case debug = "Debug"
@@ -84,6 +85,8 @@ private enum PaceSettingsTab: String, CaseIterable, Identifiable {
             return "antenna.radiowaves.left.and.right"
         case .flows:
             return "play.square.stack"
+        case .tasks:
+            return "clock.arrow.circlepath"
         case .memory:
             return "brain"
         case .activity:
@@ -177,6 +180,8 @@ struct PaceSettingsWindowView: View {
                     PaceCloudBridgeSettingsTab(companionManager: companionManager)
                 case .flows:
                     PaceFlowsSettingsTab(companionManager: companionManager)
+                case .tasks:
+                    PaceTasksSettingsTab(companionManager: companionManager)
                 case .memory:
                     PaceMemorySettingsTab(companionManager: companionManager)
                 case .activity:
