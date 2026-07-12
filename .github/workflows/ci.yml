@@ -147,8 +147,7 @@ jobs:
             -destination "platform=macOS" \
             -configuration Debug \
             -resultBundlePath "$RESULT_BUNDLE" \
-            -parallel-testing-enabled YES \
-            -parallel-testing-worker-count 3 \
+            -parallel-testing-enabled NO \
             -retry-tests-on-failure \
             -test-iterations 3 \
             CLANG_ENABLE_CODE_COVERAGE=${{ env.ENABLE_COVERAGE }} \
