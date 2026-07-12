@@ -94,11 +94,38 @@ final class LocalPlannerClient: BuddyPlannerClient {
         )
     }
 
+    /// One entry in a multi-step `payload.calls` array. Typing THIS
+    /// substructure (and only this) inside the otherwise-free payload is
+    /// what forces the decoder to emit `{name, args:{}}` OBJECTS for
+    /// multi-step tasks instead of collapsing them (the live failure:
+    /// `"args":"Safari"` string collapse, and runaway malformed JSON that
+    /// decoded to nothing — so steps 2+ silently vanished). Typing calls
+    /// also raises the model's structural discipline generally, so
+    /// single-action Draw.annotation shapes come out as correct shape
+    /// objects too (paired with the agent-mode prompt's shape-object
+    /// rule). We deliberately do NOT type `payload.args.shapes`: doing so
+    /// made the decoder hallucinate a `shapes` field into every action's
+    /// args (open_app got shapes and dropped `app`) — a measured
+    /// regression. `required:[name]` only; args stays fully free.
+    private static let v10CallSchema: [String: Any] = [
+        "type": "object",
+        "properties": [
+            "name": ["type": "string"],
+            "args": ["type": "object", "additionalProperties": true]
+        ],
+        "required": ["name"]
+    ]
+
     /// JSON-schema response format pinning the v10 envelope. Matches the
     /// shape `PaceActionTagParser.parsePlannerResponseJSON` accepts and
     /// validates: exactly `spokenText` (required), `intent` (required enum),
     /// and an optional flexible `payload`. Sending this as `response_format`
     /// forces LM Studio's decoder to emit a conforming object — no prose.
+    ///
+    /// `payload.calls` is the ONLY typed substructure; `payload` and
+    /// `payload.args` stay `additionalProperties:true` so every intent and
+    /// per-action arg-set (draw shapes, mail fields, etc.) remains
+    /// expressible. See `v10CallSchema` for why only calls is typed.
     private static let v10ResponseFormat: [String: Any] = [
         "type": "json_schema",
         "json_schema": [
@@ -116,7 +143,12 @@ final class LocalPlannerClient: BuddyPlannerClient {
                     ],
                     "payload": [
                         "type": "object",
-                        "additionalProperties": true
+                        "additionalProperties": true,
+                        "properties": [
+                            "name": ["type": "string"],
+                            "args": ["type": "object", "additionalProperties": true],
+                            "calls": ["type": "array", "items": v10CallSchema]
+                        ]
                     ]
                 ]
             ]

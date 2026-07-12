@@ -65,6 +65,55 @@ Field reference:
 | `expectations.must_contain_patterns` | List of regexes that MUST appear (case-insensitive) in the response. |
 | `expectations.must_not_contain_patterns` | List of regexes that MUST NOT appear. |
 
+## V10 action-quality fixtures (`fm-fixtures-actions/`)
+
+The main planner (`LocalPlannerClient`) does NOT send free text — it pins
+`response_format: json_schema` to the **v10 envelope** (`{spokenText, intent,
+payload}`) so LM Studio's decoder is FORCED to emit a conforming object. None
+of the older fixture modes exercised that path, so three live action-quality
+failures went unmeasured: (1) "draw a red circle around X" answering with
+`intent:dictate`/`edit` instead of a `Draw.annotation` action; (2) app names
+routed to `open_url` (inventing `safari.com`) instead of `open_app`; (3) a
+numbered multi-step skill emitting only step 1.
+
+`fm-fixtures-actions/` closes that gap. Each fixture sets `V10_MODE: true`,
+which makes `scripts/eval-planners.py` send **the real production v10 path**:
+`evals/pace_v10.build_agent_mode_system_prompt()` (verbatim
+`CompanionSystemPrompt` prose blocks + a tool list auto-derived from
+`PaceToolRegistry.swift`) as the system prompt, and `pace_v10.V10_RESPONSE_FORMAT`
+(a mirror of `LocalPlannerClient.v10ResponseFormat`) as `response_format`. The
+raw envelope is then DECODED into the action list Pace would actually execute
+(`pace_v10.decode_v10_actions`, a mirror of
+`PaceActionTagParser.parsePlannerActions`), so scoring asserts on real behavior
+— a draw that emits the legacy `{"tool":...}` shape or a flat positional
+`shapes` array decodes to nothing here, exactly as in production.
+
+```bash
+./scripts/eval-planners.py --models qwen/qwen3-30b-a3b --no-load \
+    --fixtures-dir evals/fm-fixtures-actions
+```
+
+V10 scoring fields (in addition to `SPOKEN_MUST_*`):
+
+| Field | Purpose |
+|---|---|
+| `V10_MODE: true` | Send the real v10 prompt + schema; score decoded actions. |
+| `EXPECT_ACTION: draw_annotation` | This decoded action kind MUST appear (repeatable). |
+| `EXPECT_ACTION_NOT: open_url` | This decoded action kind may NOT appear (repeatable). |
+| `EXPECT_ACTION_ARG: open_app.app~=safari` | A decoded action of that kind must carry `arg` containing the substring (case-insensitive). |
+| `EXPECT_MIN_ACTIONS: 2` | Decoded action list must have ≥ N actions (multi-step). |
+| `EXPECT_DRAW_NEAR: 540,300,140` | Some draw shape's center must fall within radius px of (x,y). |
+| `EXPECT_DRAW_COLOR: red` | Some draw shape must carry this color. |
+
+A `USER:` line may embed literal `\n` — the parser unescapes them, so a
+multi-step fixture can carry the exact `PaceSkillLoader.toPlannerPrompt` shape
+(`Execute the "X" skill. Follow these steps:\n\n1. ...`) on one line.
+
+**Keep `pace_v10.py` in sync** with `CompanionSystemPrompt.swift` (prose),
+`LocalPlannerClient.swift` (`v10ResponseFormat`), and
+`PaceActionTagParser.swift` (decoder) — same "duplicate + re-sync on change"
+convention the other eval prompts use.
+
 ## VLM screen-grounding measurement
 
 Pace's Set-of-Mark click recovery (`leanring-buddy/PaceSetOfMarkRenderer.swift`,

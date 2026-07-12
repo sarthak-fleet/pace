@@ -1,0 +1,11 @@
+USER: draw a red circle around the Apple menu
+ELEMENT: [0] menu_bar_item|20,12|Apple menu|
+ELEMENT: [1] menu_item|60,12|File|
+ELEMENT: [2] menu_item|100,12|Edit|
+V10_MODE: true
+EXPECT_ACTION: draw_annotation
+EXPECT_ACTION_NOT: type
+EXPECT_ACTION_NOT: set_value
+EXPECT_DRAW_NEAR: 20,12,80
+EXPECT_DRAW_COLOR: red
+SPOKEN_MUST_NOT_CONTAIN: element,ID

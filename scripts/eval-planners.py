@@ -53,6 +53,10 @@ from typing import Optional
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parent
 FIXTURES_DIR = PROJECT_DIR / "evals" / "fm-fixtures"
+# Make evals/pace_v10.py importable — the shared v10 envelope helpers
+# (real response_format, real agent-mode prompt, real action decoder).
+sys.path.insert(0, str(PROJECT_DIR / "evals"))
+import pace_v10  # noqa: E402
 LMS_BIN = os.environ.get("LMS_BIN", str(Path.home() / ".lmstudio" / "bin" / "lms"))
 LM_STUDIO_URL = os.environ.get(
     "PACE_LM_STUDIO_URL", "http://localhost:1234/v1/chat/completions"
@@ -176,6 +180,24 @@ class FixtureExpectations:
     # request should produce, like \\[TYPE:hello\\] or \\[KEY:cmd\\+s\\].
     spoken_must_match_regex: list[str] = field(default_factory=list)
 
+    # V10-mode expectations (scored against the DECODED action list —
+    # see pace_v10.decode_v10_actions). These make the eval measure what
+    # Pace would actually execute, not the raw envelope text.
+    #   expect_action        — every kind here MUST appear in decoded actions
+    #   expect_action_not    — no kind here may appear
+    #   expect_action_arg    — "kind.arg~=substr": a decoded action of that
+    #                          kind must have arg containing substr (ci)
+    #   expect_min_actions   — decoded action list must have >= N actions
+    #   expect_draw_near      — "x,y,radius": some draw shape's center must
+    #                          fall within `radius` px of (x,y)
+    #   expect_draw_color    — some draw shape must carry this color
+    expect_action: list[str] = field(default_factory=list)
+    expect_action_not: list[str] = field(default_factory=list)
+    expect_action_arg: list[str] = field(default_factory=list)
+    expect_min_actions: Optional[int] = None
+    expect_draw_near: Optional[tuple[int, int, int]] = None
+    expect_draw_color: Optional[str] = None
+
     @property
     def has_any_check(self) -> bool:
         return any(
@@ -189,6 +211,12 @@ class FixtureExpectations:
                 self.spoken_must_not_contain,
                 self.spoken_max_words,
                 self.spoken_must_match_regex,
+                self.expect_action,
+                self.expect_action_not,
+                self.expect_action_arg,
+                self.expect_min_actions,
+                self.expect_draw_near,
+                self.expect_draw_color,
             )
         )
 
@@ -204,6 +232,13 @@ class Fixture:
     # tags. Use for action-chain fixtures. Scoring is regex-based since
     # there's no structured output to inspect.
     free_text_mode: bool = False
+    # When true, the request is sent through the REAL v10 decode-constrained
+    # path: pace_v10.build_agent_mode_system_prompt() as the system prompt
+    # and pace_v10.V10_RESPONSE_FORMAT as response_format. The raw envelope
+    # is decoded via pace_v10.decode_v10_actions and scored against the
+    # EXPECT_ACTION* / EXPECT_DRAW_* expectations. This is the path Pace's
+    # main action planner (LocalPlannerClient) actually uses in production.
+    v10_mode: bool = False
 
 
 def parse_fixture(path: Path) -> Fixture:
@@ -211,12 +246,17 @@ def parse_fixture(path: Path) -> Fixture:
     element_lines: list[str] = []
     expectations = FixtureExpectations()
     free_text_mode = False
+    v10_mode = False
 
     with path.open() as fixture_file:
         for raw_line in fixture_file:
             line = raw_line.rstrip("\n")
             if line.startswith("USER: "):
-                transcript = line[len("USER: ") :]
+                # Unescape literal "\n" so v10 multi-step skill fixtures can
+                # carry the EXACT PaceSkillLoader.toPlannerPrompt shape
+                # ("Execute the \"X\" skill. Follow these steps:\n\n1. ...")
+                # on a single fixture line.
+                transcript = line[len("USER: ") :].replace("\\n", "\n")
             elif line.startswith("ELEMENT: "):
                 element_lines.append(line[len("ELEMENT: ") :])
             elif line.startswith("FREE_TEXT_MODE: "):
@@ -224,6 +264,42 @@ def parse_fixture(path: Path) -> Fixture:
                     "true",
                     "1",
                     "yes",
+                )
+            elif line.startswith("V10_MODE: "):
+                v10_mode = line[len("V10_MODE: ") :].strip().lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                )
+            elif line.startswith("EXPECT_ACTION: "):
+                expectations.expect_action.append(
+                    line[len("EXPECT_ACTION: ") :].strip().lower()
+                )
+            elif line.startswith("EXPECT_ACTION_NOT: "):
+                expectations.expect_action_not.append(
+                    line[len("EXPECT_ACTION_NOT: ") :].strip().lower()
+                )
+            elif line.startswith("EXPECT_ACTION_ARG: "):
+                expectations.expect_action_arg.append(
+                    line[len("EXPECT_ACTION_ARG: ") :].strip()
+                )
+            elif line.startswith("EXPECT_MIN_ACTIONS: "):
+                expectations.expect_min_actions = int(
+                    line[len("EXPECT_MIN_ACTIONS: ") :].strip()
+                )
+            elif line.startswith("EXPECT_DRAW_NEAR: "):
+                near_values = [
+                    int(value.strip())
+                    for value in line[len("EXPECT_DRAW_NEAR: ") :].split(",")
+                ]
+                expectations.expect_draw_near = (
+                    near_values[0],
+                    near_values[1],
+                    near_values[2],
+                )
+            elif line.startswith("EXPECT_DRAW_COLOR: "):
+                expectations.expect_draw_color = (
+                    line[len("EXPECT_DRAW_COLOR: ") :].strip().lower()
                 )
             elif line.startswith("EXPECT_POINT_ID: "):
                 expectations.point_id_exact = int(line[len("EXPECT_POINT_ID: ") :])
@@ -265,6 +341,7 @@ def parse_fixture(path: Path) -> Fixture:
         element_map="\n".join(element_lines),
         expectations=expectations,
         free_text_mode=free_text_mode,
+        v10_mode=v10_mode,
     )
 
 
@@ -276,6 +353,10 @@ class ModelResponse:
     elapsed_ms: int
     raw: str = ""
     error: Optional[str] = None
+    # V10-mode only: the ordered list of pace_v10.DecodedAction that the
+    # response envelope decodes to (what Pace would execute). Empty for
+    # typed / free-text fixtures.
+    decoded_actions: list = field(default_factory=list)
 
 
 @dataclass
@@ -344,7 +425,145 @@ def score_fixture(response: ModelResponse, expectations: FixtureExpectations) ->
         except re.error as regex_compile_error:
             failures.append(f"invalid regex /{pattern}/: {regex_compile_error}")
 
+    failures.extend(score_v10_action_expectations(response, expectations))
+
     return FixtureScore(passed=not failures, failures=failures)
+
+
+def score_v10_action_expectations(
+    response: ModelResponse, expectations: FixtureExpectations
+) -> list[str]:
+    """Score the DECODED action list (pace_v10.decode_v10_actions output)
+    against the EXPECT_ACTION* / EXPECT_DRAW_* expectations. This is what
+    makes the v10 fixtures measure what Pace would execute, not raw text."""
+    failures: list[str] = []
+    decoded_kinds = [action.kind for action in response.decoded_actions]
+
+    for required_kind in expectations.expect_action:
+        if required_kind not in decoded_kinds:
+            failures.append(
+                f"expected action {required_kind}, decoded {decoded_kinds or '[]'}"
+            )
+
+    for forbidden_kind in expectations.expect_action_not:
+        if forbidden_kind in decoded_kinds:
+            failures.append(f"forbidden action {forbidden_kind} present")
+
+    for arg_assertion in expectations.expect_action_arg:
+        # Shape "kind.arg~=substr" — a decoded action of `kind` must carry
+        # `arg` containing `substr` (case-insensitive).
+        match = re.match(r"^(?P<kind>[a-z_]+)\.(?P<arg>[a-zA-Z_]+)~=(?P<substr>.+)$", arg_assertion)
+        if not match:
+            failures.append(f"malformed EXPECT_ACTION_ARG {arg_assertion!r}")
+            continue
+        wanted_kind = match.group("kind").lower()
+        wanted_arg = match.group("arg")
+        wanted_substr = match.group("substr").strip().lower()
+        matching_actions = [a for a in response.decoded_actions if a.kind == wanted_kind]
+        if not matching_actions:
+            failures.append(f"no {wanted_kind} action to check arg {wanted_arg}")
+            continue
+        arg_matched = any(
+            isinstance(a.args.get(wanted_arg), str)
+            and wanted_substr in a.args[wanted_arg].lower()
+            for a in matching_actions
+        )
+        if not arg_matched:
+            observed = [a.args.get(wanted_arg) for a in matching_actions]
+            failures.append(
+                f"{wanted_kind}.{wanted_arg} did not contain {wanted_substr!r} (got {observed})"
+            )
+
+    if expectations.expect_min_actions is not None:
+        if len(response.decoded_actions) < expectations.expect_min_actions:
+            failures.append(
+                f"decoded {len(response.decoded_actions)} actions, "
+                f"expected >= {expectations.expect_min_actions}"
+            )
+
+    if expectations.expect_draw_near is not None:
+        failures.extend(_score_draw_near(response, expectations.expect_draw_near))
+
+    if expectations.expect_draw_color is not None:
+        failures.extend(_score_draw_color(response, expectations.expect_draw_color))
+
+    return failures
+
+
+def _shape_center(shape: dict) -> Optional[tuple[float, float]]:
+    """Best-effort center of a draw shape in screenshot pixels, matching
+    the coordinate conventions in PaceAnnotationShape (rect/ellipse use
+    top-left x,y + width/height; line/arrow use x1,y1..x2,y2; polygon
+    averages its points)."""
+    if not isinstance(shape, dict):
+        return None
+    kind = str(shape.get("kind", "")).lower()
+    if kind in ("rect", "ellipse"):
+        try:
+            return (
+                float(shape["x"]) + float(shape.get("width", 0)) / 2.0,
+                float(shape["y"]) + float(shape.get("height", 0)) / 2.0,
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+    if kind in ("line", "arrow"):
+        try:
+            return (
+                (float(shape["x1"]) + float(shape["x2"])) / 2.0,
+                (float(shape["y1"]) + float(shape["y2"])) / 2.0,
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+    if kind == "polygon":
+        points = shape.get("points")
+        if isinstance(points, list) and points:
+            try:
+                xs = [float(p[0]) for p in points]
+                ys = [float(p[1]) for p in points]
+                return (sum(xs) / len(xs), sum(ys) / len(ys))
+            except (IndexError, TypeError, ValueError):
+                return None
+    return None
+
+
+def _all_draw_shapes(response: ModelResponse) -> list[dict]:
+    shapes: list[dict] = []
+    for action in response.decoded_actions:
+        if action.kind == "draw_annotation":
+            action_shapes = action.args.get("shapes")
+            if isinstance(action_shapes, list):
+                shapes.extend(s for s in action_shapes if isinstance(s, dict))
+    return shapes
+
+
+def _score_draw_near(
+    response: ModelResponse, near: tuple[int, int, int]
+) -> list[str]:
+    target_x, target_y, radius = near
+    shapes = _all_draw_shapes(response)
+    if not shapes:
+        return [f"no draw shapes to check proximity to ({target_x},{target_y})"]
+    for shape in shapes:
+        center = _shape_center(shape)
+        if center is None:
+            continue
+        distance = ((center[0] - target_x) ** 2 + (center[1] - target_y) ** 2) ** 0.5
+        if distance <= radius:
+            return []
+    return [
+        f"no draw shape within {radius}px of ({target_x},{target_y}); "
+        f"shapes={shapes}"
+    ]
+
+
+def _score_draw_color(response: ModelResponse, wanted_color: str) -> list[str]:
+    shapes = _all_draw_shapes(response)
+    if not shapes:
+        return [f"no draw shapes to check color {wanted_color}"]
+    if any(str(shape.get("color", "")).lower() == wanted_color for shape in shapes):
+        return []
+    observed = [shape.get("color") for shape in shapes]
+    return [f"no draw shape with color {wanted_color} (got {observed})"]
 
 
 # ---------------------------------------------------------------------------
@@ -390,30 +609,43 @@ def run_via_lm_studio(model_identifier: str, fixture: Fixture) -> ModelResponse:
 
 
 def _run_lm_studio_call_once(model_identifier: str, fixture: Fixture) -> ModelResponse:
-    active_system_prompt = (
-        FREE_TEXT_SYSTEM_PROMPT if fixture.free_text_mode else SYSTEM_PROMPT
-    )
+    if fixture.v10_mode:
+        active_system_prompt = pace_v10.build_agent_mode_system_prompt()
+    elif fixture.free_text_mode:
+        active_system_prompt = FREE_TEXT_SYSTEM_PROMPT
+    else:
+        active_system_prompt = SYSTEM_PROMPT
     # max_tokens budget: typed fixtures are JSON-schema-constrained so
     # 400 tokens is comfortably enough. Free-text fixtures need room for
     # qwen3-30b-a3b's <think>…</think> reasoning block PLUS the action
     # tag answer — at 400-600 tokens the model was truncating mid-think,
     # returning empty after <think> strip. 1500 leaves headroom; mean
     # observed token count for free-text answers is well under 800.
-    max_tokens_budget = 1500 if fixture.free_text_mode else 400
+    # V10 fixtures mirror LocalPlannerClient exactly: max_tokens 1024 +
+    # temperature 0.4 (production values, so latency and behavior match
+    # what the user actually feels).
+    if fixture.v10_mode:
+        max_tokens_budget = 1024
+    elif fixture.free_text_mode:
+        max_tokens_budget = 1500
+    else:
+        max_tokens_budget = 400
     request_body: dict = {
         "model": model_identifier,
         "messages": [
             {"role": "system", "content": active_system_prompt},
             {"role": "user", "content": build_user_prompt(fixture)},
         ],
-        "temperature": 0,
+        "temperature": 0.4 if fixture.v10_mode else 0,
         "max_tokens": max_tokens_budget,
         "stream": False,
     }
-    # Typed-output fixtures use the JSON schema. Free-text fixtures
-    # bypass it so the planner can emit [CLICK]/[TYPE]/[KEY]/[SCROLL]
-    # tags that the schema would otherwise forbid.
-    if not fixture.free_text_mode:
+    # V10 fixtures pin the REAL v10 envelope response_format (the exact
+    # schema LocalPlannerClient sends). Typed fixtures use the older
+    # {spokenText,pointAt,click} schema. Free-text fixtures bypass schema.
+    if fixture.v10_mode:
+        request_body["response_format"] = pace_v10.V10_RESPONSE_FORMAT
+    elif not fixture.free_text_mode:
         request_body["response_format"] = RESPONSE_SCHEMA
     request = urllib.request.Request(
         LM_STUDIO_URL,
@@ -465,6 +697,20 @@ def _run_lm_studio_call_once(model_identifier: str, fixture: Fixture) -> ModelRe
                 click_element_id=-1,
                 elapsed_ms=elapsed_ms,
                 raw=raw_content,
+            )
+        # V10 mode: parse the envelope, then decode it into the action
+        # list Pace would execute (pace_v10.decode_v10_actions), so scoring
+        # asserts on real behavior, not raw text.
+        if fixture.v10_mode:
+            envelope = json.loads(cleaned_content)
+            decoded_actions = pace_v10.decode_v10_actions(envelope)
+            return ModelResponse(
+                spoken_text=envelope.get("spokenText", "") or "",
+                point_at_element_id=-1,
+                click_element_id=-1,
+                elapsed_ms=elapsed_ms,
+                raw=raw_content,
+                decoded_actions=decoded_actions,
             )
         parsed = json.loads(cleaned_content)
         return ModelResponse(
@@ -682,17 +928,26 @@ def evaluate_model_on_fixtures(
             score = score_fixture(response, fixture.expectations)
             results[fixture.name] = (response, score)
             verdict = "PASS" if score.passed else "FAIL"
-            print(
-                f"    {verdict}  point={response.point_at_element_id}  "
-                f"click={response.click_element_id}  spoken={response.spoken_text!r}"
-            )
+            if fixture.v10_mode:
+                decoded_summary = [
+                    f"{a.kind}:{a.args}" for a in response.decoded_actions
+                ]
+                print(
+                    f"    {verdict}  {response.elapsed_ms}ms  "
+                    f"actions={decoded_summary}  spoken={response.spoken_text!r}"
+                )
+            else:
+                print(
+                    f"    {verdict}  point={response.point_at_element_id}  "
+                    f"click={response.click_element_id}  spoken={response.spoken_text!r}"
+                )
             if not score.passed:
                 for failure_reason in score.failures:
                     print(f"      · {failure_reason}")
-                # On free-text failures, print the raw response so we can
-                # debug whether the model emitted nothing, malformed tags,
-                # or got truncated mid-output.
-                if fixture.free_text_mode and response.raw:
+                # On free-text / v10 failures, print the raw response so we
+                # can debug whether the model emitted nothing, malformed
+                # tags/JSON, or got truncated mid-output.
+                if (fixture.free_text_mode or fixture.v10_mode) and response.raw:
                     raw_preview = response.raw[:600].replace("\n", "\\n")
                     print(f"      raw[0:600]: {raw_preview}")
     finally:

@@ -1,0 +1,6 @@
+USER: Execute the "focus setup" skill. Follow these steps:\n\n1. Open Spotify\n2. Turn the volume down\n3. Snap the window to the left
+V10_MODE: true
+EXPECT_ACTION: open_app
+EXPECT_ACTION_ARG: open_app.app~=spotify
+EXPECT_MIN_ACTIONS: 2
+SPOKEN_MUST_NOT_CONTAIN: [done]

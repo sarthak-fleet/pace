@@ -1,0 +1,5 @@
+USER: open github.com
+V10_MODE: true
+EXPECT_ACTION: open_url
+EXPECT_ACTION_NOT: open_app
+EXPECT_ACTION_ARG: open_url.url~=github.com

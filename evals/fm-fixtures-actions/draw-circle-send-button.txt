@@ -1,0 +1,11 @@
+USER: draw a red circle around the Send button
+ELEMENT: [0] button|540,300|send button|Send
+ELEMENT: [1] text_field|300,200|message input|Type a message…
+ELEMENT: [2] button|620,300|cancel button|Cancel
+V10_MODE: true
+EXPECT_ACTION: draw_annotation
+EXPECT_ACTION_NOT: type
+EXPECT_ACTION_NOT: set_value
+EXPECT_DRAW_NEAR: 540,300,140
+EXPECT_DRAW_COLOR: red
+SPOKEN_MUST_NOT_CONTAIN: element,ID

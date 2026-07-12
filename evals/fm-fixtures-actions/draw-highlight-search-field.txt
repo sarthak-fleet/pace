@@ -1,0 +1,10 @@
+USER: highlight the search field
+ELEMENT: [0] text_field|400,60|search field|Search…
+ELEMENT: [1] button|560,60|search button|Search
+ELEMENT: [2] static_text|200,140|results|No results
+V10_MODE: true
+EXPECT_ACTION: draw_annotation
+EXPECT_ACTION_NOT: type
+EXPECT_ACTION_NOT: set_value
+EXPECT_DRAW_NEAR: 400,60,160
+SPOKEN_MUST_NOT_CONTAIN: element,ID
