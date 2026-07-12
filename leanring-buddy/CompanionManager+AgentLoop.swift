@@ -2376,7 +2376,11 @@ extension CompanionManager {
             }
         case .run(let slug, let name):
             let skills = PaceSkillLoader.loadAllSkills()
-            if let skill = skills.first(where: { $0.slug == slug || $0.name.lowercased() == name.lowercased() }) {
+            if let skill = PaceSkillLoader.resolveSkillForRunRequest(
+                requestedSlug: slug,
+                requestedName: name,
+                in: skills
+            ) {
                 // Enforce `requiredPreferences` at RUN time (deterministic,
                 // no LLM). Mirrors the recipe installer's gate + wording —
                 // both read through `PaceLocalMemoryStore`, one source of

@@ -631,6 +631,83 @@ final class PaceFlowReplayTests: XCTestCase {
         XCTAssertEqual(PaceFlowCommandParser.parse("delete the flow morning standup"), .delete(name: "morning standup"))
     }
 
+    func testFlowRunDefersSkillUtterancesToTheSkillParser() {
+        // Regression (found in live testing 2026-07-12): the bare "run "
+        // prefix swallowed EVERY skill-run utterance before the skill parser
+        // (which runs later in the agent loop) could see it, so Pace answered
+        // "i couldn't find a flow named the cat search skill" and taught
+        // skills could never be run by voice.
+        XCTAssertNil(PaceFlowCommandParser.parse("run the cat search skill"))
+        XCTAssertNil(PaceFlowCommandParser.parse("run cat search skill"))
+        XCTAssertNil(PaceFlowCommandParser.parse("do the standup notes skill"))
+        // The skill parser DOES claim the deferred utterance.
+        if case .run(let slug, _)? = PaceSkillCommandParser.parse("run the cat search skill") {
+            XCTAssertEqual(slug, "cat-search")
+        } else {
+            XCTFail("skill parser should claim 'run the cat search skill'")
+        }
+        // Plain flow runs (no "skill" mention) are untouched.
+        XCTAssertEqual(PaceFlowCommandParser.parse("run email zero"), .run(name: "email zero"))
+    }
+
+    func testSkillRunResolverMatchesSpokenNameToLongerTaughtSlug() {
+        // A skill taught as "cat search: open Safari" persists as slug
+        // `cat-search-open-safari`, but the user says "run the cat search
+        // skill" (slug `cat-search`). Exact match wins; otherwise a UNIQUE
+        // prefix/contains match resolves; ambiguity returns nil.
+        let taughtSkill = PaceSkillFile(
+            name: "Cat search: open Safari",
+            slug: "cat-search-open-safari",
+            description: "Cat search",
+            category: "custom",
+            requiredPreferences: [],
+            trigger: nil,
+            steps: [PaceSkillStep(instruction: "Open Safari", toolCall: nil)],
+            notes: nil
+        )
+        let unrelatedSkill = PaceSkillFile(
+            name: "Standup notes",
+            slug: "standup-notes",
+            description: "Standup",
+            category: "custom",
+            requiredPreferences: [],
+            trigger: nil,
+            steps: [PaceSkillStep(instruction: "Open Notes", toolCall: nil)],
+            notes: nil
+        )
+        let skills = [taughtSkill, unrelatedSkill]
+        XCTAssertEqual(
+            PaceSkillLoader.resolveSkillForRunRequest(
+                requestedSlug: "cat-search", requestedName: "cat search", in: skills
+            )?.slug,
+            "cat-search-open-safari"
+        )
+        // Exact slug still wins.
+        XCTAssertEqual(
+            PaceSkillLoader.resolveSkillForRunRequest(
+                requestedSlug: "standup-notes", requestedName: "standup notes", in: skills
+            )?.slug,
+            "standup-notes"
+        )
+        // Ambiguous fuzzy request (two skills share the prefix) returns nil.
+        let secondCatSkill = PaceSkillFile(
+            name: "Cat search: open Chrome",
+            slug: "cat-search-open-chrome",
+            description: "Cat search 2",
+            category: "custom",
+            requiredPreferences: [],
+            trigger: nil,
+            steps: [PaceSkillStep(instruction: "Open Chrome", toolCall: nil)],
+            notes: nil
+        )
+        XCTAssertNil(
+            PaceSkillLoader.resolveSkillForRunRequest(
+                requestedSlug: "cat-search", requestedName: "cat search",
+                in: [taughtSkill, secondCatSkill]
+            )
+        )
+    }
+
     @MainActor
     func testFlowRecorderProducesFlowAndReplayPlannerPausesBeforeSend() async throws {
         // Wave 3a renamed `PaceFlowRecorder` from a passive struct into

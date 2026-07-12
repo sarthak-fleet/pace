@@ -125,10 +125,18 @@ enum PaceFlowCommandParser {
             }
         }
 
-        for prefix in ["run ", "play back ", "do "] {
-            if normalizedTranscript.hasPrefix(prefix) {
-                let name = String(trimmedTranscript.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                return name.isEmpty ? nil : .run(name: name)
+        // "run <name>" runs a recorded flow — but an utterance that mentions
+        // "skill" ("run the cat search skill") belongs to the teachable-skill
+        // parser, which runs AFTER this one in the agent loop. Without this
+        // deferral the bare "run " prefix greedily swallows every skill-run
+        // command and answers "i couldn't find a flow named …", so taught
+        // skills can never be run by voice.
+        if !normalizedTranscript.contains("skill") {
+            for prefix in ["run ", "play back ", "do "] {
+                if normalizedTranscript.hasPrefix(prefix) {
+                    let name = String(trimmedTranscript.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    return name.isEmpty ? nil : .run(name: name)
+                }
             }
         }
 

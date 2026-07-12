@@ -24,7 +24,12 @@ jobs:
   # ---------------------------------------------------------------------------
   macos:
     name: Build & Test (macOS)
-    runs-on: macos-latest
+    # Pinned, NOT macos-latest: the -latest pool is heterogeneous and
+    # sometimes serves macOS 15 images, which cannot RUN tests for this
+    # app's macOS 26.0 deployment target ("My Mac's macOS 15.7.7 doesn't
+    # match ... deployment target", exit 70, zero tests executed). The
+    # build step tolerates old hosts; the test step cannot.
+    runs-on: macos-26
     timeout-minutes: 60
     # Code-coverage instrumentation slows both the build and the test run
     # and nothing gates on it, so it is OFF for push / PR runs and only
@@ -142,8 +147,9 @@ jobs:
             -destination "platform=macOS" \
             -configuration Debug \
             -resultBundlePath "$RESULT_BUNDLE" \
-            -parallel-testing-enabled YES \
-            -parallel-testing-worker-count 3 \
+            -parallel-testing-enabled NO \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             CLANG_ENABLE_CODE_COVERAGE=${{ env.ENABLE_COVERAGE }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \

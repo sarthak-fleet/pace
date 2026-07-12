@@ -128,6 +128,34 @@ enum PaceSkillLoader {
         )
     }
 
+    /// Resolve a spoken run request ("run the cat search skill" →
+    /// slug "cat-search", name "cat search") against the loaded skills.
+    ///
+    /// Exact slug/name matches win. When there is no exact match, a
+    /// UNIQUE prefix/contains match resolves instead — the structurer
+    /// often produces longer slugs than the user speaks (a skill taught
+    /// as "cat search: open Safari" persists as `cat-search-open-safari`,
+    /// but the user says "run the cat search skill"). Ambiguous fuzzy
+    /// requests (2+ candidates) return nil so the caller keeps the
+    /// honest "couldn't find" reply instead of guessing.
+    static func resolveSkillForRunRequest(
+        requestedSlug: String,
+        requestedName: String,
+        in skills: [PaceSkillFile]
+    ) -> PaceSkillFile? {
+        let lowercasedRequestedName = requestedName.lowercased()
+        if let exactMatch = skills.first(where: {
+            $0.slug == requestedSlug || $0.name.lowercased() == lowercasedRequestedName
+        }) {
+            return exactMatch
+        }
+        let fuzzyMatches = skills.filter { skill in
+            skill.slug.hasPrefix(requestedSlug)
+                || skill.name.lowercased().contains(lowercasedRequestedName)
+        }
+        return fuzzyMatches.count == 1 ? fuzzyMatches.first : nil
+    }
+
     /// Convert a PaceSkillFile's steps into a planner prompt that
     /// the agent loop can execute. Unlike recipes (which are recorded
     /// UI actions replayed verbatim), skills are natural-language
