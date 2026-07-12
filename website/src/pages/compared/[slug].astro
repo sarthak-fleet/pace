@@ -1,0 +1,166 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import Nav from "../../components/Nav.astro";
+import Footer from "../../components/Footer.astro";
+import ScrollProgress from "../../components/ScrollProgress.astro";
+import MouseSpotlight from "../../components/MouseSpotlight.astro";
+import CursorFollower from "../../components/CursorFollower.astro";
+import PageEnhancements from "../../components/PageEnhancements.astro";
+import CompetitorAnalysis from "../../components/CompetitorAnalysis.astro";
+import { competitors, comparisonRechecked, type Competitor } from "../../config/competitors";
+
+// One dedicated "Pace vs <Name>" page per competitor, generated from the
+// same competitors array that drives the /compared hub — single source
+// of truth, no per-page copy duplication (the analysis block itself is
+// rendered by the shared CompetitorAnalysis component).
+export function getStaticPaths() {
+  return competitors.map((competitor) => ({
+    params: { slug: competitor.slug },
+    props: { competitor },
+  }));
+}
+
+interface Props {
+  competitor: Competitor;
+}
+
+const { competitor } = Astro.props;
+
+const pageTitle = `Pace vs ${competitor.name} — ${competitor.angle}`;
+
+// Unique meta description per page: the honest one-sentence difference,
+// which is exactly the field we already author per competitor.
+const description = `Pace vs ${competitor.name}: ${competitor.paceDiffers} An honest side-by-side of two macOS voice agents, including where Pace is behind.`;
+
+const canonicalPath = `/compared/${competitor.slug}`;
+
+// Human-readable posture line for the summary.
+const postureLine: Record<string, string> = {
+  "on-device": "runs fully on-device",
+  cloud: "runs in the cloud",
+  hybrid: "is local-by-default, cloud when you ask",
+};
+
+// Per-page BreadcrumbList: home → compared → this vs-page. No ratings /
+// review schema — we don't have them and won't fabricate them.
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    {
+      "@type": "ListItem",
+      position: 1,
+      name: "Pace",
+      item: new URL("/", Astro.site ?? "https://pace-6xg.pages.dev").toString(),
+    },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: "Compared",
+      item: new URL("/compared", Astro.site ?? "https://pace-6xg.pages.dev").toString(),
+    },
+    {
+      "@type": "ListItem",
+      position: 3,
+      name: `Pace vs ${competitor.name}`,
+      item: new URL(canonicalPath, Astro.site ?? "https://pace-6xg.pages.dev").toString(),
+    },
+  ],
+};
+---
+
+<BaseLayout title={pageTitle} description={description} pathname={canonicalPath}>
+  <ScrollProgress />
+  <MouseSpotlight />
+  <CursorFollower />
+  <PageEnhancements />
+
+  <!-- Per-page breadcrumb structured data for SEO + LLM crawlers. -->
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify(breadcrumbSchema)}
+    slot="head"
+  />
+
+  <Nav />
+
+  <main class="px-6 pt-32 md:pt-40 pb-24">
+    <div class="max-w-5xl mx-auto">
+      <!-- ── Breadcrumb trail (visible) ───────────────────────── -->
+      <nav
+        class="text-sm text-[var(--color-text-muted)] font-mono mb-8"
+        aria-label="Breadcrumb"
+      >
+        <a href="/" class="hover:text-white transition-colors">Pace</a>
+        <span class="mx-2" aria-hidden="true">/</span>
+        <a href="/compared" class="hover:text-white transition-colors">Compared</a>
+        <span class="mx-2" aria-hidden="true">/</span>
+        <span class="text-[var(--color-text-secondary)]">vs {competitor.name}</span>
+      </nav>
+
+      <!-- ── Hero ─────────────────────────────────────────────── -->
+      <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+        Pace vs {competitor.name}
+      </p>
+
+      <h1 class="pace-display text-4xl md:text-6xl text-white mb-10 max-w-3xl">
+        Choosing between Pace and <em>{competitor.name}</em>?
+      </h1>
+
+      <!-- ── How Pace differs (summary up top) ────────────────── -->
+      <div class="pace-prose mb-14">
+        <p>
+          {competitor.name} {postureLine[competitor.posture]}, and it's
+          {competitor.openSource ? "open source" : "closed source"} under a
+          {" "}{competitor.license} license. It calls itself
+          {" "}<em>"{competitor.tagline}"</em>.
+        </p>
+        <p>
+          <strong>Where Pace differs:</strong> {competitor.paceDiffers}
+        </p>
+        <p>
+          The full breakdown is below — what {competitor.name} is genuinely
+          good at, its stack, and the honest line on where Pace diverges,
+          including where Pace is behind. For the whole field in one place,
+          see <a href="/compared" class="text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors">every macOS voice agent compared</a>.
+        </p>
+      </div>
+
+      <!-- ── The analysis block (shared with the /compared hub) ─ -->
+      <section class="mb-24 border-t border-[var(--color-border-subtle)] pt-14">
+        <CompetitorAnalysis competitor={competitor} showFullComparisonLink={false} />
+      </section>
+
+      <!-- ── The honesty anchor ───────────────────────────────── -->
+      <section class="border-t border-[var(--color-border-subtle)] pt-14 mb-4">
+        <p class="pace-margin-note max-w-md">
+          Rechecked {comparisonRechecked}.<br />
+          If {competitor.name} shipped something I missed or got cheaper
+          since, email me and I'll update this page.
+        </p>
+      </section>
+
+      <!-- ── CTA to download ──────────────────────────────────── -->
+      <section class="text-center mt-28">
+        <p class="pace-display text-2xl md:text-3xl text-white mb-8 max-w-xl mx-auto">
+          Pace is <em>$29 once</em>, fully on-device, and free to try on
+          Apple Intelligence.
+        </p>
+        <a href="/download" class="pace-cta-primary">
+          Get Pace
+          <span aria-hidden="true">→</span>
+        </a>
+        <p class="mt-6">
+          <a
+            href="/compared"
+            class="text-sm text-[var(--color-text-muted)] hover:text-white transition-colors underline decoration-[var(--color-border-subtle)] underline-offset-4"
+          >
+            ← Back to the full comparison
+          </a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <Footer />
+</BaseLayout>

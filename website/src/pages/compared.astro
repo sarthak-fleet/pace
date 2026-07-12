@@ -6,6 +6,7 @@ import ScrollProgress from "../components/ScrollProgress.astro";
 import MouseSpotlight from "../components/MouseSpotlight.astro";
 import CursorFollower from "../components/CursorFollower.astro";
 import PageEnhancements from "../components/PageEnhancements.astro";
+import CompetitorAnalysis from "../components/CompetitorAnalysis.astro";
 import { competitors, comparisonRechecked, type Competitor } from "../config/competitors";
 
 const description =
@@ -33,18 +34,13 @@ const groups: { label: string; blurb: string; items: Competitor[] }[] = [
   },
 ];
 
+// The three-cluster header still color-codes each posture label; the
+// per-competitor license/posture card colors now live in
+// CompetitorAnalysis.astro (single rendering of a competitor block).
 const postureColor: Record<string, string> = {
   "on-device": "var(--color-positive)",
   cloud: "var(--color-warning)",
   hybrid: "var(--color-text-secondary)",
-};
-
-const licenseColor: Record<string, string> = {
-  MIT: "var(--color-positive)",
-  "Apache-2.0": "var(--color-positive)",
-  "Source-available": "var(--color-warning)",
-  Proprietary: "var(--color-text-muted)",
-  "No license yet": "var(--color-warning)",
 };
 ---
 
@@ -117,98 +113,18 @@ const licenseColor: Record<string, string> = {
             <p class="pace-prose mb-14">{group.blurb}</p>
 
             <div class="space-y-16">
-              {group.items.map((c, i) => (
-                <article id={c.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")} class="scroll-mt-28">
-                  <div class="grid md:grid-cols-[1fr_16rem] gap-6 md:gap-12 items-start">
-                    {/* Main column */}
-                    <div>
-                      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-                        <h3 class="pace-display text-2xl md:text-3xl text-white">
-                          {c.name}
-                        </h3>
-                        <a
-                          href={c.url}
-                          class="text-sm text-[var(--color-text-muted)] hover:text-white transition-colors underline decoration-[var(--color-border-subtle)] underline-offset-4"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {c.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-                        </a>
-                      </div>
-                      <p class="text-[var(--color-text-secondary)] italic mb-6 max-w-xl">
-                        {c.tagline} — <span class="not-italic text-[var(--color-text-muted)]">{c.author}</span>
-                      </p>
-
-                      {/* Stack row */}
-                      <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs font-mono text-[var(--color-text-muted)] mb-6">
-                        <span><span class="text-[var(--color-text-secondary)]">STT</span> · {c.stt}</span>
-                        <span><span class="text-[var(--color-text-secondary)]">Reasoner</span> · {c.reasoner}</span>
-                        <span><span class="text-[var(--color-text-secondary)]">TTS</span> · {c.tts}</span>
-                        <span>
-                          <span class="text-[var(--color-text-secondary)]">Screen</span> · {c.screenAware ? "yes" : "no"}
-                        </span>
-                      </div>
-
-                      {/* Standout features */}
-                      <p class="text-sm font-mono uppercase tracking-widest text-[var(--color-text-muted)] mb-3">
-                        What it's good at
-                      </p>
-                      <ul class="pace-prose list-none p-0 space-y-2 mb-8">
-                        {c.standoutFeatures.map((f) => (
-                          <li class="pl-5 relative">
-                            <span class="absolute left-0 top-[0.55em] w-2 h-px bg-[var(--color-accent)]" />
-                            {f}
-                          </li>
-                        ))}
-                      </ul>
-
-                      {/* Pace differs */}
-                      <div class="border-l-2 border-[var(--color-accent)] pl-5 py-1">
-                        <p class="text-sm font-mono uppercase tracking-widest text-[var(--color-text-muted)] mb-2">
-                          Where Pace differs
-                        </p>
-                        <p class="text-[var(--color-text-secondary)] leading-relaxed">
-                          {c.paceDiffers}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Marginalia column — license + posture card */}
-                    <aside class="pace-card p-5 md:sticky md:top-24">
-                      <div class="space-y-4 text-sm">
-                        <div>
-                          <p class="text-xs font-mono uppercase tracking-widest text-[var(--color-text-muted)] mb-1">
-                            Open source
-                          </p>
-                          <p class="text-white">
-                            {c.openSource ? "Yes" : "No"}
-                          </p>
-                        </div>
-                        <div>
-                          <p class="text-xs font-mono uppercase tracking-widest text-[var(--color-text-muted)] mb-1">
-                            License
-                          </p>
-                          <p style={`color: ${licenseColor[c.license]}`}>
-                            {c.license}
-                          </p>
-                        </div>
-                        <div>
-                          <p class="text-xs font-mono uppercase tracking-widest text-[var(--color-text-muted)] mb-1">
-                            Posture
-                          </p>
-                          <p style={`color: ${postureColor[c.posture]}`}>
-                            {c.posture}
-                          </p>
-                        </div>
-                      </div>
-                    </aside>
-                  </div>
+              {group.items.map((competitor, indexInCluster) => (
+                <div>
+                  <CompetitorAnalysis
+                    competitor={competitor}
+                    showFullComparisonLink={true}
+                  />
 
                   {/* Divider between items in a cluster */}
-                  {i < group.items.length - 1 && (
+                  {indexInCluster < group.items.length - 1 && (
                     <hr class="mt-16 border-[var(--color-border-subtle)]" />
                   )}
-                </article>
+                </div>
               ))}
             </div>
           </section>

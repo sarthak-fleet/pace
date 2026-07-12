@@ -1,0 +1,107 @@
+---
+// "Reach without leaving the machine" — the planner-tier story, framed so
+// it REINFORCES the on-device pitch instead of diluting it. Local is the
+// default and stays free and private; every off-device tier is opt-in,
+// tints the menu-bar capsule amber while it runs, and writes an audit-log
+// line the in-app privacy dashboard reads. Codex is the phone-a-friend
+// default for the research lane and scheduled fires, but only after
+// explicit consent + a soak window — an unattended fire never silently
+// goes off-device.
+//
+// Two artifacts: the pace:// deeplink surface (entry points) and the
+// RAM-budget brain picker (the "a bigger vision model fits when the
+// planner goes off-device" mechanic). All claims verified against
+// AGENTS.md and PROJECT_STATUS.md. No latency numbers asserted here.
+---
+
+<section id="reach" class="px-6 py-24 md:py-36 border-t border-[var(--color-border-subtle)]">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+      Reach
+    </p>
+
+    <h2 class="pace-display text-4xl md:text-6xl text-white mb-12 max-w-3xl">
+      Local by default. <em>A bigger brain only when you say so.</em>
+    </h2>
+
+    <div class="grid md:grid-cols-2 gap-12 md:gap-16 items-start">
+      <div class="pace-prose">
+        <p>
+          The planner runs on your Mac out of the box — free, private, no key.
+          For the rare turn that wants a heavier model, Settings → Planner
+          lets you pick a tier: Apple's Foundation Models, your authenticated
+          Codex or Claude CLI, or a bring-your-own-key API. The key lives in
+          the macOS Keychain, never in a file or a log.
+        </p>
+        <p>
+          Off-device is opt-in and it's loud about it. The moment a turn
+          leaves the machine, the menu-bar capsule tints <strong>amber</strong>
+          and a line lands in the local audit log — the same log the Privacy
+          dashboard reads to keep its byte count honest. Deep research and
+          scheduled tasks default to phoning a friend (Codex), but only after
+          you've consented and a soak window has passed; otherwise an
+          unattended fire falls back to the local planner.
+        </p>
+        <p>
+          Going off-device even buys back RAM. When the planner isn't resident
+          on your Mac, the Models tab shows the freed budget and recommends the
+          largest local vision model that now fits — so choosing a cloud brain
+          can make Pace's <em>eyes</em> sharper without sending your screen
+          anywhere.
+        </p>
+      </div>
+
+      <div>
+        <p class="text-xs font-mono text-[var(--color-text-muted)] mb-3 uppercase tracking-wider">
+          Trigger Pace from anywhere — pace:// deeplinks
+        </p>
+        <div
+          class="font-mono text-sm bg-black border border-[var(--color-border-subtle)] rounded-lg p-5 leading-relaxed"
+        >
+          <div>
+            <span class="text-[var(--color-accent)]">pace://</span><span class="text-white/80">listen</span>
+          </div>
+          <div>
+            <span class="text-[var(--color-accent)]">pace://</span><span class="text-white/80">chat?text=</span><span class="text-[var(--color-text-muted)]">summarize+my+tabs</span>
+          </div>
+          <div>
+            <span class="text-[var(--color-accent)]">pace://</span><span class="text-white/80">watch?enabled=</span><span class="text-[var(--color-text-muted)]">true</span>
+          </div>
+          <div>
+            <span class="text-[var(--color-accent)]">pace://</span><span class="text-white/80">panel</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-[var(--color-border-subtle)] text-[var(--color-text-muted)]">
+            wire them to Raycast, Shortcuts, or Siri.
+          </div>
+          <div class="text-white/70">
+            App Intents put Pace in Spotlight too.
+          </div>
+        </div>
+
+        <p class="text-xs font-mono text-[var(--color-text-muted)] mt-8 mb-3 uppercase tracking-wider">
+          Settings → Models — RAM budget (illustrative)
+        </p>
+        <div
+          class="font-mono text-sm bg-black border border-[var(--color-border-subtle)] rounded-lg p-5 leading-relaxed"
+        >
+          <div>
+            <span class="text-[var(--color-text-muted)]">planner brain </span>
+            <span class="text-white/80">Codex (off-device)</span>
+          </div>
+          <div class="mt-1">
+            <span class="text-[var(--color-text-muted)]">local planner RAM </span>
+            <span class="text-[var(--color-positive)]">freed</span>
+          </div>
+          <div class="mt-1">
+            <span class="text-[var(--color-text-muted)]">now fits a bigger </span>
+            <span class="text-white/80">local vision model</span>
+          </div>
+        </div>
+        <p class="pace-margin-note mt-5">
+          The capsule is amber right now because Codex is picked.<br />
+          Switch back to local and it's black again — and $0.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

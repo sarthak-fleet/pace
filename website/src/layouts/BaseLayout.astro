@@ -35,13 +35,19 @@ const productSchema = {
     email: "hi@sarthakagrawal.dev",
   },
   featureList: [
-    "On-device voice control",
-    "Local vision model for screen reading",
-    "On-device speech recognition (WhisperKit / Apple Speech)",
-    "Plan-then-execute LLM scaffold",
-    "App Intents · Shortcuts · Spotlight integration",
-    "Persistent local memory",
-    "No cloud, no accounts, no subscription",
+    "On-device voice control (push-to-talk, always-on wake mode)",
+    "Local vision model reads the screen — element map, OCR, Accessibility tree",
+    "On-device speech recognition (Apple Speech / WhisperKit)",
+    "On-device text-to-speech (Kokoro sidecar / AVSpeechSynthesizer)",
+    "Plan-act-observe agent loop with macOS actions (click, type, open apps)",
+    "On-device meeting notes — two-track audio, privacy-pinned local synthesis",
+    "Watch mode + passive journals (screen-watch, app-usage, research history)",
+    "Teachable skills, pre-built recipes, and recorded flows",
+    "Planner tiers — local by default, optional Apple FM / Codex CLI / BYO-key",
+    "Trust surfaces — visible undo, reply replay, plain-language failures, privacy dashboard",
+    "MCP integration for external tools; App Intents, Shortcuts, Spotlight, pace:// deeplinks",
+    "Persistent two-tier local memory that survives quit and relaunch",
+    "No cloud LLM, no accounts, no subscription — one-time $29",
   ],
 };
 ---
@@ -97,6 +103,9 @@ const productSchema = {
 
     <!-- JSON-LD structured data for SEO + LLM crawlers. -->
     <script type="application/ld+json" set:html={JSON.stringify(productSchema)} />
+
+    <!-- Per-page <head> extras (e.g. a page-specific BreadcrumbList). -->
+    <slot name="head" />
   </head>
   <body class="min-h-screen">
     <slot />
