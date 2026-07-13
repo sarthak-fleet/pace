@@ -1,6 +1,6 @@
 # PRD: Premium chat panel — Pace's primary surface
 
-Status: phase 1 in progress
+Status: phase 1 shipped behind its feature flag; phase 2 deferred
 Owner vision: Claude-Desktop-style chat panel as THE primary surface;
 mascot perch top-right; notch code kept behind a flag (never deleted).
 
