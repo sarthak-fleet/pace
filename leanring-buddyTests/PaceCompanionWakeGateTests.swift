@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreML
 import Foundation
 import Testing
