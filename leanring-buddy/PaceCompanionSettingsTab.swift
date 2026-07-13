@@ -10,6 +10,7 @@ import SwiftUI
 
 struct PaceCompanionSettingsTab: View {
     @ObservedObject var controlCenter: PaceCompanionControlCenter
+    @State private var taughtObjectLabel = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -34,6 +35,7 @@ struct PaceCompanionSettingsTab: View {
             }
 
             sourceSection
+            observeOnlyActionsSection
             outputSection
             storageSection
         }
@@ -74,6 +76,55 @@ struct PaceCompanionSettingsTab: View {
             sourceToggle(.ambientVoice, title: "Ambient voice", subtitle: "Local VAD/wake gate; no transcription before wake and no raw-audio persistence.")
             sourceToggle(.screen, title: "Screen Watch events", subtitle: "Uses the existing explicit Watch Mode loop; no duplicate screen polling.")
             sourceToggle(.macOSContext, title: "Mac context", subtitle: "Frontmost app, window metadata, displays, and time — no screen pixels.")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Teach an object")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(DS.Colors.textPrimary)
+                Text("Hold one object centered in view, name it, then capture. Pace stores a local Vision feature print—not a photo—and only reports conservative matches.")
+                    .font(.system(size: 11))
+                    .foregroundColor(DS.Colors.textSecondary)
+                HStack(spacing: 8) {
+                    TextField("keys", text: $taughtObjectLabel)
+                        .textFieldStyle(.roundedBorder)
+                    paceSettingsButton("Capture centered object", systemName: "viewfinder") {
+                        controlCenter.teachObject(label: taughtObjectLabel)
+                        taughtObjectLabel = ""
+                    }
+                    .disabled(controlCenter.activeSources.contains(.camera) == false)
+                }
+                if let status = controlCenter.objectTeachingStatusText {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundColor(DS.Colors.textTertiary)
+                }
+                ForEach(controlCenter.taughtObjectLabels, id: \.self) { label in
+                    HStack {
+                        Text(label)
+                            .font(.system(size: 12))
+                            .foregroundColor(DS.Colors.textPrimary)
+                        Spacer()
+                        Button("Forget") { controlCenter.forgetTaughtObject(label: label) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DS.Colors.textSecondary)
+                            .pointerCursor()
+                    }
+                }
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    private var observeOnlyActionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Observe-only dogfood")
+            Text("Conversation starts only when you click. It uses Pace’s existing push-to-talk path and does not enable ambient transcription.")
+                .font(.system(size: 11))
+                .foregroundColor(DS.Colors.textSecondary)
+            paceSettingsButton("Talk to Pace now", systemName: "mic.fill") {
+                controlCenter.startUserInvokedConversation()
+            }
         }
     }
 
@@ -82,7 +133,7 @@ struct PaceCompanionSettingsTab: View {
             sectionTitle("Interventions")
             paceSettingsToggleRow(
                 title: "Silent cards",
-                subtitle: "Locked until observe-only accuracy and resource acceptance is documented and met.",
+                subtitle: "Optional, silent companion observations. Default off and shown only after policy scoring.",
                 isOn: Binding(
                     get: { controlCenter.preferences.areSilentCardsEnabled },
                     set: { controlCenter.setSilentCardsEnabled($0) }
@@ -92,7 +143,7 @@ struct PaceCompanionSettingsTab: View {
             .opacity(PaceCompanionControlCenter.silentCardsAcceptancePassed ? 1 : 0.55)
             paceSettingsToggleRow(
                 title: "Spoken interventions",
-                subtitle: "Locked until repetition/interruption acceptance passes; then every utterance still passes restraint.",
+                subtitle: "Optional and default off. Every utterance still passes active-call, Focus, input, and cooldown restraint.",
                 isOn: Binding(
                     get: { controlCenter.preferences.areSpokenInterventionsEnabled },
                     set: { controlCenter.setSpokenInterventionsEnabled($0) }

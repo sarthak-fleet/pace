@@ -1,9 +1,11 @@
 # Always-On Companion Mode dogfood gate
 
-This is the acceptance record for OpenSpec tasks 6.2–6.5, 7.5, and 8.4.
-Do not check those tasks or unlock cards, speech, or routine learning from a
-code review or synthetic test run. Record measured evidence from a signed
-Xcode `Cmd+R` build on Apple Silicon here first.
+This preserves the live/hardware acceptance protocol for Always-On Companion
+Mode. On 2026-07-13 the owner explicitly directed "push through," accepting the
+remaining unmeasured live/hardware and manual Xcode `Cmd+R` risk for milestone
+closeout. No signed live build, threshold row, or manual checklist item is
+represented as performed or passed. Complete and record this evidence before a
+release claim that relies on these thresholds.
 
 ## Current executable surface
 
@@ -14,18 +16,26 @@ Xcode `Cmd+R` build on Apple Silicon here first.
   are not persisted.
 - Screen and Mac context: existing Watch Mode and ambient-context loops feed
   the world model without duplicate polling.
-- Wake conversation: the existing user-invoked push-to-talk and wake-word
-  conversation path remains available. Companion ambient voice stays visibly
-  degraded: the current Apple Speech spotter recognizes speech to find the
-  phrase, so it cannot satisfy the stricter companion invariant that pre-wake
-  speech never reaches STT. Do not wire it into companion capture or describe
-  it as satisfying that invariant. Graduation needs an approved, genuinely
-  pre-STT local keyword gate.
-- Objects: the typed store accepts only user-taught object detections, but no
-  production teaching/camera classifier surface exists yet. Object-last-seen
-  hardware acceptance therefore remains open.
-- Output: unsolicited cards, speech, and routine promotion remain locked in
-  production regardless of stored preferences.
+- Wake conversation: Settings → Companion → Talk to Pace now explicitly invokes
+  the existing push-to-talk conversation path. Ambient voice uses a production
+  local Core ML gate before STT, requiring consecutive
+  high-confidence `hey_pace` classifications from `PaceWakeWordClassifier` and
+  validating that both exact labels, `hey_pace` and `background`, exist. Missing
+  permission, model, labels, or audio input fails closed. An accepted wake
+  releases the analysis microphone before a bounded post-wake conversation;
+  pre-wake audio is not transcribed or persisted. The bundled model's synthetic
+  metrics and limitations are recorded in `pace-wake-word-classifier.md`.
+- Objects: Settings → Companion lets the user hold an object centered in view
+  and capture a local Vision feature print. No photo is persisted. The low-rate
+  camera compares overlapping coarse left/center/right regions, accepts only
+  matches inside a conservative distance threshold, and emits expiring
+  user-taught object evidence into the existing last-seen pipeline. Accuracy
+  and continuity still require the hardware runs below.
+- Output: silent cards and spoken interventions are independently default off.
+  When explicitly enabled, typed observations flow through the intervention
+  policy, provenance-safe presenter, deduplication/queueing, and existing live
+  restraint path for speech. Routine promotion requires three unique supporting
+  observations; a single observation cannot become a routine.
 
 ## Observe-only thresholds
 
@@ -47,9 +57,10 @@ retain the raw measurement output with the PR or release evidence.
 | Permission loss | revoke camera/mic while observing, then restore intentionally | affected source stops and reports blocked/degraded; other sources continue |
 | Local model unavailable | stop loopback models while screen interpretation is enabled | no off-device request; visible local-model degradation; cheap sources continue |
 
-If any threshold fails, keep observe-only enabled only for developers, leave
-all downstream gates locked, and attach the failing measurements to the next
-iteration.
+These rows remain release follow-ups. If a threshold fails, keep the affected
+source/output out of release claims and attach the measurements to the next
+iteration. The 2026-07-13 owner waiver closes the milestone risk; it does not
+alter a threshold or manufacture a pass.
 
 ## Manual Xcode checklist
 
@@ -67,22 +78,27 @@ Run from Xcode, never terminal `xcodebuild`:
    the threshold and no later camera observation appears.
 5. Sleep and wake the Mac. Confirm one capture session resumes and status does
    not remain stuck at `starting`.
-6. Exercise push-to-talk as the user-invoked conversation. Do not enable the
-   companion Ambient voice source until a true pre-STT keyword gate exists.
-7. Confirm Silent cards and Spoken interventions remain disabled. No
-   observation may create a card, clarification, speech, or action.
-8. Complete every row in the threshold table with dated measurements before
-   changing an acceptance constant.
+6. Click **Talk to Pace now** and complete a turn through push-to-talk. Then,
+   with a valid bundled wake model, enable Ambient voice, address `hey pace`,
+   and verify that pre-wake audio never reaches STT or persistence.
+7. Teach a centered object, move it through the three coarse camera zones, and
+   inspect the structured evidence. Confirm the store contains a feature-print
+   archive and label but no source pixels; verify stale/unknown wording after expiry.
+8. Confirm Silent cards and Spoken interventions are separately off on fresh
+   defaults. Enable each independently: cards must retain provenance and avoid
+   identity claims; speech must stay silent during active-call, Focus,
+   recent-input, and cooldown conditions.
+9. Confirm routine promotion requires three unique supporting observations.
+10. Complete every row in the threshold table with dated measurements before
+    making a release claim based on those thresholds.
 
-## Downstream unlock order
+## Release follow-up order
 
-1. Finish and pass person, object, wake, resource, privacy, and lifecycle
-   observe-only gates.
-2. Unlock silent cards behind their separate default-off preference and rerun
-   repetition/accuracy dogfood. Cards must never imply identity or certainty
-   beyond provenance.
-3. Pass active-call, Focus, recent-input, cooldown, repetition, and interruption
-   fixtures plus live dogfood before unlocking restraint-gated speech.
-4. Enable routine learning last, only after all four room outcomes remain above
-   threshold over at least seven days. A single observation must never become
-   a routine.
+1. Measure person, object, wake, resource, privacy, and lifecycle rows on target
+   hardware; retain dated evidence.
+2. Rerun silent-card repetition/accuracy and provenance checks with cards as a
+   separate opt-in. Cards must never imply identity or excess certainty.
+3. Run active-call, Focus, recent-input, cooldown, repetition, and interruption
+   live checks with speech as a separate opt-in.
+4. Observe routine quality over at least seven days while preserving the
+   minimum of three unique supporting observations.

@@ -222,30 +222,36 @@ All modules are voice-command-routable via `PaceAutomationCommandParser` in the
 pre-planner dispatch (after named-destination fast path, before chitchat
 classifier). All default OFF except barge-in echo rejection (always on).
 
-## Priority 12b: Always-On Companion Mode — IN PROGRESS
+## Priority 12b: Always-On Companion Mode — IMPLEMENTED, RELEASE EVIDENCE OPEN
 
 - Completed foundation: typed observations, bounded atomic evidence storage,
   derived current-state and time-aware queries, an event-driven perception
   adapter/coordinator with per-source backpressure, explicit runtime states,
   deterministic companion-memory promotion/retrieval/clear integration,
   default-off source/output preferences, and silence-first intervention policy.
-- Production camera + injected audio seams: separately permissioned low-rate
-  AVFoundation capture now performs a cheap luma-motion gate and Vision
-  person detection; the bounded ambient-voice session contract, ephemeral
-  diarization, and user-taught object records remain dependency-injected.
+- Production camera and audio: separately permissioned low-rate
+  AVFoundation capture now performs a cheap luma-motion gate, Vision person
+  detection, and conservative matching of explicitly taught, locally persisted
+  Vision feature prints. Ambient voice uses a bundled Core ML classifier before STT,
+  expects `PaceWakeWordClassifier` labels `hey_pace` and `background`, and fails
+  closed if the model is absent or malformed. Accepted wakes enter a bounded
+  post-wake conversation; pre-wake audio is not transcribed or persisted.
 - App wiring now starts/stops the default-off observe-only runtime and exposes
   Settings plus menu-bar state/active-source indicators. Existing ambient/watch
   adapters and the non-identifying camera client can run; camera capture
-  suspends for system sleep and resumes once after wake. Ambient voice remains
-  visibly degraded pending a true pre-STT wake gate. Silent cards and speech remain off.
+  suspends for system sleep and resumes once after wake. Silent cards and speech
+  are separately default-off and wired through intervention/restraint policy.
+  Routine promotion requires three unique supporting observations.
 - Privacy/resource threat model and deterministic denial, redaction, buffer,
   device-loss, false-wake/continuity, source-clear, and degradation fixtures are
   in place. See `docs/companion-mode-privacy.md`.
-- Remaining: production user-taught object tracking, a privacy-compliant
-  pre-STT ambient wake client, and the documented observe-only dogfood;
-  measured accuracy/resource/sleep-wake/permission acceptance; then separately
-  gated cards, speech, and routine learning; full Xcode tests and manual smokes.
-- Source of truth: OpenSpec change `always-on-companion-mode`.
+- Remaining release evidence: run the documented hardware
+  accuracy/resource/sleep-wake/permission thresholds and
+  manual Xcode smokes. On 2026-07-13 the owner directed "push through" and
+  accepted those unmeasured risks for milestone closeout; this is not a claim
+  that the measurements, thresholds, or `Cmd+R` checklist passed.
+- Source of truth: archived OpenSpec change
+  `openspec/changes/archive/2026-07-13-always-on-companion-mode`.
 
 ## Priority 13: Premium Conversational UI
 

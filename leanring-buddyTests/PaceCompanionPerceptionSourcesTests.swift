@@ -36,6 +36,54 @@ struct PaceCompanionPerceptionSourcesTests {
         #expect(tracker.identifiers(for: [(x: 0.5, y: 0.9)]) == ["person-1"])
     }
 
+    @Test func taughtObjectTemplatesPersistReplaceAndForgetWithoutPixels() throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pace-taught-object-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("objects.json")
+        let store = PaceTaughtObjectStore(fileURL: fileURL)
+        let first = try PaceTaughtObjectTemplate(
+            label: "  keys  ",
+            featurePrintArchive: Data([1, 2, 3]),
+            taughtAt: now
+        )
+        try store.upsert(first)
+        #expect(store.templates().map(\.label) == ["keys"])
+        #expect(store.templates().first?.trackIdentifier == "taught-object-keys")
+
+        let replacement = try PaceTaughtObjectTemplate(
+            label: "KEYS",
+            featurePrintArchive: Data([4, 5, 6]),
+            taughtAt: now.addingTimeInterval(1)
+        )
+        try store.upsert(replacement)
+        #expect(store.templates().count == 1)
+        #expect(PaceTaughtObjectStore(fileURL: fileURL).templates() == [replacement])
+
+        try store.remove(label: "keys")
+        #expect(PaceTaughtObjectStore(fileURL: fileURL).templates().isEmpty)
+    }
+
+    @Test func taughtObjectMatchingFailsClosedOutsideConservativeThreshold() {
+        let accepted = PaceTaughtObjectRegionMatch(
+            normalizedCenterX: 0.5,
+            normalizedCenterY: 0.5,
+            distance: 0.1
+        )
+        let rejected = PaceTaughtObjectRegionMatch(
+            normalizedCenterX: 0.8,
+            normalizedCenterY: 0.5,
+            distance: 0.5
+        )
+        #expect(PaceTaughtObjectMatchPolicy.bestAcceptedMatch([rejected, accepted]) == accepted)
+        #expect(PaceTaughtObjectMatchPolicy.bestAcceptedMatch([rejected]) == nil)
+        #expect(PaceTaughtObjectMatchPolicy.bestAcceptedMatch([
+            .init(normalizedCenterX: 0.5, normalizedCenterY: 0.5, distance: .nan)
+        ]) == nil)
+        #expect(PaceTaughtObjectMatchPolicy.confidence(forDistance: 0) == 1)
+        #expect(PaceTaughtObjectMatchPolicy.confidence(forDistance: 0.5) == 0.5)
+    }
+
     @Test func cameraRequiresIndependentPermissionAndStopsCaptureImmediately() async throws {
         let deniedCapture = TestCameraCaptureClient(permission: .denied)
         let deniedSource = PaceCameraPerceptionSource(
@@ -116,6 +164,62 @@ struct PaceCompanionPerceptionSourcesTests {
         #expect(candidate.structuredPayload.contains("desk"))
         #expect(candidate.structuredPayload.utf8.count < 1_000)
         #expect(candidate.structuredPayload.contains("ABAB") == false)
+        await source.stop()
+        _ = try await sourceTask.value
+    }
+
+    @Test func cameraMotionDoesNotReemitStableTrackAsFreshEntry() async throws {
+        let capture = TestCameraCaptureClient(permission: .authorized)
+        let collector = CandidateCollector()
+        let source = PaceCameraPerceptionSource(
+            captureClient: capture,
+            zones: [.init(name: "room", minimumX: 0, maximumX: 1, minimumY: 0, maximumY: 1)],
+            isEnabled: true,
+            meaningfulMotionThreshold: 0.1
+        )
+        let sourceTask = Task { try await source.start { candidate in
+            Task { await collector.append(candidate) }
+        } }
+        await waitUntil { await capture.didRequestFrames() }
+        let stablePerson = PaceCameraDetection(
+            kind: .person,
+            ephemeralTrackIdentifier: "person-1",
+            normalizedCenterX: 0.5,
+            normalizedCenterY: 0.5,
+            confidence: 0.9
+        )
+        await capture.yield(.init(
+            capturedAt: now,
+            motionScore: 0.8,
+            detections: [stablePerson],
+            rawFrame: Data(repeating: 0x01, count: 768)
+        ))
+        await capture.yield(.init(
+            capturedAt: now.addingTimeInterval(1),
+            motionScore: 0.8,
+            detections: [stablePerson],
+            rawFrame: Data(repeating: 0x02, count: 768)
+        ))
+        let newPerson = PaceCameraDetection(
+            kind: .person,
+            ephemeralTrackIdentifier: "person-2",
+            normalizedCenterX: 0.7,
+            normalizedCenterY: 0.5,
+            confidence: 0.9
+        )
+        await capture.yield(.init(
+            capturedAt: now.addingTimeInterval(2),
+            motionScore: 0.8,
+            detections: [stablePerson, newPerson],
+            rawFrame: Data(repeating: 0x03, count: 768)
+        ))
+        await waitUntil {
+            await collector.snapshot().contains { $0.equivalenceKey == "camera:person-2" }
+        }
+        #expect(await collector.snapshot().map(\.equivalenceKey) == [
+            "camera:person-1",
+            "camera:person-2",
+        ])
         await source.stop()
         _ = try await sourceTask.value
     }

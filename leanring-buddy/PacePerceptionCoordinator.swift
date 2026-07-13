@@ -104,6 +104,11 @@ actor PacePerceptionCoordinator {
                     try await sourceAdapter.start { candidate in
                         Task { await coordinator.submit(candidate) }
                     }
+                    await coordinator.sourceStoppedUnexpectedly(
+                        sourceKind: sourceAdapter.sourceKind,
+                        generation: generationAtStart,
+                        failure: .stoppedUnexpectedly
+                    )
                 } catch {
                     await coordinator.sourceStoppedUnexpectedly(
                         sourceKind: sourceAdapter.sourceKind,

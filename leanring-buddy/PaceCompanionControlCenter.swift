@@ -11,14 +11,19 @@ import Foundation
 
 @MainActor
 final class PaceCompanionControlCenter: ObservableObject {
-    static let silentCardsAcceptancePassed = false
-    static let spokenInterventionsAcceptancePassed = false
+    /// Product-owner risk acceptance makes both intervention surfaces
+    /// available for explicit dogfood opt-in. They remain independently
+    /// default-off, and spoken output still passes the restraint gate.
+    static let silentCardsAcceptancePassed = true
+    static let spokenInterventionsAcceptancePassed = true
     @Published private(set) var preferences: PaceCompanionPreferences
     @Published private(set) var runtimeState: PaceCompanionRuntimeState = .off
     @Published private(set) var activeSources: Set<PacePerceptionSourceKind> = []
     @Published private(set) var lastObservationAt: Date?
     @Published private(set) var structuredStorageByteCount = 0
     @Published private(set) var isLocalModelReady = false
+    @Published private(set) var taughtObjectLabels: [String] = []
+    @Published private(set) var objectTeachingStatusText: String?
 
     private let userDefaults: UserDefaults
     private let observationFileURL: URL
@@ -26,6 +31,9 @@ final class PaceCompanionControlCenter: ObservableObject {
     private let onPauseRequested: () -> Void
     private let onSourceClearRequested: (PacePerceptionSourceKind) -> Void
     private let onClearAllRequested: () -> Void
+    private let onTeachObjectRequested: (String) -> Void
+    private let onForgetTaughtObjectRequested: (String) -> Void
+    private let onConversationRequested: () -> Void
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -33,7 +41,10 @@ final class PaceCompanionControlCenter: ObservableObject {
         onModePreferenceChanged: @escaping (PaceCompanionPreferences) -> Void = { _ in },
         onPauseRequested: @escaping () -> Void = {},
         onSourceClearRequested: @escaping (PacePerceptionSourceKind) -> Void = { _ in },
-        onClearAllRequested: @escaping () -> Void = {}
+        onClearAllRequested: @escaping () -> Void = {},
+        onTeachObjectRequested: @escaping (String) -> Void = { _ in },
+        onForgetTaughtObjectRequested: @escaping (String) -> Void = { _ in },
+        onConversationRequested: @escaping () -> Void = {}
     ) {
         self.userDefaults = userDefaults
         self.observationFileURL = observationFileURL
@@ -49,6 +60,9 @@ final class PaceCompanionControlCenter: ObservableObject {
         self.onPauseRequested = onPauseRequested
         self.onSourceClearRequested = onSourceClearRequested
         self.onClearAllRequested = onClearAllRequested
+        self.onTeachObjectRequested = onTeachObjectRequested
+        self.onForgetTaughtObjectRequested = onForgetTaughtObjectRequested
+        self.onConversationRequested = onConversationRequested
         refreshStorageUsage()
     }
 
@@ -95,6 +109,38 @@ final class PaceCompanionControlCenter: ObservableObject {
         onClearAllRequested()
         lastObservationAt = nil
         refreshStorageUsage()
+    }
+
+    func teachObject(label: String) {
+        let normalizedLabel = PaceTaughtObjectTemplate.normalizedLabel(label)
+        guard normalizedLabel.isEmpty == false else {
+            objectTeachingStatusText = PaceTaughtObjectError.emptyLabel.localizedDescription
+            return
+        }
+        objectTeachingStatusText = "Capturing \(normalizedLabel) from the next camera frame…"
+        onTeachObjectRequested(normalizedLabel)
+    }
+
+    func forgetTaughtObject(label: String) {
+        onForgetTaughtObjectRequested(label)
+    }
+
+    func startUserInvokedConversation() {
+        onConversationRequested()
+    }
+
+    func recordObjectTeachingResult(_ result: Result<[String], Error>) {
+        switch result {
+        case .success(let labels):
+            taughtObjectLabels = labels
+            objectTeachingStatusText = "Object saved locally. Pace will report conservative last-seen matches."
+        case .failure(let error):
+            objectTeachingStatusText = error.localizedDescription
+        }
+    }
+
+    func updateTaughtObjectLabels(_ labels: [String]) {
+        taughtObjectLabels = labels
     }
 
     func updateRuntime(

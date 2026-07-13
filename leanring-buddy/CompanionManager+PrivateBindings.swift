@@ -199,6 +199,9 @@ extension CompanionManager {
                 guard let self else { return }
                 if isEnabled {
                     self.wakeWordSpotter.start()
+                    if self.companionControlCenter.activeSources.contains(.ambientVoice) {
+                        self.wakeWordSpotter.pauseForExternalAudioConsumer()
+                    }
                 } else {
                     self.wakeWordSpotter.stop()
                 }
@@ -229,30 +232,49 @@ extension CompanionManager {
                 let isPTTOwningMic = isRecordingFromShortcut || isPreparing || isRecordingFromButton
                 if isPTTOwningMic {
                     self.wakeWordSpotter.pauseForExternalAudioConsumer()
-                } else {
+                } else if self.companionControlCenter.activeSources.contains(.ambientVoice) == false {
                     self.wakeWordSpotter.resumeIfPausedForExternalAudioConsumer()
                 }
             }
     }
 
     /// Wave 2b — handles a wake-word detection event from the spotter.
-    /// Wake-word ONLY opens a listening window; it does NOT route the
-    /// matched phrase into the planner. The normal pipeline (transcribe
-    /// → intent → planner) handles whatever the user says next. We
+    /// Wake-word opens a bounded post-wake listening window; it does NOT
+    /// route the matched phrase into the planner. A synthetic PTT press
+    /// starts the normal pipeline (transcribe → intent → planner) for
+    /// whatever the user says next, then auto-releases after six seconds. We
     /// drop the detection when a turn is already in flight so the
     /// wake-word can't displace an active PTT session or interrupt
     /// the in-flight response (barge-in handles the responding case
     /// separately).
-    func handleWakeWordDetected(_ detection: PaceWakeWordDetection) {
+    @discardableResult
+    func handleWakeWordDetected(_ detection: PaceWakeWordDetection) -> Bool {
         guard voiceState == .idle else {
             print("🎙️ Wake-word detected but a turn is in flight (\(voiceState)); ignoring")
-            return
+            return false
+        }
+        guard globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed == false else {
+            print("🎙️ Wake-word detected while another voice trigger owns the shortcut; ignoring")
+            return false
         }
         print("🎙️ Wake-word detected: \(detection.phraseMatched) (confidence \(detection.confidence))")
+        let listeningWindowDurationSeconds = 6.0
         buddyDictationManager.openListeningWindow(
-            durationInSeconds: 6,
+            durationInSeconds: listeningWindowDurationSeconds,
             trigger: .wakeWord
         )
+        currentDictationTrigger = .wakeWord
+        globalPushToTalkShortcutMonitor.simulateShortcutPressed()
+        wakeWordListeningWindowReleaseTask?.cancel()
+        wakeWordListeningWindowReleaseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64(listeningWindowDurationSeconds * 1_000_000_000)
+            )
+            guard Task.isCancelled == false, let self else { return }
+            guard currentDictationTrigger == .wakeWord,
+                  globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed else { return }
+            globalPushToTalkShortcutMonitor.simulateShortcutReleased()
+        }
         // Lightweight audit trail. paceHistory is the existing
         // retrieval source — no new index, no new tracking.
         localRetriever.recordPaceHistory(
@@ -260,6 +282,64 @@ extension CompanionManager {
             assistantResponse: "[wake-word triggered] \(detection.phraseMatched)"
         )
         refreshLocalRetrievalPublishedState()
+        return true
+    }
+
+    /// Companion mode reaches this entry point only after Core ML has accepted
+    /// the bundled wake classifier. The gate has already released its
+    /// audio tap, so the normal on-device PTT transcription path can safely own
+    /// the microphone for the bounded post-wake window.
+    func handleCompanionWakeGateAccepted(_ detection: PaceLocalWakeDetection) async -> Bool {
+        let didStartConversation = handleWakeWordDetected(PaceWakeWordDetection(
+            phraseMatched: "hey pace",
+            confidence: detection.confidence,
+            detectedAt: detection.detectedAt
+        ))
+        if didStartConversation, let releaseTask = wakeWordListeningWindowReleaseTask {
+            await releaseTask.value
+        }
+        return await waitForVoiceIdleBeforeResumingCompanionWakeGate()
+    }
+
+    /// Immediate teardown used when companion mode pauses, stops, or sleeps
+    /// during a wake-opened conversation.
+    func cancelCompanionWakeConversation() {
+        wakeWordListeningWindowReleaseTask?.cancel()
+        wakeWordListeningWindowReleaseTask = nil
+        guard currentDictationTrigger == .wakeWord,
+              globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed else { return }
+        globalPushToTalkShortcutMonitor.simulateShortcutReleased()
+    }
+
+    private func waitForVoiceIdleBeforeResumingCompanionWakeGate(
+        timeout: TimeInterval = 45
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var idleSince: Date?
+        while Date() < deadline {
+            guard Task.isCancelled == false else { return false }
+            let isFullyIdle = voiceState == .idle
+                && currentResponseTask == nil
+                && buddyDictationManager.isRecordingFromKeyboardShortcut == false
+                && buddyDictationManager.isRecordingFromMicrophoneButton == false
+                && buddyDictationManager.isPreparingToRecord == false
+                && buddyDictationManager.isFinalizingTranscript == false
+            if isFullyIdle {
+                let now = Date()
+                if let idleSince, now.timeIntervalSince(idleSince) >= 0.75 {
+                    return true
+                }
+                if idleSince == nil { idleSince = now }
+            } else {
+                idleSince = nil
+            }
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            } catch {
+                return false
+            }
+        }
+        return false
     }
 
     func bindVoiceStateObservation() {
@@ -437,7 +517,7 @@ extension CompanionManager {
             // this turn. Keyboard → next to the cursor (rides with the
             // Codex arrow); avatar tap → next to the walking character.
             switch currentDictationTrigger {
-            case .keyboard:
+            case .keyboard, .wakeWord:
                 responseOverlayManager.setAnchor(.belowRightOfCursor)
                 // The avatar is just visual noise during a keyboard-
                 // triggered turn. Hide it; it comes back when we return
@@ -519,6 +599,10 @@ extension CompanionManager {
                 )
             }
         case .released:
+            if currentDictationTrigger == .wakeWord {
+                wakeWordListeningWindowReleaseTask?.cancel()
+                wakeWordListeningWindowReleaseTask = nil
+            }
             // Cancel the pending start task in case the user released the shortcut
             // before the async startPushToTalk had a chance to begin recording.
             // Without this, a quick press-and-release drops the release event and

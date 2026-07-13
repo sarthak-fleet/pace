@@ -58,6 +58,7 @@ struct PacePerceptionCoordinatorTests {
 
     @Test func stopCancelsInFlightWorkClearsPendingAndStopsInjectedSource() async {
         let source = TestPerceptionSource(sourceKind: .camera)
+        let failureCollector = PerceptionSourceFailureCollector()
         let coordinator = PacePerceptionCoordinator(
             sourceAdapters: [source],
             now: { Date(timeIntervalSince1970: 2_000_000_000) },
@@ -65,7 +66,10 @@ struct PacePerceptionCoordinatorTests {
                 try await Task.sleep(for: .seconds(30))
                 return nil
             },
-            observationConsumer: { _ in }
+            observationConsumer: { _ in },
+            sourceFailureConsumer: { source, failure in
+                Task { await failureCollector.append(source: source, failure: failure) }
+            }
         )
         await coordinator.start(enabledSources: [.camera])
         await coordinator.submit(candidate(source: .camera, capturedAt: now))
@@ -75,6 +79,8 @@ struct PacePerceptionCoordinatorTests {
         #expect(await coordinator.hasInFlightAnalysis(for: .camera) == false)
         #expect(await coordinator.pendingCandidate(for: .camera) == nil)
         #expect(await source.stopCallCount() == 1)
+        await Task.yield()
+        #expect(await failureCollector.snapshot().isEmpty)
     }
 
     @Test func resourceDegradationDropsCameraBeforeModelAnalysisAndRecordsMetrics() async {
@@ -125,6 +131,25 @@ struct PacePerceptionCoordinatorTests {
         let failure = try #require(await failureCollector.snapshot().first)
         #expect(failure.source == .camera)
         #expect(failure.failure == .permissionDenied)
+        await coordinator.stop()
+    }
+
+    @Test func sourceStreamEndingWhileRunningReportsUnexpectedStop() async throws {
+        let failureCollector = PerceptionSourceFailureCollector()
+        let source = FinishingPerceptionSource(sourceKind: .camera)
+        let coordinator = PacePerceptionCoordinator(
+            sourceAdapters: [source],
+            candidateAnalyzer: { _ in nil },
+            observationConsumer: { _ in },
+            sourceFailureConsumer: { source, failure in
+                Task { await failureCollector.append(source: source, failure: failure) }
+            }
+        )
+        await coordinator.start(enabledSources: [.camera])
+        await waitUntil { await failureCollector.snapshot().count == 1 }
+        let failure = try #require(await failureCollector.snapshot().first)
+        #expect(failure.source == .camera)
+        #expect(failure.failure == .stoppedUnexpectedly)
         await coordinator.stop()
     }
 
@@ -223,5 +248,17 @@ private final class FailingPerceptionSource: PacePerceptionSourceAdapter {
         throw error
     }
 
+    func stop() { }
+}
+
+@MainActor
+private final class FinishingPerceptionSource: PacePerceptionSourceAdapter {
+    nonisolated let sourceKind: PacePerceptionSourceKind
+
+    init(sourceKind: PacePerceptionSourceKind) {
+        self.sourceKind = sourceKind
+    }
+
+    func start(emit: @escaping @Sendable (PaceObservationCandidate) -> Void) async throws { }
     func stop() { }
 }
