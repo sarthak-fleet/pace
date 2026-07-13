@@ -151,7 +151,7 @@ final class PaceCoreMLWakeGate: PaceLocalWakeGate {
     private var classificationHysteresis: PaceWakeClassificationHysteresis
 
     init(
-        configuration: Configuration = Configuration(),
+        configuration: Configuration? = nil,
         bundle: Bundle = .main,
         permissionProvider: @escaping @MainActor () -> AVAuthorizationStatus = {
             AVCaptureDevice.authorizationStatus(for: .audio)
@@ -164,6 +164,7 @@ final class PaceCoreMLWakeGate: PaceLocalWakeGate {
             }
         }
     ) {
+        let configuration = configuration ?? Configuration()
         self.configuration = configuration
         self.permissionProvider = permissionProvider
         self.authorizationRequester = authorizationRequester
@@ -185,11 +186,12 @@ final class PaceCoreMLWakeGate: PaceLocalWakeGate {
     }
 
     init(
-        configuration: Configuration = Configuration(),
+        configuration: Configuration? = nil,
         permissionProvider: @escaping @MainActor () -> AVAuthorizationStatus,
         authorizationRequester: @escaping AuthorizationRequester = { false },
         modelLoader: @escaping ModelLoader
     ) {
+        let configuration = configuration ?? Configuration()
         self.configuration = configuration
         self.permissionProvider = permissionProvider
         self.authorizationRequester = authorizationRequester

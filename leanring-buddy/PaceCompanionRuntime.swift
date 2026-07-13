@@ -58,7 +58,7 @@ final class PaceCompanionRuntime {
         watchModeController: PaceScreenWatchModeController,
         localRetriever: PaceLocalRetriever,
         cameraCaptureClient: any PaceCameraCaptureClient = PaceAVFoundationCameraCaptureClient(),
-        ambientWakeGate: any PaceLocalWakeGate = PaceCoreMLWakeGate(),
+        ambientWakeGate: (any PaceLocalWakeGate)? = nil,
         ambientWakeHandler: @escaping PaceCompanionAmbientWakeSource.WakeHandler = { _ in false },
         ambientWakeCancellationHandler: @escaping PaceCompanionAmbientWakeSource.CancellationHandler = {},
         presentationLiveContextProvider: @escaping PresentationLiveContextProvider = {
@@ -77,7 +77,7 @@ final class PaceCompanionRuntime {
         self.watchModeController = watchModeController
         self.localRetriever = localRetriever
         self.cameraCaptureClient = cameraCaptureClient
-        self.ambientWakeGate = ambientWakeGate
+        self.ambientWakeGate = ambientWakeGate ?? PaceCoreMLWakeGate()
         self.ambientWakeHandler = ambientWakeHandler
         self.ambientWakeCancellationHandler = ambientWakeCancellationHandler
         self.presentationLiveContextProvider = presentationLiveContextProvider
