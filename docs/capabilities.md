@@ -56,19 +56,19 @@ playback), watch mode (observe the screen and emit change events), meeting mode
 (capture system audio excluding Pace's own output), in-window chat (text instead
 of voice).
 
-**Always-On Companion Mode (implementation in progress; default OFF)** — the
-local evidence/world-model and silence-first intervention-policy foundations are
-implemented. Deterministic companion memory can promote typed evidence into
-episodic, semantic, spatial, and routine records and render a dedicated local
-retrieval source. Settings/menu-bar transparency and default-off lifecycle are
-wired for existing ambient/watch sources and a production low-rate
-AVFoundation/Vision camera source that emits non-identifying ephemeral person
-presence and conservatively matches explicitly taught local Vision feature
-prints across coarse camera zones. Settings provides the centered-object teach
-action and an explicit button into the existing push-to-talk conversation path.
-Ambient voice remains visibly degraded until a true pre-STT keyword gate exists;
-hardware object/resource acceptance remains open.
-Silent cards, speech, and routine learning remain locked off. See
+**Always-On Companion Mode (default OFF)** — the local evidence/world-model,
+memory, and silence-first intervention policy are implemented. Typed evidence
+can promote into episodic, semantic, spatial, and routine records; a routine
+requires three unique supporting observations. Existing ambient/watch sources
+and the production low-rate AVFoundation/Vision camera source emit only
+non-identifying person presence and conservative matches for explicitly taught
+local Vision feature prints. Ambient voice uses a local pre-STT
+Core ML gate that uses the bundled `PaceWakeWordClassifier` with exact labels
+`hey_pace` and `background`; missing or invalid assets fail closed before STT.
+Accepted wakes enter the bounded conversation path. Silent cards and spoken
+interventions are separately default-off; both flow through intervention policy
+and speech also passes the live restraint/cooldown path. Hardware and manual
+`Cmd+R` acceptance remain unmeasured release follow-ups, not passed checks. See
 [companion-mode-privacy.md](companion-mode-privacy.md) for capture, retention,
 local-only, correction, and threat-model details and
 [companion-mode-dogfood.md](companion-mode-dogfood.md) for acceptance thresholds.

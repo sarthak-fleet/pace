@@ -238,6 +238,55 @@ final class PaceRestraintGateTests: XCTestCase {
 
 @MainActor
 final class PaceProactiveQueueDrainTests: XCTestCase {
+    func testExpiredQueuedUtteranceIsDiscardedWithoutBlockingNextEntry() {
+        let companionManager = CompanionManager()
+        let now = Date()
+        companionManager.enqueueProactiveUtterance(PaceProactiveUtterance(
+            spokenText: "expired companion observation",
+            source: .companionEvent,
+            confidence: 0.9,
+            relevanceWindowExpiresAt: now.addingTimeInterval(-1)
+        ))
+        companionManager.enqueueProactiveUtterance(PaceProactiveUtterance(
+            spokenText: "still relevant reminder",
+            source: .backgroundReminder,
+            confidence: 0.9,
+            relevanceWindowExpiresAt: now.addingTimeInterval(60)
+        ))
+
+        companionManager.drainProactiveQueueIfIdle(now: now)
+
+        XCTAssertEqual(
+            companionManager.proactiveUtteranceQueueSnapshot().map(\.spokenText),
+            ["still relevant reminder"]
+        )
+    }
+
+    func testCompanionSpeechOptOutRemovesOnlyCompanionQueueEntries() {
+        let companionManager = CompanionManager()
+        companionManager.enqueueProactiveUtterance(PaceProactiveUtterance(
+            spokenText: "companion observation",
+            source: .companionEvent,
+            confidence: 0.9,
+            relevanceWindowExpiresAt: nil
+        ))
+        companionManager.enqueueProactiveUtterance(PaceProactiveUtterance(
+            spokenText: "calendar reminder",
+            source: .backgroundReminder,
+            confidence: 0.9,
+            relevanceWindowExpiresAt: nil
+        ))
+
+        companionManager.proactivityPipeline.removeQueuedProactiveUtterances(
+            from: .companionEvent
+        )
+
+        XCTAssertEqual(
+            companionManager.proactiveUtteranceQueueSnapshot().map(\.source),
+            [.backgroundReminder]
+        )
+    }
+
     func testProactiveQueueDrainsOldestFirstWhenIdleConditionsRestore() async {
         // Build a real CompanionManager so the queue / drain interplay
         // is exercised end-to-end rather than against a hand-rolled
@@ -301,6 +350,10 @@ final class PaceProactiveQueueDrainTests: XCTestCase {
             companionManager.proactiveUtteranceQueueSnapshot().map { $0.spokenText },
             ["third queued nudge", "fourth queued nudge"],
             "Drain should remove only the oldest entry per pass"
+        )
+        XCTAssertNotNil(
+            companionManager.proactivityPipeline.lastProactiveUtteranceAt,
+            "Queued delivery must stamp the shared proactive cooldown"
         )
     }
 }

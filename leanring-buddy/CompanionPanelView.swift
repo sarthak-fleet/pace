@@ -48,6 +48,9 @@ struct CompanionPanelView: View {
                 starterPromptCardSection
                     .padding(.horizontal, 16)
 
+                companionObservationCardSection
+                    .padding(.horizontal, 16)
+
                 morningBriefCardSection
                     .padding(.horizontal, 16)
 
@@ -307,6 +310,17 @@ struct CompanionPanelView: View {
     }
 
     // MARK: - Morning brief card
+
+    @ViewBuilder
+    private var companionObservationCardSection: some View {
+        if let content = companionManager.pendingCompanionObservationCard {
+            PaceCompanionObservationCardView(
+                content: content,
+                dismiss: companionManager.dismissCompanionObservationCard
+            )
+            .padding(.bottom, 8)
+        }
+    }
 
     /// Calm full-width card pinned to the top of the panel whenever the
     /// morning-brief scheduler has a queued brief waiting for the user.

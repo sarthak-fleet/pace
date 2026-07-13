@@ -133,7 +133,7 @@ struct PaceCompanionSettingsTab: View {
             sectionTitle("Interventions")
             paceSettingsToggleRow(
                 title: "Silent cards",
-                subtitle: "Locked until observe-only accuracy and resource acceptance is documented and met.",
+                subtitle: "Optional, silent companion observations. Default off and shown only after policy scoring.",
                 isOn: Binding(
                     get: { controlCenter.preferences.areSilentCardsEnabled },
                     set: { controlCenter.setSilentCardsEnabled($0) }
@@ -143,7 +143,7 @@ struct PaceCompanionSettingsTab: View {
             .opacity(PaceCompanionControlCenter.silentCardsAcceptancePassed ? 1 : 0.55)
             paceSettingsToggleRow(
                 title: "Spoken interventions",
-                subtitle: "Locked until repetition/interruption acceptance passes; then every utterance still passes restraint.",
+                subtitle: "Optional and default off. Every utterance still passes active-call, Focus, input, and cooldown restraint.",
                 isOn: Binding(
                     get: { controlCenter.preferences.areSpokenInterventionsEnabled },
                     set: { controlCenter.setSpokenInterventionsEnabled($0) }

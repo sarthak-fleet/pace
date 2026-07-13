@@ -389,20 +389,35 @@ final class CompanionManager: ObservableObject {
         PaceScreenWatchModeController()
     }()
 
+    /// Latest opt-in silent companion presentation. It is intentionally a
+    /// single replaceable card: newer grounded evidence supersedes older UI
+    /// noise while the typed observation history remains available in memory.
+    @Published private(set) var pendingCompanionObservationCard: PaceCompanionPresentationContent?
+    var pendingCompanionCardPresentationTask: Task<Void, Never>?
+    var companionRuntimeTransitionTask: Task<Void, Never>?
+
+    func presentCompanionObservationCard(_ content: PaceCompanionPresentationContent) {
+        pendingCompanionObservationCard = content
+    }
+
+    func dismissCompanionObservationCard() {
+        pendingCompanionObservationCard = nil
+    }
+
     lazy var companionControlCenter: PaceCompanionControlCenter = {
         PaceCompanionControlCenter(
             onModePreferenceChanged: { [weak self] preferences in
                 self?.companionPreferencesChanged(preferences)
             },
             onPauseRequested: { [weak self] in
-                Task { @MainActor [weak self] in
-                    await self?.companionRuntime.pause()
-                }
+                self?.pauseCompanionRuntime()
             },
             onSourceClearRequested: { [weak self] source in
+                self?.suspendCompanionPresentations()
                 self?.companionRuntime.clear(source: source)
             },
             onClearAllRequested: { [weak self] in
+                self?.suspendCompanionPresentations()
                 self?.companionRuntime.clearAll()
             },
             onTeachObjectRequested: { [weak self] label in
@@ -438,8 +453,46 @@ final class CompanionManager: ObservableObject {
             ambientContextStore: .shared,
             watchModeController: screenWatchModeController,
             localRetriever: localRetriever,
+            ambientWakeHandler: { [weak self] detection in
+                guard let self else { return false }
+                return await self.handleCompanionWakeGateAccepted(detection)
+            },
+            ambientWakeCancellationHandler: { [weak self] in
+                self?.cancelCompanionWakeConversation()
+            },
+            presentationLiveContextProvider: { [weak self] in
+                guard let self else {
+                    return PaceCompanionPresentationLiveContext(
+                        now: Date(),
+                        profile: .reserved,
+                        isOnActiveCall: true,
+                        isInFocusMode: true,
+                        hasRecentUserInput: true
+                    )
+                }
+                let now = Date()
+                let hasRecentUserInput = self.userInputActivityMonitor.lastUserInputAt.map {
+                    now.timeIntervalSince($0) < PaceRestraintGate.activeInputWindowSeconds
+                } ?? false
+                return PaceCompanionPresentationLiveContext(
+                    now: now,
+                    profile: self.proactivityProfile,
+                    isOnActiveCall: self.activeCallDetector.isOnActiveCall,
+                    isInFocusMode: self.focusModeMonitor.isCurrentlyInUserFocus,
+                    hasRecentUserInput: hasRecentUserInput
+                )
+            },
+            presentationConsumer: { [weak self] presentation in
+                self?.handleCompanionObservationPresentation(presentation)
+            },
             statusConsumer: { [weak self] state, activeSources, lastObservationAt in
-                self?.companionControlCenter.updateRuntime(
+                guard let self else { return }
+                if activeSources.contains(.ambientVoice) {
+                    self.wakeWordSpotter.pauseForExternalAudioConsumer()
+                } else if self.globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed == false {
+                    self.wakeWordSpotter.resumeIfPausedForExternalAudioConsumer()
+                }
+                self.companionControlCenter.updateRuntime(
                     state: state,
                     activeSources: activeSources,
                     lastObservationAt: lastObservationAt
@@ -1067,6 +1120,9 @@ final class CompanionManager: ObservableObject {
             },
             currentVoiceStateProvider: { [weak self] in
                 return self?.voiceState ?? .idle
+            },
+            isInUserFocusModeProvider: { [weak self] in
+                self?.focusModeMonitor.isCurrentlyInUserFocus ?? true
             },
             speakUtterance: { [weak self] utterance in
                 // Mirrors the pre-extraction `speakProactiveNudge`

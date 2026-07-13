@@ -16,8 +16,11 @@ unavailable or resource-limited expensive source is suspended.
 
 - Camera frames and screen captures live only in bounded memory for gating and
   targeted extraction. Accepted screen frames are take-once.
-- Ambient audio uses local VAD/wake gating. Pre-wake audio is not transcribed
-  or persisted. Post-wake sessions are bounded; optional `speaker-1` labels
+- Ambient audio uses a local AVAudioEngine/Core ML gate before STT. Its fixed
+  model contract is `PaceWakeWordClassifier` with labels `hey_pace` and
+  `background`; missing or malformed assets fail closed. Pre-wake audio is not
+  transcribed or persisted. Accepted wakes release the analysis microphone
+  before a bounded post-wake conversation starts; optional `speaker-1` labels
   disappear when the session ends.
 - People are generic presence or expiring `ephemeral-track-*` values. Identity
   fields are rejected during model construction and JSON decoding.
@@ -48,17 +51,19 @@ retrieval documents, and pending candidates together.
 | Threat | Control | Residual risk |
 | --- | --- | --- |
 | Accidental upgrade opt-in | Missing preferences decode to every source/output off. | Users can intentionally enable a source; copy and persistent indicators explain the state. |
-| Covert ambient transcription | STT is unreachable before local wake; pre-wake buffers clear. | Wake false positives require hardware acceptance before graduation. |
+| Covert ambient transcription | Direct Core ML inference runs before STT; model/label failures fail closed; pre-wake buffers clear. | Wake false-positive and false-negative rates remain unmeasured on target hardware. |
 | Raw data accumulation | Byte/count-bounded buffers, take-once frames, cancellation clearing, no raw persistence field. | OS capture internals are outside Pace’s storage controls. |
 | Cloud exfiltration | Privacy-pinned local factories and fail-closed loopback validation. | A user-controlled local process may proxy elsewhere. |
 | Sensitive app persistence | Default deny list, redaction, source clear. | Bundle IDs cannot identify every sensitive window. |
 | False identity/continuity | No identity schema, taught objects only, expiry, decay, contradiction, provenance. | Local detection can be wrong; this is not security or safety monitoring. |
-| Noisy intervention | Observe-only first; cards/speech separate opt-ins; speech passes restraint/cooldowns. | Manual repetition/interruption acceptance remains required. |
+| Noisy intervention | Cards/speech are separate default-off opt-ins; presentations use policy/deduplication and speech passes live restraint/cooldowns. | Manual repetition/interruption acceptance remains unmeasured. |
 | Resource regression | Sampling ceilings, one analysis/source, coalescing, battery/memory/thermal degradation and metrics. | Hardware measurements remain machine-specific. |
 
-Routine learning is also disabled in the shipping policy configuration until
-the four room-companion outcomes meet their documented accuracy/resource gates.
-The measurement protocol and literal unlock order live in
+Routine promotion requires at least three unique supporting observations; one
+observation cannot become a routine. On 2026-07-13 the owner explicitly directed
+"push through," accepting the remaining unmeasured live/hardware and manual
+`Cmd+R` risk for milestone closeout. This does not mean the thresholds passed.
+The preserved measurement protocol is a release follow-up in
 [`companion-mode-dogfood.md`](companion-mode-dogfood.md).
 
 Companion Mode is not a security camera, identity system, meeting recorder,

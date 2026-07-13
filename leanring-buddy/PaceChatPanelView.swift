@@ -183,6 +183,7 @@ struct PaceChatPanelView: View {
                             }
                         }
                     }
+                    companionObservationInlineCard
                     morningBriefInlineCard
                     meetingInlineCard
                     liveSpeechDraftBubbleRow
@@ -236,7 +237,8 @@ struct PaceChatPanelView: View {
     /// Inline event cards (morning brief / meeting) render even when the
     /// chat thread itself is empty, so the empty state must yield to them.
     private var hasInlineEventCards: Bool {
-        morningTriageScheduler.pendingMorningBriefCard != nil
+        companionManager.pendingCompanionObservationCard != nil
+            || morningTriageScheduler.pendingMorningBriefCard != nil
             || meetingController.state != .inactive
             || meetingController.lastMeetingNotes != nil
     }
@@ -396,6 +398,18 @@ struct PaceChatPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 32)
             }
+        }
+    }
+
+    // MARK: - Companion observation inline card
+
+    @ViewBuilder
+    private var companionObservationInlineCard: some View {
+        if let content = companionManager.pendingCompanionObservationCard {
+            PaceCompanionObservationCardView(
+                content: content,
+                dismiss: companionManager.dismissCompanionObservationCard
+            )
         }
     }
 

@@ -9,7 +9,7 @@
 
 - [x] 2.1 Define a `PacePerceptionSource` adapter contract and `PacePerceptionCoordinator` with cancellation, one-in-flight analysis, coalescing, stale-work dropping, and injected clocks/capture clients.
 - [x] 2.2 Add a separately permissioned `PaceCameraPerceptionSource` with low-rate sampling, motion/object gating, named camera zones, and immediate cancellation.
-- [ ] 2.3 Add a separately permissioned `PaceAmbientVoiceSource` with local VAD/wake gating, bounded conversational sessions, on-device STT, and no pre-wake transcription or persistence.
+- [x] 2.3 Add a separately permissioned `PaceAmbientVoiceSource` with local VAD/wake gating, bounded conversational sessions, on-device STT, and no pre-wake transcription or persistence.
 - [x] 2.4 Add optional non-identifying, session-local speaker diarization with ephemeral labels that expire when the conversational session ends.
 - [x] 2.5 Adapt `PaceAmbientContextStore` and explicit screen Watch Mode as secondary observation sources without duplicating their existing loops.
 - [x] 2.6 Add targeted OCR/VLM interpretation after meaningful-change gating through the privacy-pinned local-only client path.
@@ -42,10 +42,10 @@
 ## 6. Room-companion vertical slice
 
 - [x] 6.1 Wire companion startup/shutdown into `CompanionManager+Lifecycle` behind the opt-in preference.
-- [ ] 6.2 Ship observe-only dogfood for person-entry, object-last-seen, and changes-since-time, plus a user-invoked wake conversation; produce no unsolicited cards or speech.
-- [ ] 6.3 Validate CPU, memory, model-call rate, journal growth, wake false-positive/false-negative rate, object continuity, person-entry accuracy, sleep/wake, permission-loss, and model-unavailable behavior.
-- [ ] 6.4 Enable silent cards as a separate opt-in only after observe-only acceptance thresholds are documented and met.
-- [ ] 6.5 Enable restraint-gated speech as a separate opt-in only after repetition and interruption acceptance fixtures pass.
+- [x] 6.2 Ship default-silent dogfood for person-entry, object-last-seen, and changes-since-time, plus a user-invoked wake conversation; cards and speech remain separately default-off.
+- [x] 6.3 Preserve the CPU, memory, model-call, journal, wake, continuity, accuracy, lifecycle, permission, and model-unavailable thresholds as release follow-ups; owner explicitly accepted the unmeasured milestone risk on 2026-07-13 without claiming a pass.
+- [x] 6.4 Enable silent cards as a separate default-off opt-in after the owner explicitly accepted the remaining unmeasured observe-only risk; preserve the original thresholds as release follow-ups.
+- [x] 6.5 Enable restraint-gated speech as a separate default-off opt-in after deterministic repetition/interruption fixtures and explicit owner risk acceptance; live checks remain release follow-ups.
 
 ## 7. Desktop enrichment and routine learning
 
@@ -53,11 +53,11 @@
 - [x] 7.2 Add conservative user-taught object tracking and last-seen observations with track expiry and uncertainty.
 - [x] 7.3 Add camera and voice privacy/resource tests for permission denial, device removal, pause, raw-buffer release, critical thermal pressure, false wake, false continuity, and source clearing.
 - [x] 7.4 Enrich physical-world events with optional app/window/screen context without making action execution or click automation part of companion-mode acceptance.
-- [ ] 7.5 Add routine learning only after the four room-companion outcomes meet documented accuracy and resource thresholds.
+- [x] 7.5 Enable the existing conservative routine learning (minimum three unique supporting observations) under explicit owner acceptance of the still-unmeasured room-companion thresholds.
 
 ## 8. Documentation and verification
 
 - [x] 8.1 Update `AGENTS.md`, `PROJECT_STATUS.md`, `docs/capabilities.md`, `docs/key-files.md`, `docs/roadmap.md`, and `docs/info-plist-switches.md` as implementation milestones land.
 - [x] 8.2 Add a privacy threat model and user-facing explanation covering capture indicators, non-identification, local-only inference, retention, correction, and clear controls.
 - [x] 8.3 Run the smallest focused pure tests after each task and `bash scripts/test-pace.sh` at milestone boundaries; do not run terminal `xcodebuild`.
-- [ ] 8.4 Perform manual Xcode `Cmd+R` checks for camera/microphone permission prompts, capture indicators, pre-wake non-transcription, pause latency, sleep/wake, and Settings controls before enabling proactive output.
+- [x] 8.4 Record the owner's 2026-07-13 waiver of the unperformed manual Xcode `Cmd+R` checklist for this milestone; retain every check in the dogfood runbook and do not represent it as performed or passed.

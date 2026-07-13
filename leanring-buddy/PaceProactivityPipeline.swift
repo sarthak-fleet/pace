@@ -44,6 +44,7 @@ final class PaceProactivityPipeline {
     /// Returns the live `voiceState` so the drain loop stays quiet
     /// while a voice turn is mid-flight.
     private let currentVoiceStateProvider: () -> CompanionVoiceState
+    private let isInUserFocusModeProvider: () -> Bool
 
     /// Speaks a proactive utterance through the manager's TTS client.
     /// Kept as a closure (vs holding the BuddyTTSClient directly) so
@@ -159,6 +160,7 @@ final class PaceProactivityPipeline {
         activeCallDetector: PaceActiveCallDetector,
         proactivityProfileProvider: @escaping () -> PaceProactivityProfile,
         currentVoiceStateProvider: @escaping () -> CompanionVoiceState,
+        isInUserFocusModeProvider: @escaping () -> Bool = { false },
         speakUtterance: @escaping (PaceProactiveUtterance) -> Void,
         journalProactiveNudge: @escaping (PaceProactiveUtterance) -> Void,
         cachedScreenDescriptionProvider: @escaping (String) -> String?,
@@ -170,6 +172,7 @@ final class PaceProactivityPipeline {
         self.activeCallDetector = activeCallDetector
         self.proactivityProfileProvider = proactivityProfileProvider
         self.currentVoiceStateProvider = currentVoiceStateProvider
+        self.isInUserFocusModeProvider = isInUserFocusModeProvider
         self.speakUtterance = speakUtterance
         self.journalProactiveNudge = journalProactiveNudge
         self.cachedScreenDescriptionProvider = cachedScreenDescriptionProvider
@@ -246,26 +249,37 @@ final class PaceProactivityPipeline {
         return proactiveUtteranceQueue
     }
 
-    /// Speaks the oldest queued nudge if all three idle signals say
-    /// "now is a good time": no recent input, not on a call, voice
-    /// turn idle. Otherwise leaves the queue untouched for the next
-    /// tick. Called by the drain timer; safe to call manually.
+    /// Removes queued output for one producer without disturbing unrelated
+    /// reminders. Companion Mode uses this when speech or the mode is turned
+    /// off so an old queued observation cannot speak after opt-out.
+    func removeQueuedProactiveUtterances(from source: PaceProactiveSource) {
+        proactiveUtteranceQueue.removeAll { $0.source == source }
+    }
+
+    /// Re-gates the oldest queued nudge against every live restraint before
+    /// delivery. Busy decisions stay queued; expired or permanently quiet
+    /// decisions are discarded; allowed output uses the normal emit path so
+    /// journaling and cooldown state cannot be bypassed.
     func drainProactiveQueueIfIdle(now: Date = Date()) {
         guard proactiveUtteranceQueue.isEmpty == false else { return }
-
-        if let lastUserInputAt = userInputActivityMonitor.lastUserInputAt,
-           now.timeIntervalSince(lastUserInputAt) < PaceRestraintGate.activeInputWindowSeconds {
-            return
-        }
-        if activeCallDetector.isOnActiveCall {
-            return
-        }
         guard currentVoiceStateProvider() == .idle else { return }
 
         let nextUtterance = proactiveUtteranceQueue.removeFirst()
-        // Use the same speakUtterance closure path so a future TTS
-        // routing change stays in one place.
-        speakUtterance(nextUtterance)
+        if let expiresAt = nextUtterance.relevanceWindowExpiresAt, expiresAt <= now {
+            return
+        }
+        let context = buildProactiveRestraintContext(
+            proactiveSource: nextUtterance.source,
+            now: now
+        )
+        switch PaceRestraintGate.decide(context) {
+        case .speak:
+            emitProactiveUtterance(nextUtterance)
+        case .queueUntilIdle:
+            proactiveUtteranceQueue.insert(nextUtterance, at: 0)
+        case .stayQuiet:
+            break
+        }
     }
 
     /// Routes a per-generator enable/disable through the orchestrator
@@ -308,11 +322,12 @@ final class PaceProactivityPipeline {
     /// launch affects the next decision instantly.
     private func buildProactiveRestraintContext(
         proactiveSource: PaceProactiveSource = .watchNudge,
-        intent: PaceIntent = .pureKnowledge
+        intent: PaceIntent = .pureKnowledge,
+        now: Date = Date()
     ) -> PaceRestraintContext {
         let frontmostBundleIdentifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         return PaceRestraintContext(
-            now: Date(),
+            now: now,
             lastProactiveUtteranceAt: lastProactiveUtteranceAt,
             lastEpisodicRecallAt: nil,
             lastUserInputAt: userInputActivityMonitor.lastUserInputAt,
@@ -321,7 +336,8 @@ final class PaceProactivityPipeline {
             wakeWordConfidence: nil,
             intent: intent,
             proactiveSource: proactiveSource,
-            profile: proactivityProfileProvider()
+            profile: proactivityProfileProvider(),
+            isInUserFocusMode: isInUserFocusModeProvider()
         )
     }
 

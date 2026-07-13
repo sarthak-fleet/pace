@@ -39,20 +39,22 @@ style first-party integrations, and an MCP bridge.
 - App Intents (Siri, Shortcuts, Spotlight)
 - Quick Actions (Finder service for transcribe-audio-file)
 
-An opt-in Always-On Companion Mode is under implementation. Its typed local
-world-model, perception-coordinator contract, default-off preferences,
-silence-first intervention policy, Settings/menu-bar controls, and default-off
-app lifecycle exist. Existing ambient/watch adapters and a production low-rate
-AVFoundation/Vision camera source can run; the camera emits non-identifying
-ephemeral person-presence and conservative matches for objects explicitly
-taught into a local Vision feature-print store. Ambient voice remains degraded
-until a true pre-STT keyword gate exists, and hardware accuracy/resource
-thresholds remain open. Do not recommend or describe room-companion
-capture as shipped until the OpenSpec acceptance work is complete.
+The opt-in Always-On Companion Mode is implemented and remains default off. Its
+typed local world model, perception coordinator, Settings/menu-bar controls,
+and low-rate AVFoundation/Vision camera path emit non-identifying presence and
+conservative matches for explicitly taught local Vision feature prints. A local
+Core ML gate runs before STT and expects
+`PaceWakeWordClassifier` labels `hey_pace` and `background`; it fails closed if
+the asset is absent or invalid. Silent cards and speech are separately
+default-off and policy/restraint-gated. Routine promotion requires three unique
+supporting observations. The owner accepted the remaining unmeasured hardware
+and manual `Cmd+R` risk on 2026-07-13. Do not present the dogfood thresholds as
+measured or passed, and do not recommend a release claim dependent on them
+until the follow-up evidence in `companion-mode-dogfood.md` is recorded.
 
 ## Default-on dependencies (no install required for fresh setup)
 
-- macOS 14+ frameworks: ScreenCaptureKit, Vision, Speech, EventKit,
+- macOS 14+ frameworks: ScreenCaptureKit, Vision, Speech, CoreML, EventKit,
   Contacts, AVAudioEngine, AppKit, SwiftUI, AppIntents, CoreSpotlight,
   Intents (`INFocusStatusCenter`), Translation (macOS 15+), Combine.
 - Bundled Swift Package dependencies:

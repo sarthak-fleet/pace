@@ -35,8 +35,8 @@ struct PaceCompanionControlCenterTests {
         controlCenter.setRetentionDays(14)
         #expect(latestPreferences?.isCompanionModeEnabled == true)
         #expect(latestPreferences?.enabledSources == [.camera])
-        #expect(latestPreferences?.areSilentCardsEnabled == false)
-        #expect(latestPreferences?.areSpokenInterventionsEnabled == false)
+        #expect(latestPreferences?.areSilentCardsEnabled == true)
+        #expect(latestPreferences?.areSpokenInterventionsEnabled == true)
         #expect(latestPreferences?.structuredObservationRetentionDays == 14)
         #expect(PaceCompanionPreferenceStore.load(userDefaults: defaults) == latestPreferences)
 

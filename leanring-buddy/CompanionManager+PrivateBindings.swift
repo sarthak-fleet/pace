@@ -199,6 +199,9 @@ extension CompanionManager {
                 guard let self else { return }
                 if isEnabled {
                     self.wakeWordSpotter.start()
+                    if self.companionControlCenter.activeSources.contains(.ambientVoice) {
+                        self.wakeWordSpotter.pauseForExternalAudioConsumer()
+                    }
                 } else {
                     self.wakeWordSpotter.stop()
                 }
@@ -229,7 +232,7 @@ extension CompanionManager {
                 let isPTTOwningMic = isRecordingFromShortcut || isPreparing || isRecordingFromButton
                 if isPTTOwningMic {
                     self.wakeWordSpotter.pauseForExternalAudioConsumer()
-                } else {
+                } else if self.companionControlCenter.activeSources.contains(.ambientVoice) == false {
                     self.wakeWordSpotter.resumeIfPausedForExternalAudioConsumer()
                 }
             }
@@ -244,14 +247,15 @@ extension CompanionManager {
     /// wake-word can't displace an active PTT session or interrupt
     /// the in-flight response (barge-in handles the responding case
     /// separately).
-    func handleWakeWordDetected(_ detection: PaceWakeWordDetection) {
+    @discardableResult
+    func handleWakeWordDetected(_ detection: PaceWakeWordDetection) -> Bool {
         guard voiceState == .idle else {
             print("🎙️ Wake-word detected but a turn is in flight (\(voiceState)); ignoring")
-            return
+            return false
         }
         guard globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed == false else {
             print("🎙️ Wake-word detected while another voice trigger owns the shortcut; ignoring")
-            return
+            return false
         }
         print("🎙️ Wake-word detected: \(detection.phraseMatched) (confidence \(detection.confidence))")
         let listeningWindowDurationSeconds = 6.0
@@ -278,6 +282,64 @@ extension CompanionManager {
             assistantResponse: "[wake-word triggered] \(detection.phraseMatched)"
         )
         refreshLocalRetrievalPublishedState()
+        return true
+    }
+
+    /// Companion mode reaches this entry point only after Core ML has accepted
+    /// the bundled wake classifier. The gate has already released its
+    /// audio tap, so the normal on-device PTT transcription path can safely own
+    /// the microphone for the bounded post-wake window.
+    func handleCompanionWakeGateAccepted(_ detection: PaceLocalWakeDetection) async -> Bool {
+        let didStartConversation = handleWakeWordDetected(PaceWakeWordDetection(
+            phraseMatched: "hey pace",
+            confidence: detection.confidence,
+            detectedAt: detection.detectedAt
+        ))
+        if didStartConversation, let releaseTask = wakeWordListeningWindowReleaseTask {
+            await releaseTask.value
+        }
+        return await waitForVoiceIdleBeforeResumingCompanionWakeGate()
+    }
+
+    /// Immediate teardown used when companion mode pauses, stops, or sleeps
+    /// during a wake-opened conversation.
+    func cancelCompanionWakeConversation() {
+        wakeWordListeningWindowReleaseTask?.cancel()
+        wakeWordListeningWindowReleaseTask = nil
+        guard currentDictationTrigger == .wakeWord,
+              globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed else { return }
+        globalPushToTalkShortcutMonitor.simulateShortcutReleased()
+    }
+
+    private func waitForVoiceIdleBeforeResumingCompanionWakeGate(
+        timeout: TimeInterval = 45
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var idleSince: Date?
+        while Date() < deadline {
+            guard Task.isCancelled == false else { return false }
+            let isFullyIdle = voiceState == .idle
+                && currentResponseTask == nil
+                && buddyDictationManager.isRecordingFromKeyboardShortcut == false
+                && buddyDictationManager.isRecordingFromMicrophoneButton == false
+                && buddyDictationManager.isPreparingToRecord == false
+                && buddyDictationManager.isFinalizingTranscript == false
+            if isFullyIdle {
+                let now = Date()
+                if let idleSince, now.timeIntervalSince(idleSince) >= 0.75 {
+                    return true
+                }
+                if idleSince == nil { idleSince = now }
+            } else {
+                idleSince = nil
+            }
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            } catch {
+                return false
+            }
+        }
+        return false
     }
 
     func bindVoiceStateObservation() {

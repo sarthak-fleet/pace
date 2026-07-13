@@ -11,8 +11,11 @@ import Foundation
 
 @MainActor
 final class PaceCompanionControlCenter: ObservableObject {
-    static let silentCardsAcceptancePassed = false
-    static let spokenInterventionsAcceptancePassed = false
+    /// Product-owner risk acceptance makes both intervention surfaces
+    /// available for explicit dogfood opt-in. They remain independently
+    /// default-off, and spoken output still passes the restraint gate.
+    static let silentCardsAcceptancePassed = true
+    static let spokenInterventionsAcceptancePassed = true
     @Published private(set) var preferences: PaceCompanionPreferences
     @Published private(set) var runtimeState: PaceCompanionRuntimeState = .off
     @Published private(set) var activeSources: Set<PacePerceptionSourceKind> = []
