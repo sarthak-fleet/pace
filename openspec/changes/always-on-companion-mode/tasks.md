@@ -9,7 +9,7 @@
 
 - [x] 2.1 Define a `PacePerceptionSource` adapter contract and `PacePerceptionCoordinator` with cancellation, one-in-flight analysis, coalescing, stale-work dropping, and injected clocks/capture clients.
 - [x] 2.2 Add a separately permissioned `PaceCameraPerceptionSource` with low-rate sampling, motion/object gating, named camera zones, and immediate cancellation.
-- [x] 2.3 Add a separately permissioned `PaceAmbientVoiceSource` with local VAD/wake gating, bounded conversational sessions, on-device STT, and no pre-wake transcription or persistence.
+- [ ] 2.3 Add a separately permissioned `PaceAmbientVoiceSource` with local VAD/wake gating, bounded conversational sessions, on-device STT, and no pre-wake transcription or persistence.
 - [x] 2.4 Add optional non-identifying, session-local speaker diarization with ephemeral labels that expire when the conversational session ends.
 - [x] 2.5 Adapt `PaceAmbientContextStore` and explicit screen Watch Mode as secondary observation sources without duplicating their existing loops.
 - [x] 2.6 Add targeted OCR/VLM interpretation after meaningful-change gating through the privacy-pinned local-only client path.

@@ -236,9 +236,10 @@ extension CompanionManager {
     }
 
     /// Wave 2b — handles a wake-word detection event from the spotter.
-    /// Wake-word ONLY opens a listening window; it does NOT route the
-    /// matched phrase into the planner. The normal pipeline (transcribe
-    /// → intent → planner) handles whatever the user says next. We
+    /// Wake-word opens a bounded post-wake listening window; it does NOT
+    /// route the matched phrase into the planner. A synthetic PTT press
+    /// starts the normal pipeline (transcribe → intent → planner) for
+    /// whatever the user says next, then auto-releases after six seconds. We
     /// drop the detection when a turn is already in flight so the
     /// wake-word can't displace an active PTT session or interrupt
     /// the in-flight response (barge-in handles the responding case
@@ -248,11 +249,28 @@ extension CompanionManager {
             print("🎙️ Wake-word detected but a turn is in flight (\(voiceState)); ignoring")
             return
         }
+        guard globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed == false else {
+            print("🎙️ Wake-word detected while another voice trigger owns the shortcut; ignoring")
+            return
+        }
         print("🎙️ Wake-word detected: \(detection.phraseMatched) (confidence \(detection.confidence))")
+        let listeningWindowDurationSeconds = 6.0
         buddyDictationManager.openListeningWindow(
-            durationInSeconds: 6,
+            durationInSeconds: listeningWindowDurationSeconds,
             trigger: .wakeWord
         )
+        currentDictationTrigger = .wakeWord
+        globalPushToTalkShortcutMonitor.simulateShortcutPressed()
+        wakeWordListeningWindowReleaseTask?.cancel()
+        wakeWordListeningWindowReleaseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64(listeningWindowDurationSeconds * 1_000_000_000)
+            )
+            guard Task.isCancelled == false, let self else { return }
+            guard currentDictationTrigger == .wakeWord,
+                  globalPushToTalkShortcutMonitor.isShortcutCurrentlyPressed else { return }
+            globalPushToTalkShortcutMonitor.simulateShortcutReleased()
+        }
         // Lightweight audit trail. paceHistory is the existing
         // retrieval source — no new index, no new tracking.
         localRetriever.recordPaceHistory(
@@ -437,7 +455,7 @@ extension CompanionManager {
             // this turn. Keyboard → next to the cursor (rides with the
             // Codex arrow); avatar tap → next to the walking character.
             switch currentDictationTrigger {
-            case .keyboard:
+            case .keyboard, .wakeWord:
                 responseOverlayManager.setAnchor(.belowRightOfCursor)
                 // The avatar is just visual noise during a keyboard-
                 // triggered turn. Hide it; it comes back when we return
@@ -519,6 +537,10 @@ extension CompanionManager {
                 )
             }
         case .released:
+            if currentDictationTrigger == .wakeWord {
+                wakeWordListeningWindowReleaseTask?.cancel()
+                wakeWordListeningWindowReleaseTask = nil
+            }
             // Cancel the pending start task in case the user released the shortcut
             // before the async startPushToTalk had a chance to begin recording.
             // Without this, a quick press-and-release drops the release event and

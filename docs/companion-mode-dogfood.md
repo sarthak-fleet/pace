@@ -15,12 +15,14 @@ Xcode `Cmd+R` build on Apple Silicon here first.
 - Screen and Mac context: existing Watch Mode and ambient-context loops feed
   the world model without duplicate polling.
 - Wake conversation: Settings → Companion → Talk to Pace now explicitly invokes
-  the existing push-to-talk conversation path. Companion ambient voice stays visibly
-  degraded: the current Apple Speech spotter recognizes speech to find the
-  phrase, so it cannot satisfy the stricter companion invariant that pre-wake
-  speech never reaches STT. Do not wire it into companion capture or describe
-  it as satisfying that invariant. Graduation needs an approved, genuinely
-  pre-STT local keyword gate.
+  the existing push-to-talk conversation path. The separate legacy always-listening
+  preference also hands an accepted wake event into a bounded six-second
+  post-wake push-to-talk window; the detected phrase itself is never sent to the
+  planner. Companion ambient voice stays visibly degraded: the legacy Apple
+  Speech spotter recognizes speech to find the phrase, so it cannot satisfy the
+  stricter companion invariant that pre-wake speech never reaches STT. Do not wire
+  it into companion capture or describe it as satisfying that invariant.
+  Graduation needs an approved, genuinely pre-STT local keyword gate.
 - Objects: Settings → Companion lets the user hold an object centered in view
   and capture a local Vision feature print. No photo is persisted. The low-rate
   camera compares overlapping coarse left/center/right regions, accepts only

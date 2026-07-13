@@ -754,12 +754,18 @@ final class CompanionManager: ObservableObject {
     @Published var isTranscriptionModelReady: Bool = false
 
     /// How the current voice turn was triggered. Drives where the response
-    /// bubble pins itself: `.keyboard` anchors it next to the system
-    /// cursor (so it visually rides with the Codex arrow); `.avatar`
-    /// anchors it next to the walking character. Cleared back to
-    /// `.keyboard` when the turn ends.
-    enum DictationTrigger { case keyboard, avatar }
+    /// bubble pins itself: `.keyboard` and `.wakeWord` anchor it next to
+    /// the system cursor (so it visually rides with the Codex arrow);
+    /// `.avatar` anchors it next to the walking character. Cleared back
+    /// to `.keyboard` when the turn ends.
+    enum DictationTrigger { case keyboard, avatar, wakeWord }
     var currentDictationTrigger: DictationTrigger = .keyboard
+
+    /// Auto-releases the synthetic PTT press created after a wake-word
+    /// detection. The wake detector never sends its own transcript to the
+    /// planner; this bounded post-wake window starts the normal on-device
+    /// transcription path and commits whatever the user says next.
+    var wakeWordListeningWindowReleaseTask: Task<Void, Never>?
 
     /// Set when a taught-skill run has been dispatched into the agent loop
     /// and cleared when the turn ends. Carries the fields the skill-run
