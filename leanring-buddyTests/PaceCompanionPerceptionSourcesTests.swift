@@ -120,6 +120,62 @@ struct PaceCompanionPerceptionSourcesTests {
         _ = try await sourceTask.value
     }
 
+    @Test func cameraMotionDoesNotReemitStableTrackAsFreshEntry() async throws {
+        let capture = TestCameraCaptureClient(permission: .authorized)
+        let collector = CandidateCollector()
+        let source = PaceCameraPerceptionSource(
+            captureClient: capture,
+            zones: [.init(name: "room", minimumX: 0, maximumX: 1, minimumY: 0, maximumY: 1)],
+            isEnabled: true,
+            meaningfulMotionThreshold: 0.1
+        )
+        let sourceTask = Task { try await source.start { candidate in
+            Task { await collector.append(candidate) }
+        } }
+        await waitUntil { await capture.didRequestFrames() }
+        let stablePerson = PaceCameraDetection(
+            kind: .person,
+            ephemeralTrackIdentifier: "person-1",
+            normalizedCenterX: 0.5,
+            normalizedCenterY: 0.5,
+            confidence: 0.9
+        )
+        await capture.yield(.init(
+            capturedAt: now,
+            motionScore: 0.8,
+            detections: [stablePerson],
+            rawFrame: Data(repeating: 0x01, count: 768)
+        ))
+        await capture.yield(.init(
+            capturedAt: now.addingTimeInterval(1),
+            motionScore: 0.8,
+            detections: [stablePerson],
+            rawFrame: Data(repeating: 0x02, count: 768)
+        ))
+        let newPerson = PaceCameraDetection(
+            kind: .person,
+            ephemeralTrackIdentifier: "person-2",
+            normalizedCenterX: 0.7,
+            normalizedCenterY: 0.5,
+            confidence: 0.9
+        )
+        await capture.yield(.init(
+            capturedAt: now.addingTimeInterval(2),
+            motionScore: 0.8,
+            detections: [stablePerson, newPerson],
+            rawFrame: Data(repeating: 0x03, count: 768)
+        ))
+        await waitUntil {
+            await collector.snapshot().contains { $0.equivalenceKey == "camera:person-2" }
+        }
+        #expect(await collector.snapshot().map(\.equivalenceKey) == [
+            "camera:person-1",
+            "camera:person-2",
+        ])
+        await source.stop()
+        _ = try await sourceTask.value
+    }
+
     @Test func cameraInterpreterUsesNonIdentifyingTracksAndUserTaughtObjectsOnly() throws {
         let personCandidate = try cameraCandidate(detection: .init(
             kind: .person,
