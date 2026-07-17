@@ -1,5 +1,8 @@
 # Pace
 
+**Product:** [heypace.app](https://heypace.app)
+
+
 <p align="center">
   <img src="docs/brand/pace-mascot-hero.svg" alt="Pace — your Mac, listening. Fully on-device." width="820">
 </p>
