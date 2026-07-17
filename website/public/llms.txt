@@ -1,0 +1,17 @@
+# Pace
+
+> On-device Mac voice agent that reads your screen and acts with local context.
+
+## Product
+
+- [Home](https://pace-6xg.pages.dev/): Product landing
+
+## Machine surfaces
+
+- [Agent catalog](https://pace-6xg.pages.dev/api/ai): JSON inventory of public surfaces
+- [Homepage markdown](https://pace-6xg.pages.dev/index.md): Product brief without JS
+- [This index](https://pace-6xg.pages.dev/llms.txt)
+
+## Optional
+
+- [Foundry](https://sassmaker.com): Parent fleet showcase
