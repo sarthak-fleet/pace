@@ -1,0 +1,177 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import ScrollProgress from "../components/ScrollProgress.astro";
+import MouseSpotlight from "../components/MouseSpotlight.astro";
+import CursorFollower from "../components/CursorFollower.astro";
+import PageEnhancements from "../components/PageEnhancements.astro";
+
+const description =
+  "Frequently asked questions about Pace — on-device privacy, meeting recordings, disk and RAM, supported Macs, refunds, the tuned model roadmap, and more.";
+
+// FAQ content harvested from the existing FAQ.astro component (the
+// interview-style Q&A on the landing page). Same questions, same honest
+// answers — now on a dedicated page with FAQPage structured data so
+// search engines and LLM crawlers can surface them directly.
+const qas = [
+  {
+    q: "Does it really run with no network?",
+    a: "Yes. Voice, screen reading, the planner, TTS — all on your Mac. The one exception is `download_file`, which fetches a URL only when you explicitly tell Pace to. The Privacy dashboard inside the app shows the exact byte count, broken out by surface.",
+  },
+  {
+    q: "Where do my meeting recordings go?",
+    a: "`~/Library/Application Support/Pace/meetings/` — two WAV files per meeting (your mic, their audio) plus the notes. Transcription and note-writing both happen on your Mac, and the notes model is pinned local: it can't use a cloud tier even if you've enabled one elsewhere in Pace. Everything auto-deletes after the retention window in Settings — 30 days by default. Want it gone sooner? Delete the folder. They're ordinary files.",
+  },
+  {
+    q: "How much disk and RAM are we talking?",
+    a: "The .app is about 50 megabytes. The in-process model — Qwen3-4B-Instruct-2507 in bf16, one toggle in Settings → Models — is ~8 gigabytes, downloaded once into your HuggingFace cache. With the vision model and transcription also loaded, peak RAM is ~14 GB. If your Mac has 16 GB, swap to the 4-bit variant in Settings → Models; that runs comfortably in ~6 GB.",
+  },
+  {
+    q: "What Macs?",
+    a: "Apple Silicon, M1 or later, macOS 14+. Intel Macs aren't supported and there's no plan to add them — MLX is Metal-backed, and the on-device story is what the whole product is. Tested on M1 Air, M2 Pro, M3 Max, M4 Pro.",
+  },
+  {
+    q: "iPhone? Windows?",
+    a: "No, and not on the roadmap. Pace is a Mac product. The Apple Silicon stack is what makes \"voice + screen + actions, on-device, $29 once\" possible at all. Spreading it across three operating systems would mean rebuilding the assumptions and raising the price.",
+  },
+  {
+    q: "What happens when you ship your own model?",
+    a: "Free upgrade for everyone who already owns Pace. The .app updates through Sparkle; the new model identifier is just a string in Info.plist. Your existing license keeps working. The price for new buyers goes to $49 at that point — you're grandfathered in at $29.",
+  },
+  {
+    q: "Do I need LM Studio installed?",
+    a: "No. The bundled MLX path covers planning, vision, embeddings, and TTS in-process. LM Studio is still supported as the power-user option if you'd rather run the larger Qwen3-30B model, but it's not required for a fresh install to be useful.",
+  },
+  {
+    q: "Refund policy?",
+    a: "30 days, no questions. The .app deactivates and your card gets refunded. I don't ask why because I already know — the model wasn't a fit, or the bf16 download hurt more than you wanted. Both are valid.",
+  },
+  {
+    q: "What if I don't like the voice?",
+    a: "Settings → Voice picks any Apple Premium voice on your Mac, or the bundled Qwen3 TTS, or the Kokoro sidecar if you want the higher-quality option. You're not locked into one synthesiser.",
+  },
+  {
+    q: "What's Learning mode?",
+    a: "You point Pace at an app you don't know — Figma, Cursor, Logic Pro, an internal admin tool — and ask it to walk you through something. Pace draws on your screen, says \"click here next,\" and when you actually click, it advances to the next step automatically. The verification loop is the new part: Pace watches your click events and only moves forward when you did the right thing.",
+  },
+  {
+    q: "Can I leave it always-on?",
+    a: "Yes. Press ctrl three times to toggle wake-word mode — Pace listens passively and only reacts when it hears its name. Most users keep push-to-talk (ctrl+option) because it's clearer about when you're talking to it, but always-on is one shortcut away.",
+  },
+  {
+    q: "Can it tell me what I did today?",
+    a: "Yes, from passive local journals. Watch mode logs when your screen meaningfully changes; a separate app-usage journal tracks which apps had focus and for how long, using notifications macOS hands out without any extra permission. Research turns get their own history. Ask \"what did I do today?\" or \"what did I research about X?\" and Pace answers from those journals — all on disk, 7-day retention for the screen/app logs, per-source enable and clear in Settings. Nothing is uploaded.",
+  },
+  {
+    q: "Can I trigger it from Raycast or Shortcuts?",
+    a: "Yes. Pace registers `pace://` deeplinks — `pace://listen`, `pace://chat?text=...`, `pace://watch?enabled=true`, and `pace://panel` — plus App Intents for Siri, Shortcuts, and Spotlight. Wire a Raycast script or a Shortcut to any of them. A deeplink runs the same intent and approval pipeline your own voice would, so it can't do anything you couldn't do yourself.",
+  },
+  {
+    q: "What happens if it clicks the wrong thing?",
+    a: "Every change Pace can reverse leaves a 5-second undo banner next to the cursor — tap it and it rolls back. If a click misses entirely, Pace says so in plain language rather than pretending it worked. And there's a 30-second replay button that speaks the exact same answer back without re-running the planner, in case you missed it.",
+  },
+];
+
+// FAQPage structured data — every Q&A on the page, so search engines
+// and LLM crawlers can surface them as rich results. Answers are kept
+// verbatim from the visible page (no invented content).
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: qas.map((qa) => ({
+    "@type": "Question",
+    name: qa.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: qa.a,
+    },
+  })),
+};
+---
+
+<BaseLayout title="FAQ — Pace" description={description} pathname="/faq">
+  <ScrollProgress />
+  <MouseSpotlight />
+  <CursorFollower />
+  <PageEnhancements />
+
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify(faqSchema)}
+    slot="head"
+  />
+
+  <Nav />
+
+  <main class="px-6 pt-32 md:pt-40 pb-24">
+    <div class="max-w-4xl mx-auto">
+      <!-- ── Hero ─────────────────────────────────────────────── -->
+      <p class="text-sm uppercase tracking-widest text-[var(--color-text-muted)] font-mono mb-6">
+        FAQ
+      </p>
+
+      <h1 class="pace-display text-4xl md:text-6xl text-white mb-10 max-w-2xl">
+        The questions <em>people actually ask.</em>
+      </h1>
+
+      <div class="pace-prose mb-20">
+        <p>
+          Everything below is harvested from the landing page's interview-style
+          Q&A — the same honest answers, now on a dedicated page. If your
+          question isn't here, email me and I'll add it.
+        </p>
+      </div>
+
+      <!-- ── Q&A list ─────────────────────────────────────────── -->
+      <div class="space-y-12">
+        {
+          qas.map((qa, index) => (
+            <div class="grid md:grid-cols-[10rem_1fr] gap-4 md:gap-8 items-start">
+              <p class="text-sm font-mono text-[var(--color-text-muted)] tabular-nums pt-1.5">
+                {String(index + 1).padStart(2, "0")}.
+              </p>
+              <div>
+                <h2 class="pace-display text-xl md:text-2xl text-white mb-3">
+                  <em>{qa.q}</em>
+                </h2>
+                <p class="text-[var(--color-text-secondary)] leading-relaxed max-w-2xl">
+                  {qa.a}
+                </p>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      <p class="pace-margin-note mt-16 max-w-md">
+        Anything else?{" "}
+        <a href="mailto:hi@sarthakagrawal.dev" class="underline hover:text-white">
+          email me
+        </a>{" "}
+        and I'll add it here.
+      </p>
+
+      <!-- ── CTA ──────────────────────────────────────────────── -->
+      <section class="text-center mt-32">
+        <p class="pace-display text-2xl md:text-3xl text-white mb-8 max-w-xl mx-auto">
+          Ready to try it? <em>It's free on Apple Intelligence.</em>
+        </p>
+        <a href="/download" class="pace-cta-primary">
+          Get Pace
+          <span aria-hidden="true">→</span>
+        </a>
+        <p class="mt-6">
+          <a
+            href="/pricing"
+            class="text-sm text-[var(--color-text-muted)] hover:text-white transition-colors underline decoration-[var(--color-border-subtle)] underline-offset-4"
+          >
+            See pricing →
+          </a>
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <Footer />
+</BaseLayout>
