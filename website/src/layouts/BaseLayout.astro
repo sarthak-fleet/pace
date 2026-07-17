@@ -11,6 +11,30 @@ const { title, description, pathname = "/" } = Astro.props;
 const canonicalURL = new URL(pathname, Astro.site ?? "https://heypace.app").toString();
 const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://heypace.app").toString();
 
+// Clamp meta description to 70–160 chars for SEO best practice.
+const DEFAULT_DESC = "On-device Mac voice agent that reads your screen and acts with local context.";
+function clampDescription(desc: string, fallback: string = DEFAULT_DESC): string {
+  let d = (desc ?? "").trim();
+  if (d.length === 0) return fallback;
+  if (d.length > 160) {
+    d = d.slice(0, 157).replace(/\s+\S*$/, "").trim();
+    if (d.length > 0) d += "…";
+    return d;
+  }
+  if (d.length < 70) {
+    const f = fallback.trim();
+    if (f.length >= 70 && f.length <= 160) return f;
+    if (d.length > 0 && f.length > 0) {
+      const combined = `${d}. ${f}`;
+      if (combined.length <= 160) return combined;
+      return combined.slice(0, 157).replace(/\s+\S*$/, "").trim() + "…";
+    }
+    return f || d;
+  }
+  return d;
+}
+const clampedDescription = clampDescription(description);
+
 ---
 
 <!doctype html>
@@ -20,12 +44,12 @@ const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://heypace.app")
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
-    <meta name="description" content={description} />
+    <meta name="description" content={clampedDescription} />
     <link rel="canonical" href={canonicalURL} />
 
     <!-- Open Graph: thumbnail-first per the fleet landing standard. -->
     <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
+    <meta property="og:description" content={clampedDescription} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:image" content={ogImageURL} />
@@ -34,7 +58,7 @@ const ogImageURL = new URL("/og-image.png", Astro.site ?? "https://heypace.app")
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={description} />
+    <meta name="twitter:description" content={clampedDescription} />
     <meta name="twitter:image" content={ogImageURL} />
 
     <!-- Inter + Instrument Serif — non-blocking so LCP text paints on
