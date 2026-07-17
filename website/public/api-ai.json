@@ -3,8 +3,9 @@
   "version": "1",
   "url": "https://pace-6xg.pages.dev",
   "llms": "https://pace-6xg.pages.dev/llms.txt",
-  "llmsFull": null,
+  "llmsFull": "https://pace-6xg.pages.dev/llms-full.txt",
   "sitemap": "https://pace-6xg.pages.dev/sitemap.xml",
+  "robots": "https://pace-6xg.pages.dev/robots.txt",
   "markdown": {
     "suffix": ".md",
     "negotiation": true

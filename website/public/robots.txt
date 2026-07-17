@@ -54,3 +54,4 @@ Sitemap: https://heypace.app/sitemap.xml
 Allow: /llms.txt
 Allow: /index.md
 Allow: /api/ai
+Allow: /llms-full.txt

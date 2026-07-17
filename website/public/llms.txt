@@ -15,10 +15,3 @@
 ## Optional
 
 - [Foundry](https://sassmaker.com): Parent fleet showcase
-
-## Product surfaces
-
-- [Download](https://heypace.app/download) (or current Pages origin)
-- [Compared hub](https://pace-6xg.pages.dev/compared)
-- Per-competitor pages under `/compared/<slug>` (see sitemap)
-
