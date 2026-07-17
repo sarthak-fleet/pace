@@ -1,0 +1,25 @@
+{
+  "name": "Pace",
+  "version": "1",
+  "url": "https://pace-6xg.pages.dev",
+  "llms": "https://pace-6xg.pages.dev/llms.txt",
+  "llmsFull": null,
+  "sitemap": "https://pace-6xg.pages.dev/sitemap.xml",
+  "markdown": {
+    "suffix": ".md",
+    "negotiation": true
+  },
+  "surfaces": [
+    {
+      "id": "home",
+      "url": "https://pace-6xg.pages.dev/",
+      "md": "https://pace-6xg.pages.dev/index.md",
+      "kind": "static",
+      "description": "Product home"
+    }
+  ],
+  "auth": {
+    "public": true,
+    "notes": "Auth-walled app routes are not agent-indexed unless listed here."
+  }
+}
