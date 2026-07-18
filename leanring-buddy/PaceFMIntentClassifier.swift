@@ -28,6 +28,7 @@ struct PaceFMIntentClassification {
     - pureKnowledge: any question that wants a spoken answer WITHOUT looking at the current screen — factual questions ("what is HTML"), self-history ("what apps did I use today"), AND questions about you (Pace) yourself: what you can do, your features, who you are, how you work ("what can you do", "what all can you do", "who are you").
     - screenDescription: user wants Pace to look at and describe the current screen ("what's on the screen", "what am I looking at").
     - screenAction: user wants Pace to DO something via the action layer — click, type, open, launch, play, pause, create, draft, etc.
+    - research: multi-step research turn — "research X", "compare X vs Y", "dig into the latest on X", "summarize sources on X".
     - phoneLargeModel: user explicitly asked for a bigger/stronger model ("phone a large model", "hard mode", "use the big model").
     - unknown: anything else ambiguous; CompanionManager will run the full pipeline.
     """)
@@ -36,11 +37,12 @@ struct PaceFMIntentClassification {
 
 @available(macOS 26.0, *)
 @Generable
-enum PaceFMIntentRoute: String {
+enum PaceFMIntentRoute: String, CaseIterable {
     case chitchat
     case pureKnowledge
     case screenDescription
     case screenAction
+    case research
     case phoneLargeModel
     case unknown
 
@@ -50,6 +52,7 @@ enum PaceFMIntentRoute: String {
         case .pureKnowledge: return .pureKnowledge
         case .screenDescription: return .screenDescription
         case .screenAction: return .screenAction
+        case .research: return .research
         case .phoneLargeModel: return .phoneLargeModel
         case .unknown: return .unknown
         }
@@ -63,14 +66,12 @@ final class PaceFMIntentClassifier {
     You classify a single user voice turn into ONE routing category for Pace, a macOS voice companion. Pick the most accurate route. A turn that asks a question and wants a spoken answer — including questions about Pace itself ("what can you do") — is pureKnowledge, NOT unknown. Reserve unknown only for turns you genuinely cannot categorize; a clear question or a clear action is never unknown.
     """
 
-    private var session: LanguageModelSession?
-
     func classify(_ transcript: String) async -> PaceIntentPrediction {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTranscript.isEmpty else {
             return PaceIntentPrediction(intent: .unknown, confidence: 0)
         }
-        let resolvedSession = resolveSession()
+        let resolvedSession = makeSession()
         let generationOptions = GenerationOptions(
             sampling: .greedy,
             temperature: 0,
@@ -116,16 +117,16 @@ final class PaceFMIntentClassifier {
         return prediction
     }
 
-    private func resolveSession() -> LanguageModelSession {
-        if let session {
-            return session
-        }
-        let newSession = LanguageModelSession(
+    /// For stateless classification, create a fresh session each call.
+    /// Reusing a session accumulates conversation history that overflows
+    /// the context window after ~20 calls, causing all subsequent calls
+    /// to fail. Classification is stateless — there's no reason to keep
+    /// history between calls.
+    private func makeSession() -> LanguageModelSession {
+        LanguageModelSession(
             model: SystemLanguageModel.default,
             instructions: Instructions(Self.routingInstructions)
         )
-        session = newSession
-        return newSession
     }
 }
 
