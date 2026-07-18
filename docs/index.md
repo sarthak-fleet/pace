@@ -18,6 +18,10 @@ Current state lives in the [repository STATUS.md](https://github.com/HeyPace/pac
 
 How Pace is built and why.
 
+- [`architecture/how-it-works.md`](architecture/how-it-works.md) — learning-tier
+  end-to-end walkthrough of one interaction (wake word → capture → retrieval /
+  memory → plan → response) with a flow diagram. Start here if you're new to the
+  system.
 - [`architecture/overview.md`](architecture/overview.md) — doctrine (tinygpt's
   role, "steal from anywhere that runs local", the 100 ms / 500 ms latency
   budget, all-data-local) and the high-level constellation diagram.
