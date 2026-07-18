@@ -5,8 +5,9 @@ per-turn exchange list. This is *conversational* memory (this session only) —
 distinct from *episodic* memory (durable facts across sessions). See
 [capabilities.md](capabilities.md) for where each fits.
 
-Canonical PRD: `docs/product/prds/conversational-thread-memory.md`. This page is the
-short mental model.
+Implementation lives in `PaceThreadMemory` / `PaceThreadSummarizer` /
+`PaceThreadMemoryStore` (see [key-files.md](../development/key-files.md)). This
+page is the short mental model.
 
 ## The two tiers
 
@@ -69,4 +70,5 @@ re-looped constrained planner dictated the user's own command.)
 
 The same conversation context flows through whichever planner tier is active
 (Local / Apple FM / CLI bridge / Direct API), so switching tiers never forks
-conversational behavior. See `docs/product/prds/planner-tier-picker.md`.
+conversational behavior. See the Planner section of
+[architecture/systems.md](../architecture/systems.md).

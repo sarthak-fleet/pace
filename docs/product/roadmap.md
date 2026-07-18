@@ -163,8 +163,8 @@ released. Awaiting a real-world click-miss test before shipping.
 - What: when a planner click misses (all candidates fail with no observable
   state change), render numbered marks on the same screenshot, round-trip the
   MARKED image through the local VLM ("which mark is `<target>`?"), and re-click
-  the chosen element's bbox center. Full design in PRD
-  `docs/product/prds/set-of-mark-click-recovery.md`.
+  the chosen element's bbox center. Implemented in
+  `PaceSetOfMarkClickRecovery.swift` / `PaceSetOfMarkRenderer.swift`.
 - Why: gives the previously-dead `PaceSetOfMarkRenderer` a real consumer; turns
   wasted clicks into self-correction; generates the click-failure data the
   UI-TARS direction below would need.

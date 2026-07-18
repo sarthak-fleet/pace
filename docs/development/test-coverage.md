@@ -1,7 +1,7 @@
 # Test Coverage — EXEMPLARY Tier
 
 Pace holds itself to an **EXEMPLARY** testing standard. The project ships
-818 Swift tests across 103 files, and coverage is measured on every CI
+~1435 Swift test cases across 156 test files, and coverage is measured on every CI
 run and available locally with a single flag. This document is the
 canonical home for coverage goals, per-component targets, how to measure
 coverage locally, and how CI enforces it.

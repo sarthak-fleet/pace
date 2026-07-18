@@ -91,7 +91,7 @@ Once approved, the artifact (LoRA file + base reference, or external model dir, 
 
 | Baby | Base | Job | Status |
 |---|---|---|---|
-| `pace-planner` (runtime today) | `qwen/qwen3-30b-a3b` MoE via LM Studio | main screen/action planning | shipped — eval-validated 15/15 on FM fixtures at 925ms mean (`scripts/eval-planners.py`); the v8 LoRA deployment PRD is superseded by this off-the-shelf choice |
+| `pace-planner` (runtime today) | `google/gemma-3-12b` via LM Studio (shipped default; `qwen/qwen3-30b-a3b` MoE is the stronger 48 GB swap) | main screen/action planning | shipped — off-the-shelf LM Studio model via `LocalPlannerModelIdentifier`; qwen3-30b-a3b eval-validated 15/15 on FM fixtures at 925ms mean (`scripts/eval-planners.py`); the v8 LoRA deployment path is superseded by this off-the-shelf choice |
 | `pace-planner-v9/v10` (LoRA path) | Qwen3-0.6B + LoRA | intent routing, compose body, parameterized actions | parked on the TinyGPT side; resumes if the trained specialist beats the MoE on the eval gate |
 | `pace-vlm` | UI-Venus-1.5-2B / Qwen3-VL | screen understanding beyond OCR | porting (#266) |
 | `pace-rag` | JSON-backed BM25-style lexical scaffold now; **Qwen3-Embedding-0.6B** planned for vector retrieval | retrieval over personal corpus | lexical fallback + built-in Project Minimi competitive seed + Settings-selected explicit-root Spotlight files + Calendar/Reminders/Contacts/Notes/Mail sources wired; embedding/vector runtime queued |
@@ -106,7 +106,7 @@ Every baby is English-only + Mac-only. No localization. No cross-platform. Narro
 | Step | Today | Target | Mechanism |
 |---|---|---|---|
 | ASR streaming partial first chunk | 100-200 ms (Apple Speech) | ≤ 100 ms | WhisperKit provider scaffold wired with LocalAgreement partial stabilization already runtime-wired; real streaming bridge queued |
-| Intent + planner TTFW | LM Studio qwen3-30b-a3b, ~925 ms mean per eval-planners.py | ≤ 100 ms | trained-specialist path (119 ms warm via tinygpt serve) parked until it beats the MoE on the eval gate |
+| Intent + planner TTFW | LM Studio (shipped default `gemma-3-12b`; qwen3-30b-a3b measured ~925 ms mean per eval-planners.py) | ≤ 100 ms | trained-specialist path (119 ms warm via tinygpt serve) parked until it beats the off-the-shelf model on the eval gate |
 | RAG retrieve top-K | JSON-backed BM25-style lexical scaffold | ≤ 80 ms | preferences/Pace history/Calendar/Reminders/Contacts/Notes/Mail/screen-watch + app-usage journals now; Qwen3-Embedding + SQLite-vec queued |
 | Vision single-frame analyze | LM Studio HTTP + provider scaffold | ≤ 200 ms | UI-Venus 24 vision blocks on ANE chunked (#275); in-process runtime bridge queued |
 | Executor — AX dispatch | < 20 ms when target known | ≤ 50 ms | AXPress + setValue, no scripting layer |
@@ -201,33 +201,16 @@ There are no months. There are next-correct-things. Do the next one.
 
 ## Source PRDs
 
-- PRD index: `pace/docs/product/prds/README.md`
-- Her arc roadmap: `pace/docs/product/prds/her-arc-roadmap.md`
-- tinygpt-side body streaming: `tinygpt/docs/product/prds/pace-v9-body-streaming.md`
-- Pace-side body streaming wiring: `pace/docs/product/prds/pace-v9-body-streaming-wiring.md`
-- Planner v10 parameterized actions: `pace/docs/product/prds/pace-planner-v10-parameterized-actions.md`
-- Executor surface: `pace/docs/product/prds/pace-executor-surface.md`
-- Click executor: `pace/docs/product/prds/click-executor-improvements.md`
-- Planner v8 deployment: `pace/docs/product/prds/pace-planner-v8-deployment.md`
-- WhisperKit streaming ASR: `pace/docs/product/prds/whisperkit-streaming-asr.md`
-- Local RAG layer: `pace/docs/product/prds/local-rag-layer.md`
-- Local VLM runtime port: `pace/docs/product/prds/local-vlm-runtime-port.md`
-- Dictation post-processing and voice edit: `pace/docs/product/prds/dictation-postproc-and-voice-edit.md`
-- HUD and intent disambiguator: `pace/docs/product/prds/hud-intent-disambiguator.md`
-- Restraint policy: `pace/docs/product/prds/restraint-policy.md`
-- Episodic memory: `pace/docs/product/prds/episodic-memory.md`
-- Always-listening mode: `pace/docs/product/prds/always-listening-mode.md`
-- Proactive nudges: `pace/docs/product/prds/proactive-nudges.md`
-- Barge-in TTS interrupt: `pace/docs/product/prds/barge-in-tts-interrupt.md`
-- Demonstration replay: `pace/docs/product/prds/demonstration-replay.md`
-- Chat interface (text alongside voice): `pace/docs/product/prds/chat-interface.md`
-- Cloud bridge toggle (Claude Code / Codex / Gemini CLI): `pace/docs/product/prds/cloud-bridge-toggle.md`
-- Conversational thread memory: `pace/docs/product/prds/conversational-thread-memory.md`
-- First-run experience (Apple-FM-first default + skills tab + starter prompts): `pace/docs/product/prds/first-run-experience.md`
-- Inclusivity surface (notch chat + MCP catalog + privacy dashboard): `pace/docs/product/prds/inclusivity-surface.md`
-- Morning triage: `pace/docs/product/prds/morning-triage.md`
-- Planner tier picker (Local / CLI bridge / Direct API BYO / Apple FM): `pace/docs/product/prds/planner-tier-picker.md`
-- Recipe library (bundled installable flows): `pace/docs/product/prds/recipe-library.md`
-- Trust & failures (undo banner + reply replay + failure narrator): `pace/docs/product/prds/trust-and-failures.md`
+Most of Pace's per-pillar PRDs have been consolidated after shipping — their
+durable record now lives in [`PROJECT_STATUS.md`](../../PROJECT_STATUS.md) (full
+history) and [`STATUS.md`](../../STATUS.md) (at-a-glance). The still-open PRDs
+are indexed in [`docs/product/prds/README.md`](../product/prds/README.md):
 
-This file is the canonical map. PRDs are the per-pillar specifications. When in doubt, this doc wins.
+- [`on-device-meeting-notes.md`](../product/prds/on-device-meeting-notes.md) — meeting mode.
+- [`premium-chat-panel.md`](../product/prds/premium-chat-panel.md) — Claude-Desktop-style chat surface.
+- [`teachable-skills.md`](../product/prds/teachable-skills.md) — natural-language `.skill.md` authoring.
+
+For per-system implementation detail see [`systems.md`](systems.md); for the
+per-file map see [`../development/key-files.md`](../development/key-files.md).
+
+This file is the canonical architecture map. When in doubt, this doc wins.

@@ -9,7 +9,7 @@ I ask it" reference.
 
 ## Tools (the action catalog)
 
-The 28 local tools live in `PaceToolRegistry.localTools` and are surfaced,
+The 29 local tools live in `PaceToolRegistry.localTools` and are surfaced,
 auto-generated, in **PaceMainWindow → Skills** (every tool has a name, an
 example utterance, and a risk badge). Startup validation refuses to launch if
 any tool lacks an example utterance, so the Skills tab can never go stale.
@@ -80,7 +80,7 @@ call / when you're actively typing).
 
 **External integrations (MCP)** — anything a configured Model Context Protocol
 server exposes. Configured via `~/.config/pace/mcp-servers.json` or the one-tap
-catalog in Settings → MCP (filesystem, fetch, github, applescript, slack, linear).
+catalog in Settings → MCP (filesystem, fetch, applescript, composio — github/slack/linear route through composio).
 
 **Automation (all default OFF)** — four opt-in automation surfaces in Settings →
 General → Automation:
