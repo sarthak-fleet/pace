@@ -1,0 +1,48 @@
+name: Docs
+
+# Documentation integrity gate. Markdown committed under docs/ is the source of
+# truth, so a broken internal link is a real defect.
+#
+# - `links` runs on every push/PR: a dependency-free Python link checker
+#   (scripts/validate-docs.sh) verifies every internal Markdown link resolves.
+#   No network, no Node, ~1s.
+# - `blume-build` is an opt-in render verification (workflow_dispatch + PR): it
+#   installs the pinned Blume version, builds the site, and runs `blume validate`
+#   so a bad frontmatter/meta.ts or a render-time breakage is caught before
+#   deploy. It does NOT block the links gate.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch: {}
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  links:
+    name: Broken-link check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate internal Markdown links
+        run: bash scripts/validate-docs.sh
+
+  blume-build:
+    name: Blume render verify (opt-in)
+    runs-on: ubuntu-latest
+    # Render verify is non-blocking: Blume is the presentation layer, not the
+    # source of truth. A failure here is a heads-up, not a red build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Blume (pinned)
+        run: npm install --no-package-lock
+      - name: Build docs site
+        run: npx blume build
+      - name: Validate links (Blume)
+        run: npx blume validate

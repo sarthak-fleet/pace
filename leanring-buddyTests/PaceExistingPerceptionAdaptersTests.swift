@@ -123,12 +123,13 @@ struct PaceExistingPerceptionAdaptersTests {
     }
 }
 
-private actor TestCompanionScreenAnalysisClient: PaceScreenAnalysisClient {
+@MainActor
+private final class TestCompanionScreenAnalysisClient: PaceScreenAnalysisClient {
     nonisolated let displayName = "test local screen analyzer"
     private let description: String
     private var analysisCalls = 0
 
-    init(description: String) { self.description = description }
+    nonisolated init(description: String) { self.description = description }
 
     func analyzeScreenshot(
         screenshotImageData: Data,

@@ -32,6 +32,8 @@ extension CompanionManager {
             return "researching"
         case .fullPipeline:
             return "checking screen and tools"
+        case .escalateToLargeModel:
+            return "escalating to large model"
         }
     }
     func handleChitchatFastPath(transcript: String) {
@@ -448,7 +450,66 @@ extension CompanionManager {
                 let actionParseResult = PaceActionTagParser.parseActions(from: fullResponseText)
                 let (_, textAfterDoneStrip) = PaceTagParsers.parseAndStripDoneSignal(from: actionParseResult.spokenText)
                 let pointingParseResult = PaceTagParsers.parsePointingCoordinates(from: textAfterDoneStrip)
-                let spokenText = pointingParseResult.spokenText
+                var spokenText = pointingParseResult.spokenText
+
+                // Post-hoc quality check: if the local model's response
+                // is poor (hedging, too short, repetitive, or FM-scored
+                // low), re-route to the main planner (which may be codex
+                // CLI or a larger LM Studio model) before speaking.
+                // This catches cases where complexity estimation missed
+                // a query that the local model can't handle well.
+                let qualityVerdict = await responseQualityChecker.check(
+                    query: transcript,
+                    response: spokenText
+                )
+                var qualityReRouted = false
+                if case .inadequate(let reason) = qualityVerdict {
+                    // Only re-route if the main planner is a DIFFERENT
+                    // model from the text-only planner — otherwise
+                    // we'd just get the same bad response again.
+                    let mainPlanner = plannerClient
+                    let textOnlyPlanner = plannerForTextOnlyTurn
+                    let plannersDiffer = mainPlanner.displayName != textOnlyPlanner.displayName
+                    if plannersDiffer {
+                        print("🔍 Response quality inadequate (\(reason)) — re-routing to \(mainPlanner.displayName)")
+                        // Stop any TTS that already started from the
+                        // streaming phase and reset the pipeline so the
+                        // new response starts fresh.
+                        ttsClient.stopPlayback()
+                        streamingSentenceTTSPipeline.resetForNewTurn()
+                        responseOverlayManager.updateStreamingText("let me try that with a bigger model…")
+                        currentTurnHUDState = .understanding("re-routing to \(mainPlanner.displayName)")
+
+                        do {
+                            let (reRoutedResponseText, _) = try await mainPlanner.generateResponseStreaming(
+                                images: [],
+                                systemPrompt: CompanionSystemPrompt.buildTextOnly(
+                                    threadSummaryInjection: threadSummaryInjectionForTurn,
+                                    ambientContextInjection: PaceAmbientContextStore.shared.ambientPromptFragment
+                                ),
+                                conversationHistory: historyForPlanner,
+                                userPrompt: userPromptForPlanner,
+                                onTextChunk: { [weak self] accumulatedText in
+                                    self?.responseOverlayManager.updateStreamingText(accumulatedText)
+                                    Task { @MainActor [weak self] in
+                                        await self?.streamingSentenceTTSPipeline.acceptStreamedText(accumulatedText)
+                                    }
+                                }
+                            )
+                            guard !Task.isCancelled else { return }
+                            let reRoutedActions = PaceActionTagParser.parseActions(from: reRoutedResponseText)
+                            let (_, reRoutedAfterDone) = PaceTagParsers.parseAndStripDoneSignal(from: reRoutedActions.spokenText)
+                            let reRoutedPointing = PaceTagParsers.parsePointingCoordinates(from: reRoutedAfterDone)
+                            spokenText = reRoutedPointing.spokenText
+                            qualityReRouted = true
+                            print("✅ Re-routed response received from \(mainPlanner.displayName)")
+                        } catch {
+                            print("⚠️ Re-routed planner failed: \(error.localizedDescription) — keeping original response")
+                        }
+                    } else {
+                        print("🔍 Response quality inadequate (\(reason)) — but no stronger planner available, keeping response")
+                    }
+                }
 
                 // Settings → Debug capture: pure-knowledge turns never run a
                 // screenshot/VLM and never execute actions here — surfaced so
@@ -457,14 +518,20 @@ extension CompanionManager {
                 recordToolCallDebug(PaceToolCallDebugRecord(
                     transcript: transcript,
                     lane: .textOnly,
-                    routingDetail: "pureKnowledge · text-only planner (no screen)",
-                    plannerPathDetail: plannerForTextOnlyTurn.displayName,
+                    routingDetail: qualityReRouted
+                        ? "pureKnowledge · quality re-routed to \(plannerClient.displayName)"
+                        : "pureKnowledge · text-only planner (no screen)",
+                    plannerPathDetail: qualityReRouted
+                        ? "\(plannerForTextOnlyTurn.displayName) → \(plannerClient.displayName)"
+                        : plannerForTextOnlyTurn.displayName,
                     rawPlannerOutput: fullResponseText,
                     spokenText: spokenText,
                     parsedActionsSummary: Self.toolCallDebugSummary(
                         for: actionParseResult.executionPlan
                     ),
-                    dispatchSummary: "spoken-only — the text-only path does not execute actions",
+                    dispatchSummary: qualityReRouted
+                        ? "quality re-route — original response was inadequate"
+                        : "spoken-only — the text-only path does not execute actions",
                     plannerLatencyMs: Int(Date().timeIntervalSince(plannerStartedAt) * 1000),
                     totalTurnLatencyMs: Int(Date().timeIntervalSince(plannerStartedAt) * 1000),
                     userPrompt: userPromptForPlanner
@@ -990,7 +1057,12 @@ extension CompanionManager {
         // Conservative: only fires when the classifier is confident
         // enough to return .chitchat (not .unknown). Anything ambiguous
         // falls through to the full pipeline.
-        let intentPrediction = await intentClassifier.classify(transcript)
+        let intentPrediction = await intentClassifier.classify(
+            transcript,
+            conversationHistory: conversationHistory.map { entry in
+                (userTranscript: entry.userTranscript, assistantResponse: entry.assistantResponse)
+            }
+        )
         PaceLatencyBudget.shared.mark(.intentClassified)
         lastIntentRouteForEpisodicExtraction = intentPrediction.intent
         currentTurnHUDState = .understanding(routeHUDDetail(for: intentPrediction))
@@ -1023,7 +1095,8 @@ extension CompanionManager {
                 print("🔬 Research intent but tier is OFF — falling back to phoneLargeModel route")
                 mutableIntentPrediction = PaceIntentPrediction(
                     intent: .phoneLargeModel,
-                    confidence: intentPrediction.confidence
+                    confidence: intentPrediction.confidence,
+                    complexity: intentPrediction.complexity
                 )
             case .cliBridge:
                 // Direct-spawn the local CLI — no Node bridge needed.
@@ -1099,16 +1172,22 @@ extension CompanionManager {
                     print("⚠️ Research Direct-API endpoint URL is empty/invalid; falling back to phoneLargeModel route")
                     mutableIntentPrediction = PaceIntentPrediction(
                         intent: .phoneLargeModel,
-                        confidence: intentPrediction.confidence
+                        confidence: intentPrediction.confidence,
+                        complexity: intentPrediction.complexity
                     )
                 }
             }
         }
 
-        // When the intent is phoneLargeModel and the user has set up the cloud bridge,
-        // route the turn through the bridge instead of refusing it with a local-only message.
-        // This is the one intentional break of the no-cloud-LLM principle — consent-gated.
-        if mutableIntentPrediction.route == .phoneLargeModel {
+        // When the intent is phoneLargeModel (explicit) or
+        // escalateToLargeModel (low-confidence escalation) and the user
+        // has set up the cloud bridge, route the turn through the bridge
+        // instead of refusing it or running a potentially-wrong action.
+        // This is the one intentional break of the no-cloud-LLM
+        // principle — consent-gated.
+        let isEscalationRoute = mutableIntentPrediction.route == .phoneLargeModel
+            || mutableIntentPrediction.route == .escalateToLargeModel
+        if isEscalationRoute {
             let currentBridgeConfiguration = PaceCloudBridgeConsent.loadConfiguration()
             let bridgeIsActiveForThisTurn = currentBridgeConfiguration.hasUserAcceptedConsent
                 && (currentBridgeConfiguration.mode == .hybrid
@@ -1128,7 +1207,17 @@ extension CompanionManager {
                 let upstreamDisplayName = currentBridgeConfiguration.upstream.displayLabel
                 let bridgeRoutingHUDDetail = "thinking with \(upstreamDisplayName.lowercased())…"
                 currentTurnHUDState = .understanding(bridgeRoutingHUDDetail)
-                print("📡 Routing phoneLargeModel turn to cloud bridge (\(upstreamDisplayName))")
+                let escalationReason: String
+                if mutableIntentPrediction.route == .escalateToLargeModel {
+                    if mutableIntentPrediction.confidence < PaceIntentPrediction.confidenceEscalationThreshold {
+                        escalationReason = "low confidence (\(String(format: "%.2f", mutableIntentPrediction.confidence)))"
+                    } else {
+                        escalationReason = "complex query (\(mutableIntentPrediction.complexity.rawValue), intent: \(mutableIntentPrediction.intent.rawValue))"
+                    }
+                } else {
+                    escalationReason = "explicit request"
+                }
+                print("📡 Routing escalation turn to cloud bridge (\(upstreamDisplayName)) — \(escalationReason)")
                 // Speak the "phone a friend" announcement immediately (fire-and-
                 // forget so it doesn't block the bridge call) — it both sets the
                 // expectation that this turn goes off-device AND masks the
@@ -1140,8 +1229,9 @@ extension CompanionManager {
                 }
                 // Fall through to the normal planner pipeline — the routing hint
                 // will cause the planner to call the bridge.
-            } else {
-                // Bridge is off or consent not given — keep the existing local-only message.
+            } else if mutableIntentPrediction.route == .phoneLargeModel {
+                // Bridge is off or consent not given for an explicit
+                // phoneLargeModel request — keep the existing local-only message.
                 if let unsupportedResponse = PaceIntentUnsupportedDetector.unsupportedResponse(
                     for: transcript,
                     prediction: mutableIntentPrediction
@@ -1151,6 +1241,10 @@ extension CompanionManager {
                     return
                 }
             }
+            // For .escalateToLargeModel with bridge off: fall through to
+            // the full pipeline — we tried to escalate but no large model
+            // is available, so do the best we can locally instead of
+            // refusing the turn.
         } else if let unsupportedResponse = PaceIntentUnsupportedDetector.unsupportedResponse(
             for: transcript,
             prediction: mutableIntentPrediction
@@ -1159,13 +1253,16 @@ extension CompanionManager {
             handleUnsupportedTurn(transcript: transcript, unsupportedResponse: unsupportedResponse)
             return
         }
-        if mutableIntentPrediction.intent == .chitchat {
-            print("🎯 Intent: chitchat (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — fast-path")
+        // Fast paths use .route (not .intent) so a low-confidence
+        // prediction whose intent happens to be .chitchat but whose
+        // route is .escalateToLargeModel does NOT bypass escalation.
+        if mutableIntentPrediction.route == .chitchatFastPath {
+            print("🎯 Intent: chitchat (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence)), complexity \(mutableIntentPrediction.complexity.rawValue)) — fast-path")
             handleChitchatFastPath(transcript: transcript)
             return
         }
         if mutableIntentPrediction.route == .answerDirectly {
-            print("🎯 Intent: pureKnowledge (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — text-only planner")
+            print("🎯 Intent: pureKnowledge (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence)), complexity \(mutableIntentPrediction.complexity.rawValue)) — text-only planner")
             handleTextOnlyPlannerFastPath(transcript: transcript)
             return
         }
@@ -1215,7 +1312,7 @@ extension CompanionManager {
             }
             return
         }
-        print("🎯 Intent: \(mutableIntentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence))) — \(mutableIntentPrediction.route.rawValue)")
+        print("🎯 Intent: \(mutableIntentPrediction.intent.rawValue) (confidence \(String(format: "%.2f", mutableIntentPrediction.confidence)), complexity \(mutableIntentPrediction.complexity.rawValue)) — \(mutableIntentPrediction.route.rawValue)")
         currentTurnHUDState = .understanding(routeHUDDetail(for: mutableIntentPrediction))
 
         // Capture for the Task closure: a Sendable bundle of the

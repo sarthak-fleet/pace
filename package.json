@@ -1,0 +1,18 @@
+{
+  "name": "pace-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pace documentation site (Blume presentation layer). The committed Markdown under docs/ is the source of truth; Blume only renders and searches it.",
+  "scripts": {
+    "docs:dev": "blume dev",
+    "docs:build": "blume build",
+    "docs:preview": "blume preview",
+    "docs:validate": "blume validate",
+    "docs:check": "blume check",
+    "docs:doctor": "blume doctor"
+  },
+  "devDependencies": {
+    "blume": "1.0.4"
+  }
+}

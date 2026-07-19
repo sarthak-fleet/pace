@@ -277,6 +277,15 @@ final class CompanionManager: ObservableObject {
         return BuddyPlannerClientFactory.makeFastTextOnlyPlannerOrFallback()
     }()
 
+    /// Post-hoc response quality checker. After the local model
+    /// generates a response, this checks whether it's adequate before
+    /// speaking it. If poor, the turn is re-routed to a stronger model.
+    /// Only applied to text-only answer paths where the response is
+    /// fully generated before TTS begins.
+    lazy var responseQualityChecker: PaceResponseQualityChecker = {
+        return PaceResponseQualityChecker()
+    }()
+
     lazy var localRetriever: PaceLocalRetriever = {
         let retriever = PaceLocalRetriever()
         localRetrievalSourceStatuses = retriever.sourceStatuses
@@ -591,7 +600,7 @@ final class CompanionManager: ObservableObject {
         switch intent {
         case .screenAction, .screenDescription:
             return true
-        case .pureKnowledge, .chitchat, .phoneLargeModel, .research, .unknown:
+        case .pureKnowledge, .chitchat, .phoneLargeModel, .research, .unknown, .lowConfidenceEscalation:
             // Research turns drive a heavyweight planner with a
             // larger step budget; the speculative race over a local
             // Apple FM lite path isn't relevant to them.

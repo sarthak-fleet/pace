@@ -1,14 +1,17 @@
 # Pace
 
+**Product:** [heypace.app](https://heypace.app)
+
+
 <p align="center">
-  <img src="docs/brand/pace-mascot-hero.svg" alt="Pace — your Mac, listening. Fully on-device." width="820">
+  <img src="docs/product/brand/pace-mascot-hero.svg" alt="Pace — your Mac, listening. Fully on-device." width="820">
 </p>
 
 **Voice agent for Mac. Answers in under 500ms. Zero API cost. Fully on-device.**
 
 ![Pace demo](pace-demo.gif)
 
-<sub>Meet the mascot — the notch, alive. Brand assets in [`docs/brand/`](docs/brand/).</sub>
+<sub>Meet the mascot — the notch, alive. Brand assets in [`docs/product/brand/`](docs/product/brand/).</sub>
 
 A menu-bar voice agent for macOS. Hold a hotkey, talk, and Pace answers — reading the screen you're looking at and (optionally) clicking on your behalf. Every byte stays on your Mac.
 
@@ -78,7 +81,7 @@ Run coverage locally:
 ./scripts/test-pace.sh --coverage
 ```
 
-Per-component targets, local extraction details, and how CI enforces coverage: see [`docs/test-coverage.md`](./docs/test-coverage.md).
+Per-component targets, local extraction details, and how CI enforces coverage: see [`docs/development/test-coverage.md`](./docs/development/test-coverage.md).
 
 ## License
 

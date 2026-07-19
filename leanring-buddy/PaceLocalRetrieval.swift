@@ -355,7 +355,7 @@ enum PaceRetrievalContextPolicy {
         guard !normalizedTranscript.isEmpty else { return false }
 
         switch route {
-        case .chitchatFastPath, .phoneLargeModel:
+        case .chitchatFastPath, .phoneLargeModel, .escalateToLargeModel:
             return false
         case .answerDirectly, .executeTool, .fullPipeline, .research:
             // Research turns benefit from the same lexical retrieval

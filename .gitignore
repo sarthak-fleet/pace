@@ -17,3 +17,14 @@ default.profraw
 /tmp/pace-test-derived-data/
 /tmp/pace-profile-*/
 __pycache__/
+
+# Blume documentation site (presentation layer — generated, not source of truth)
+.blume/
+.blume-verify/
+node_modules/
+dist/
+
+# Local agent logs / scratch (never commit agent session artifacts)
+.agent-logs/
+.devin-scratch/
+

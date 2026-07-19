@@ -1,11 +1,11 @@
 {
   "name": "Pace",
   "version": "1",
-  "url": "https://heypace.app",
-  "llms": "https://heypace.app/llms.txt",
-  "llmsFull": "https://heypace.app/llms-full.txt",
-  "sitemap": "https://heypace.app/sitemap.xml",
-  "robots": "https://heypace.app/robots.txt",
+  "url": "https://pace-6xg.pages.dev",
+  "llms": "https://pace-6xg.pages.dev/llms.txt",
+  "llmsFull": "https://pace-6xg.pages.dev/llms-full.txt",
+  "sitemap": "https://pace-6xg.pages.dev/sitemap.xml",
+  "robots": "https://pace-6xg.pages.dev/robots.txt",
   "markdown": {
     "suffix": ".md",
     "negotiation": true
@@ -13,8 +13,8 @@
   "surfaces": [
     {
       "id": "home",
-      "url": "https://heypace.app/",
-      "md": "https://heypace.app/index.md",
+      "url": "https://pace-6xg.pages.dev/",
+      "md": "https://pace-6xg.pages.dev/index.md",
       "kind": "static",
       "description": "Product home"
     }

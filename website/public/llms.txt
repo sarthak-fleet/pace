@@ -4,13 +4,13 @@
 
 ## Product
 
-- [Home](https://heypace.app/): Product landing
+- [Home](https://pace-6xg.pages.dev/): Product landing
 
 ## Machine surfaces
 
-- [Agent catalog](https://heypace.app/api/ai): JSON inventory of public surfaces
-- [Homepage markdown](https://heypace.app/index.md): Product brief without JS
-- [This index](https://heypace.app/llms.txt)
+- [Agent catalog](https://pace-6xg.pages.dev/api/ai): JSON inventory of public surfaces
+- [Homepage markdown](https://pace-6xg.pages.dev/index.md): Product brief without JS
+- [This index](https://pace-6xg.pages.dev/llms.txt)
 
 ## Optional
 

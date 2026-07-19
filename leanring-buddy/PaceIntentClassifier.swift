@@ -60,16 +60,64 @@ enum PaceIntent: String, CaseIterable {
     /// caller MUST treat this as "run the full pipeline" — never skip
     /// the VLM or planner on an unknown intent.
     case unknown
+
+    /// Classifier was not confident enough (below
+    /// `PaceIntentPrediction.confidenceEscalationThreshold`) to trust
+    /// its top-1 prediction. Instead of executing a potentially-wrong
+    /// action, the turn is routed directly to the large model — same
+    /// path as `.phoneLargeModel` but reached via low-confidence
+    /// escalation rather than an explicit user request.
+    case lowConfidenceEscalation
 }
 
 /// Result of a classification call. Confidence is roughly 0...1; a
 /// low value tells CompanionManager to fall through to the full
-/// pipeline regardless of the predicted class.
+/// pipeline regardless of the predicted class. Complexity estimates
+/// how hard the query is — a confident `pureKnowledge` for "what's
+/// the capital of France" (simple) vs "write a 2000-word essay
+/// comparing WWI and WWII" (complex) route to different models.
 struct PaceIntentPrediction: Equatable {
     let intent: PaceIntent
     let confidence: Double
+    var complexity: PaceQueryComplexity = .simple
+
+    /// Below this confidence the prediction is escalated to the large
+    /// model via `.escalateToLargeModel` instead of executing the
+    /// predicted action. This prevents the classifier from taking a
+    /// potentially-wrong action when it isn't sure — the large model
+    /// can always re-route if needed, but a wrong local action is
+    /// harder to undo. 0.90 was chosen so the trained TinyGPT router
+    /// (which outputs calibrated softmax probabilities) escalates only
+    /// its genuinely uncertain predictions; the rule-based and FM
+    /// backends rarely hit this threshold because their confidences
+    /// are either 0.0 (nothing matched) or >= 0.90.
+    nonisolated static let confidenceEscalationThreshold: Double = 0.90
 
     var route: PaceIntentRoute {
+        // Low-confidence gate: before consulting the predicted intent,
+        // check whether the classifier is sure enough to act on its
+        // prediction. If not, escalate to the large model immediately
+        // — do NOT execute the predicted action first.
+        if intent != .unknown && confidence < Self.confidenceEscalationThreshold {
+            return .escalateToLargeModel
+        }
+        // Complexity gate: if the query is complex AND the intent
+        // would route to a local-only answer path, escalate to the
+        // large model. The local 3B active-param model produces
+        // noticeably worse output for long-form synthesis, multi-step
+        // reasoning, and code generation. screenAction is excluded
+        // because the action layer needs local model action-tag
+        // generation ([CLICK:...], [TYPE:...]) — a cloud model can't
+        // produce those. research and phoneLargeModel already route
+        // to capable models; unknown runs the full pipeline.
+        if complexity == .complex {
+            switch intent {
+            case .chitchat, .pureKnowledge, .screenDescription:
+                return .escalateToLargeModel
+            default:
+                break
+            }
+        }
         switch intent {
         case .chitchat:
             return .chitchatFastPath
@@ -85,6 +133,8 @@ struct PaceIntentPrediction: Equatable {
             return .research
         case .unknown:
             return .fullPipeline
+        case .lowConfidenceEscalation:
+            return .escalateToLargeModel
         }
     }
 }
@@ -97,13 +147,19 @@ enum PaceIntentRoute: String, Equatable {
     case phoneLargeModel
     case research
     case fullPipeline
+    /// Low-confidence escalation — route to the large model directly
+    /// instead of running the full pipeline and risking a wrong action.
+    case escalateToLargeModel
 }
 
 @MainActor
 final class PaceIntentClassifier {
-    /// Below this confidence the prediction is downgraded to .unknown
-    /// at the public surface. Picked to match the practical floor where
-    /// the classifier's wrong calls outweigh the latency it saves.
+    /// Legacy floor kept for compatibility — predictions below this
+    /// confidence are returned with intent `.unknown` so the caller can
+    /// log the raw prediction. The actual routing decision (escalate
+    /// vs. act) is made by `PaceIntentPrediction.route` using
+    /// `confidenceEscalationThreshold` (0.90), which is higher than
+    /// this floor.
     nonisolated static let defaultMinimumConfidence: Double = 0.6
 
     private let minimumConfidence: Double
@@ -131,17 +187,62 @@ final class PaceIntentClassifier {
         return lowercaseTranscript
     }
 
-    /// Classify a transcript. Returns `.unknown` when the underlying
-    /// rules' confidence is below `minimumConfidence`. Callers should
-    /// treat `.unknown` as "run the full pipeline."
+    /// Classify a transcript. Returns the raw prediction with the
+    /// predicted intent and its confidence score. The routing decision
+    /// (escalate to large model vs. execute the predicted action) is
+    /// made by `PaceIntentPrediction.route`, which checks
+    /// `confidenceEscalationThreshold`. Predictions below
+    /// `minimumConfidence` are still marked `.unknown` for logging
+    /// clarity, but the route will escalate either way.
     func classify(_ transcript: String) -> PaceIntentPrediction {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return PaceIntentPrediction(intent: .unknown, confidence: 0)
         }
-        let prediction = ruleBasedClassify(trimmed)
+        var prediction = ruleBasedClassify(trimmed)
+        // Estimate complexity from the transcript. This runs after
+        // intent classification so the complexity signal is independent
+        // — a confidently-classified pureKnowledge query can still be
+        // complex enough to warrant escalation to the large model.
+        prediction.complexity = PaceQueryComplexityEstimator.estimate(transcript: trimmed)
+        // Mark genuinely low-confidence predictions as .unknown for
+        // logging — but preserve the confidence (and complexity) so
+        // the route property can escalate to the large model.
         if prediction.confidence < minimumConfidence {
-            return PaceIntentPrediction(intent: .unknown, confidence: prediction.confidence)
+            return PaceIntentPrediction(
+                intent: .unknown,
+                confidence: prediction.confidence,
+                complexity: prediction.complexity
+            )
+        }
+        return prediction
+    }
+
+    /// Conversation-aware classification. After the per-query
+    /// complexity is estimated, this checks whether the conversation
+    /// context warrants upgrading complexity to `.complex` — e.g., a
+    /// short follow-up ("so what about the edge cases?") in a deep
+    /// technical conversation should escalate even without keywords.
+    ///
+    /// The conversation history is the same `conversationHistory`
+    /// array used by the planner — no new state to manage.
+    func classify(
+        _ transcript: String,
+        conversationHistory: [(userTranscript: String, assistantResponse: String)]
+    ) -> PaceIntentPrediction {
+        var prediction = classify(transcript)
+        // Only upgrade — never downgrade. If the per-query estimator
+        // already said .complex, conversation context can't make it
+        // simpler. Only upgrade .simple or .moderate to .complex when
+        // the conversation is deep enough to warrant it.
+        if prediction.complexity != .complex {
+            let shouldEscalate = PaceConversationComplexityTracker.shouldEscalateBasedOnContext(
+                transcript: transcript,
+                conversationHistory: conversationHistory
+            )
+            if shouldEscalate {
+                prediction.complexity = .complex
+            }
         }
         return prediction
     }
@@ -324,7 +425,7 @@ final class PaceIntentClassifier {
         // an action ("use"), and the answer lives in local history.
         for journalRecallHint in Self.journalRecallHints {
             if lowercaseTranscript.contains(journalRecallHint) {
-                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.85)
+                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.95)
             }
         }
 
@@ -334,27 +435,27 @@ final class PaceIntentClassifier {
         // miscategorise. Order matters here.
         for descriptionHint in Self.descriptionHints {
             if lowercaseTranscript.contains(descriptionHint) {
-                return PaceIntentPrediction(intent: .screenDescription, confidence: 0.85)
+                return PaceIntentPrediction(intent: .screenDescription, confidence: 0.95)
             }
         }
 
         // Action: any action verb in the transcript.
         for actionVerb in Self.actionVerbs {
             if lowercaseTranscript.contains(actionVerb) {
-                return PaceIntentPrediction(intent: .screenAction, confidence: 0.80)
+                return PaceIntentPrediction(intent: .screenAction, confidence: 0.94)
             }
         }
 
         for actionToolPhrase in Self.actionToolPhrases {
             if lowercaseTranscript.contains(actionToolPhrase) {
-                return PaceIntentPrediction(intent: .screenAction, confidence: 0.82)
+                return PaceIntentPrediction(intent: .screenAction, confidence: 0.95)
             }
         }
 
         // Pure-knowledge: starts with a "what is" / "explain" pattern.
         for knowledgePattern in Self.knowledgePatterns {
             if lowercaseTranscript.hasPrefix(knowledgePattern) {
-                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.75)
+                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.95)
             }
         }
 

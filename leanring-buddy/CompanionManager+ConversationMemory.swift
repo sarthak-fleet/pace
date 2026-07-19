@@ -221,7 +221,7 @@ extension CompanionManager {
             // an extractable fact. Research turns are knowledge-style
             // so their summarized output is fact-extractable too.
             intentIsEligibleForExtraction = true
-        case .screenAction, .phoneLargeModel:
+        case .screenAction, .phoneLargeModel, .lowConfidenceEscalation:
             intentIsEligibleForExtraction = false
         }
         guard intentIsEligibleForExtraction else { return }
