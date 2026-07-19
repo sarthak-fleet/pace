@@ -86,6 +86,40 @@ nonisolated enum PaceFailureKind: Equatable {
     /// returned an error. The provider name is echoed back so the user
     /// knows which auth/CLI to inspect.
     case cloudBridgeUpstreamError(provider: String)
+
+    /// Stable, privacy-safe identifier for the failure class. Used by
+    /// `PaceTelemetryLog.recordFailure` so the log line carries a
+    /// fixed enum-case name (e.g. `"plannerOffline"`,
+    /// `"missingPermission.accessibility"`) instead of any associated
+    /// value that could leak user content (e.g. a click target label
+    /// or a provider error body). The switch is exhaustive so adding
+    /// a new case is a compile error until this is extended — that
+    /// prevents a future case from silently losing failure-class
+    /// visibility.
+    var stableLogIdentifier: String {
+        switch self {
+        case .plannerOffline:
+            return "plannerOffline"
+        case .missingPermission(let permission):
+            return "missingPermission.\(permission.spokenNoun)"
+        case .clickMissed:
+            // Intentionally does NOT include the target label — the
+            // label is user-content-adjacent (it can echo a button the
+            // user named) and the failure matrix records only the
+            // aggregate class.
+            return "clickMissed"
+        case .sidecarTTSOffline:
+            return "sidecarTTSOffline"
+        case .mcpServerNotConfigured:
+            // Intentionally does NOT include the server name — a
+            // user-configured server name could leak private context.
+            return "mcpServerNotConfigured"
+        case .cloudBridgeUpstreamError:
+            // Intentionally does NOT include the provider name — the
+            // provider could be a user-configured CLI label.
+            return "cloudBridgeUpstreamError"
+        }
+    }
 }
 
 /// The composed result the manager hands to the TTS layer plus the

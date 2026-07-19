@@ -88,6 +88,21 @@ extension CompanionManager {
         guard !trimmedSpokenText.isEmpty else { return }
         lastSpokenReplyText = trimmedSpokenText
         lastSpokenReplyAt = Date()
+
+        // Privacy-safe activation evidence for the automation matrix.
+        // Emitted once per app launch the first time a voice turn
+        // completes (a spoken reply finishes). Records only a coarse
+        // action class and a sanitized outcome — never the transcript,
+        // screen context, or action target. See
+        // `PaceTelemetryLog.recordFirstSuccessfulLocalAction` and
+        // `docs/operations/automation-evidence-matrix.md`.
+        if !hasRecordedFirstSuccessfulLocalAction {
+            hasRecordedFirstSuccessfulLocalAction = true
+            PaceTelemetryLog.recordFirstSuccessfulLocalAction(
+                actionClass: "voiceReply",
+                outcome: "spoken"
+            )
+        }
     }
 
     /// Clears the replay state. Called when a new turn begins so the
@@ -131,6 +146,23 @@ extension CompanionManager {
 
         let restraintDecision = PaceRestraintGate.decide(
             buildFailureRestraintContext(forNow: Date())
+        )
+        // Privacy-safe failure evidence for the automation matrix.
+        // Records only the stable failure-class identifier, an
+        // aggregate outcome bucket reflecting the restraint gate's
+        // decision, and the app version/build — never the transcript,
+        // screen context, action target, or provider error body. See
+        // `PaceFailureKind.stableLogIdentifier` and
+        // `docs/operations/automation-evidence-matrix.md`.
+        let outcomeBucket: String
+        switch restraintDecision {
+        case .speak: outcomeBucket = "spoken"
+        case .stayQuiet: outcomeBucket = "suppressed"
+        case .queueUntilIdle: outcomeBucket = "queued"
+        }
+        PaceTelemetryLog.recordFailure(
+            failureClass: kind.stableLogIdentifier,
+            outcome: outcomeBucket
         )
         switch restraintDecision {
         case .speak:

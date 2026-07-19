@@ -112,6 +112,13 @@ final class CompanionManager: ObservableObject {
     /// re-deriving it from a stringly-typed history record.
     @Published var lastFailureNarration: PaceFailureNarration?
 
+    /// One-shot guard for the privacy-safe activation signal
+    /// (`PaceTelemetryLog.recordFirstSuccessfulLocalAction`). Flips to
+    /// `true` the first time a voice turn completes in this launch and
+    /// never resets — the activation evidence contract records exactly
+    /// one "first successful local action" per app session.
+    var hasRecordedFirstSuccessfulLocalAction: Bool = false
+
     /// Timestamp of the last sidecar-TTS-offline narration so the
     /// "switched to system voice" message fires at most once per
     /// outage window rather than on every sentence. Resets when the

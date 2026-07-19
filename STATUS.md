@@ -2,7 +2,7 @@
 
 > At-a-glance current state. The durable record is
 > [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) — update both together when state
-> changes. Last updated: 2026-07-18.
+> changes. Last updated: 2026-07-19.
 
 ## Objective
 
@@ -29,12 +29,10 @@ multi-hour and multi-day workflows.
 
 ## Blockers
 
-- **Test baseline compile-blocked (2026-07-17):** `scripts/test-pace.sh` fails
-  to compile the test target under the installed Xcode 27 beta — actor
-  `TestCompanionScreenAnalysisClient` cannot conform to global-actor-isolated
-  protocol `PaceScreenAnalysisClient`. Older all-green totals (~1435) are
-  historical until this is fixed and rerun. CI still runs the suite (pinned
-  `macos-26`).
+- **Test baseline resolved (2026-07-19):** `scripts/test-pace.sh` now compiles
+  and passes 1606/1606 tests under Xcode 27.0 Beta 3. The earlier
+  `TestCompanionScreenAnalysisClient` actor-isolation compile block is gone.
+  CI still runs the suite on the pinned `macos-26` runner.
 - **TCC:** never run terminal `xcodebuild` for routine dev — it re-requests
   screen recording / accessibility / mic permissions. Use Xcode Cmd+R or
   `scripts/test-pace.sh` (isolated DerivedData).
@@ -62,10 +60,9 @@ multi-hour and multi-day workflows.
 
 ## Next steps
 
-1. Fix the Xcode 27 beta test-target compile block and re-establish a green
-   baseline count.
-2. Resume companion consolidation per the plan's recommended order; close out
+1. Resume companion consolidation per the plan's recommended order; close out
    the five acceptance stories with live evidence.
-3. Wire `PacePlannerModelResolver` fail-loud + served-model tracing.
-4. Decide the default VLM model after a real-hardware eval-gate run.
-5. Run the voice→Mail latency demo runbook and record a publishable TTFSW.
+2. Wire `PacePlannerModelResolver` fail-loud + served-model tracing.
+3. Decide the default VLM model after a real-hardware eval-gate run.
+4. Run the voice→Mail latency demo runbook and record a publishable TTFSW.
+5. Walk the release smoke checklist on real hardware before the next release.

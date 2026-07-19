@@ -23,14 +23,24 @@ if [ ! -f "$APPCAST" ]; then
   exit 0
 fi
 
+# Source revision the landing build is tied to. Empty string when git
+# is unavailable (e.g. a fresh tarball checkout) — the website still
+# builds, the receipt just records "unknown" per the evidence matrix.
+SOURCE_REVISION=""
+if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_DIR/.git" ]; then
+  SOURCE_REVISION="$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+fi
+export SOURCE_REVISION
+
 # Use Python for reliable XML parsing. Available on macOS and CI.
-python3 - "$APPCAST" "$OUTPUT" <<'PYEOF'
+python3 - "$APPCAST" "$OUTPUT" "$SOURCE_REVISION" <<'PYEOF'
 import json
+import os
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-appcast_path, output_path = sys.argv[1], sys.argv[2]
+appcast_path, output_path, source_revision = sys.argv[1], sys.argv[2], sys.argv[3]
 
 ns = {
     "sparkle": "http://www.andymatuschak.org/xml-namespaces/sparkle",
@@ -85,6 +95,10 @@ result = {
     "latest": items[0] if items else None,
     "releases": items[:10],  # Keep the 10 most recent for the page
     "releasesPageURL": "https://github.com/sarthakagrawal927/pace/releases",
+    # Source revision ties the landing build to a repo commit so the
+    # evidence matrix can record "landing built from <sha>". Empty
+    # string when git was unavailable at generation time.
+    "sourceRevision": source_revision or "unknown",
     "generatedAt": datetime.utcnow().isoformat() + "Z",
 }
 

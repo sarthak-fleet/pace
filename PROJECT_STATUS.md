@@ -1,6 +1,6 @@
 # pace — PROJECT STATUS
 
-Last updated: 2026-07-13
+Last updated: 2026-07-19
 
 ## Why/What
 
@@ -32,7 +32,7 @@ Last updated: 2026-07-13
 | Surface | Stack | Commands |
 | --- | --- | --- |
 | macOS app | Swift/SwiftUI, Xcode `leanring-buddy.xcodeproj` | Open in Xcode → Cmd+R (**do not** `xcodebuild` — invalidates TCC) |
-| Tests | XCTest via isolated DerivedData | `bash scripts/test-pace.sh` — **~1358 tests, all passing (~21 s locally)** |
+| Tests | XCTest via isolated DerivedData | `bash scripts/test-pace.sh` — **~1606 tests, all passing under Xcode 27.0 Beta 3** |
 | Local models | MLX, WhisperKit, TTSKit, Apple Speech | Settings → Models; Sparkle manifest in Info.plist |
 | Landing | Astro 5 + Tailwind v4 + Lightning CSS | `cd website && npm install && npm run dev` (:4321) |
 | Deploy landing | Cloudflare Pages project `pace` | `npm run build && npm run deploy` |
@@ -256,11 +256,9 @@ end-to-end acceptance stories.
 
 ### Blocked
 
-- **Current test baseline (2026-07-17):** `bash scripts/test-pace.sh` fails to
-  compile the test target under the installed Xcode 27 beta because actor
-  `TestCompanionScreenAnalysisClient` cannot conform to global-actor-isolated
-  protocol `PaceScreenAnalysisClient`. Older all-green test totals are
-  historical until this is fixed and rerun.
+- **Test baseline resolved (2026-07-19):** `bash scripts/test-pace.sh` now
+  compiles and passes 1606/1606 tests under Xcode 27.0 Beta 3. The earlier
+  `TestCompanionScreenAnalysisClient` actor-isolation compile block is gone.
 - Live-app click ambiguity smokes not CI-automated.
 - Real attributed testimonials pending permission — the live section uses anonymized theme cards (dummy attributed layout is preview-only behind a default-OFF flag).
 - Known non-blocking Xcode warnings (Swift 6 concurrency, deprecated onChange) — intentionally not fixed per AGENTS.md.
