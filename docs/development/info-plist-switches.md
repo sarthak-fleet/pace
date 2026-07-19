@@ -28,7 +28,7 @@ ambient-voice, screen, Mac-context, silent-card, and spoken-intervention choices
 are explicit default-off UserDefaults managed in Settings → Companion. Companion
 visual inference still honors `LocalVLMBaseURL` but validates it fail-closed as
 loopback-only; it never uses the selected cloud conversational tier. See
-[`companion-mode-privacy.md`](companion-mode-privacy.md).
+[`companion-mode-privacy.md`](../product/companion-mode-privacy.md).
 
 | Key | Default | Effect when changed |
 |---|---|---|
