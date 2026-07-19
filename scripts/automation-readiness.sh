@@ -109,10 +109,10 @@ echo
 
 if [ $RUN_LANDING -eq 1 ]; then
   echo "## landing"
-  if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/tmp/pace-landing-health.$$ 2>&1; then
-    record_pass "landing health (offline manifest check)"
+  if bash "$SCRIPT_DIR/check-landing-health.sh" >/tmp/pace-landing-health.$$ 2>&1; then
+    record_pass "landing health (manifest + live public surfaces)"
   else
-    record_fail "landing health (offline manifest check)"
+    record_fail "landing health (manifest + live public surfaces)"
     cat /tmp/pace-landing-health.$$
   fi
   rm -f /tmp/pace-landing-health.$$
@@ -198,10 +198,10 @@ if [ $RUN_DISTRIBUTION -eq 1 ]; then
     # Both files exist — check manifest consistency (delegates to the
     # landing health check's offline path, which already verifies the
     # latest download URL matches across both files).
-    if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/tmp/pace-dist.$$ 2>&1; then
-      record_pass "appcast.xml + release-info.json manifest consistent"
+    if bash "$SCRIPT_DIR/check-landing-health.sh" >/tmp/pace-dist.$$ 2>&1; then
+      record_pass "appcast, release manifest, and published artifact verified"
     else
-      record_fail "appcast.xml + release-info.json manifest drift"
+      record_fail "distribution evidence failed"
       cat /tmp/pace-dist.$$
     fi
     rm -f /tmp/pace-dist.$$
@@ -215,7 +215,7 @@ if [ $RUN_ACTIVATION -eq 1 ]; then
   echo "## activation"
   echo "  (intentionally N/A — the on-device moat forbids a fleet-bound"
   echo "   return path. The local OSLog signal"
-  echo "   PaceTelemetryLog.recordFirstSuccessfulLocalAction is the"
+  echo "   PaceTelemetryLog.recordFirstSuccessfulLocalActivation is the"
   echo "   accepted contract; see docs/operations/automation-evidence-matrix.md)"
   record_na "activation return signal — intentionally not centralized"
   echo
@@ -242,17 +242,20 @@ if [ $RUN_RELEASE_READINESS -eq 1 ]; then
     # layers. The receipt records build/tests/simulator as "blocked"
     # when --no-build is passed; run release-readiness.sh directly
     # without --no-build for a receipt that includes real build evidence.
-    if bash "$SCRIPT_DIR/release-readiness.sh" --no-build >/tmp/pace-readiness.$$ 2>&1; then
+    set +e
+    bash "$SCRIPT_DIR/release-readiness.sh" --no-build >/tmp/pace-readiness.$$ 2>&1
+    readiness_exit=$?
+    set -e
+    if [ "$readiness_exit" -eq 0 ]; then
       record_pass "release-readiness receipt generated (--no-build)"
+    elif [ "$readiness_exit" -eq 2 ] && grep -q "release-readiness receipt written" /tmp/pace-readiness.$$; then
+      record_blocked "release-readiness receipt generated with unresolved layers"
+    elif [ "$readiness_exit" -eq 1 ] && grep -q "release-readiness receipt written" /tmp/pace-readiness.$$; then
+      record_fail "release-readiness receipt reports failed layers"
+      cat /tmp/pace-readiness.$$
     else
-      # Exit code 2 = blocked (not a failure for this layer — the
-      # receipt still generated successfully, it just reports blockers).
-      if [ -f /tmp/pace-readiness.$$ ] && grep -q "release-readiness receipt written" /tmp/pace-readiness.$$; then
-        record_pass "release-readiness receipt generated (--no-build, overall=blocked)"
-      else
-        record_fail "release-readiness receipt generation failed"
-        cat /tmp/pace-readiness.$$
-      fi
+      record_fail "release-readiness receipt generation failed"
+      cat /tmp/pace-readiness.$$
     fi
     rm -f /tmp/pace-readiness.$$
   else

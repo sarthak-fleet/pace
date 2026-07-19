@@ -40,10 +40,21 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BASE_URL="https://heypace.app"
 OFFLINE=0
-for arg in "$@"; do
-  case "$arg" in
-    --base-url) shift; BASE_URL="$1"; shift || true ;;
-    --offline) OFFLINE=1 ;;
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --base-url)
+      [ "$#" -ge 2 ] || { echo "--base-url requires a URL" >&2; exit 2; }
+      BASE_URL="$2"
+      shift 2
+      ;;
+    --offline)
+      OFFLINE=1
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -77,6 +88,9 @@ else
     LATEST_DOWNLOAD_URL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["latest"]["downloadURL"])' "$RELEASE_INFO")"
     SOURCE_REVISION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sourceRevision"])' "$RELEASE_INFO")"
     echo "  ✓ release-info.json parseable (latest=$LATEST_VERSION, sourceRevision=$SOURCE_REVISION)"
+    if git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 && ! git -C "$PROJECT_DIR" cat-file -e "$SOURCE_REVISION^{commit}" 2>/dev/null; then
+      record_failure "release-info.json sourceRevision does not resolve to a repository commit"
+    fi
   fi
 fi
 
@@ -140,11 +154,14 @@ probe_url() {
   fi
 }
 
-probe_url "$BASE_URL" "canonical root"
-probe_url "$DOWNLOAD_URL" "download route"
+probe_url "$BASE_URL" "canonical root" || true
+probe_url "$DOWNLOAD_URL" "download route" || true
 
 # Appcast feed reachability (Sparkle's actual update source).
-probe_url "$APPCAST_URL" "appcast feed"
+probe_url "$APPCAST_URL" "appcast feed" || true
+if [ -n "${LATEST_DOWNLOAD_URL:-}" ]; then
+  probe_url "$LATEST_DOWNLOAD_URL" "latest release artifact" || true
+fi
 
 echo
 

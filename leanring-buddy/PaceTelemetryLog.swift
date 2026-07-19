@@ -23,6 +23,16 @@
 import Foundation
 import OSLog
 
+enum PaceActivationKind: String, CaseIterable {
+    case spokenReplyCompleted
+}
+
+enum PaceFailureOutcome: String, CaseIterable {
+    case spoken
+    case suppressed
+    case queued
+}
+
 enum PaceTelemetryLog {
     /// `subsystem` and `category` are the filter knobs `log stream`
     /// uses. `benchmark_ttfsw.sh` matches on exactly these values.
@@ -94,26 +104,20 @@ enum PaceTelemetryLog {
 
     // MARK: - Activation evidence
 
-    /// First successful local action signal. Emitted once per app
-    /// launch the first time the user completes a voice-driven local
-    /// action (a spoken reply finishes, an action executor step
-    /// succeeds, or a meeting note card renders). Records only a
-    /// sanitized outcome, the app version/build, and a coarse action
-    /// class — never the transcript, screen context, action target, or
-    /// any user content.
+    /// First successful local activation signal. Emitted once per app
+    /// launch when the first non-empty spoken reply finishes. Records
+    /// only a closed activation kind and the app version/build — never
+    /// the transcript, screen context, action target, or user content.
     ///
     /// This is the privacy-safe activation contract for the
     /// `automate-heypace` evidence matrix. There is no fleet-bound
     /// return path by design — the signal stays in the local unified
     /// log so a human can run `log stream` and confirm activation
     /// without centralizing sensitive context.
-    static func recordFirstSuccessfulLocalAction(
-        actionClass: String,
-        outcome: String
-    ) {
+    static func recordFirstSuccessfulLocalActivation(_ kind: PaceActivationKind) {
         let version = PaceTelemetryLog.appShortVersion()
         let build = PaceTelemetryLog.appBuildNumber()
-        logger.info("ACTIVATE class=\(actionClass, privacy: .public) outcome=\(outcome, privacy: .public) ver=\(version, privacy: .public) build=\(build, privacy: .public)")
+        logger.info("ACTIVATE kind=\(kind.rawValue, privacy: .public) ver=\(version, privacy: .public) build=\(build, privacy: .public)")
     }
 
     // MARK: - Failure evidence
@@ -125,19 +129,16 @@ enum PaceTelemetryLog {
     /// screen context, action target, provider error body, or any
     /// other user content.
     ///
-    /// `failureClass` is the canonical `PaceFailureKind` case name
-    /// (e.g. `"plannerOffline"`, `"sidecarTTSOffline"`,
-    /// `"clickMissed"`). The caller is responsible for mapping the
-    /// enum case to a stable string; this function does not accept
-    /// free-form text so a leaky caller cannot accidentally log a
-    /// transcript snippet as a "failure class".
+    /// The API accepts the closed `PaceFailureKind` and
+    /// `PaceFailureOutcome` types rather than free-form strings. The
+    /// stable identifier deliberately drops associated user values.
     static func recordFailure(
-        failureClass: String,
-        outcome: String
+        kind: PaceFailureKind,
+        outcome: PaceFailureOutcome
     ) {
         let version = PaceTelemetryLog.appShortVersion()
         let build = PaceTelemetryLog.appBuildNumber()
-        logger.info("FAIL kind=\(failureClass, privacy: .public) outcome=\(outcome, privacy: .public) ver=\(version, privacy: .public) build=\(build, privacy: .public)")
+        logger.info("FAIL kind=\(kind.stableLogIdentifier, privacy: .public) outcome=\(outcome.rawValue, privacy: .public) ver=\(version, privacy: .public) build=\(build, privacy: .public)")
     }
 
     // MARK: - App version helpers

@@ -162,9 +162,12 @@ for failure in data.get("testFailures", [])[:20]:
     print(f"   ✗ {target}::{name}")
     if msg:
         print(f"     {msg}")
+if result != "Passed" or total <= 0 or failed > 0:
+    sys.exit(1)
 '
 else
-    grep -E '^\*\* TEST' "$BUILD_LOG_FILE" || true
+    echo "❌ Cannot verify a non-zero executed test count from the result bundle." >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------

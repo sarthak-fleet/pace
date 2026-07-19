@@ -31,8 +31,8 @@ satisfy a later layer.
 | `simulator` | The app launches in a macOS destination and the test host runs | `xcodebuild test` result bundle | `--simulator` |
 | `signing` | A Developer ID / signing identity is reachable for release packaging | Keychain (read-only presence check, never exports key material) | `--signing` |
 | `device` | A physical Apple Silicon Mac ran the release smoke checklist | `docs/operations/release-smoke-checklist.md` (manual) | `--device` (always reports `blocked` from automation) |
-| `distribution` | A release artifact is published and the Sparkle appcast is consistent | `appcast.xml`, GitHub Releases | `--distribution` (read-only manifest check; never publishes) |
-| `activation` | A first successful local action produced a sanitized outcome signal | `PaceTelemetryLog.recordFirstSuccessfulLocalAction` (local OSLog only) | `--activation` (intentionally N/A from automation — see below) |
+| `distribution` | A release artifact is published and the Sparkle appcast is consistent | `appcast.xml`, GitHub Releases | `--distribution` (read-only live artifact check; never publishes) |
+| `activation` | A first non-empty spoken reply completed locally | `PaceTelemetryLog.recordFirstSuccessfulLocalActivation` (local OSLog only) | `--activation` (central collection intentionally N/A — see below) |
 | `failure` | A crash/failure path emits version/build + aggregate failure class without user content | `PaceTelemetryLog.recordFailure` (local OSLog only) | `--failure` (covered by unit tests, not by automation runs) |
 | `release-readiness` | A receipt aggregating the above layers without signing or publishing | `scripts/release-readiness.sh` → `releases/readiness-receipt.json` | `--release-readiness` |
 
@@ -46,10 +46,10 @@ satisfy a later layer.
 | `simulator` | **pass** | The `xcodebuild test` result bundle is the simulator evidence (macOS destination). 1606/1606 tests executed in the test host. | The macOS destination is the only destination — there is no iOS-adjacent target. |
 | `signing` | **blocked** | `scripts/release-pace.sh` extracts the team ID from Keychain and attempts a team-signed build, falling back to ad-hoc. Automation does not read or export the key material; it records only presence/absence of a Developer ID. | Signing material lives in Keychain; automation never reads key bytes. |
 | `device` | **blocked** | `docs/operations/release-smoke-checklist.md` is a manual hardware checklist. The 2026-07-13 companion milestone explicitly risk-accepted the missing hardware measurements. | Device proof is not remotely automatable — this is a durable blocker, not a regression. |
-| `distribution` | **pass (read-only)** | `appcast.xml` is current at build 19 (v0.3.19); Sparkle EdDSA signatures are present on every enclosure; `release-info.json` is regenerated on every landing build. | Automation only inspects the manifest; it never publishes, signs, or enrolls a device. |
-| `activation` | **N/A (intentional)** | A privacy-safe first-successful-local-action signal is defined (`PaceTelemetryLog.recordFirstSuccessfulLocalAction`) and emitted to the local OSLog only. There is no fleet-bound return path by design — centralizing activation telemetry would violate the on-device moat. | The accepted N/A decision is recorded here; automation does not synthesize a return signal. |
+| `distribution` | **blocked** | `appcast.xml` and GitHub's release API list build 19 (v0.3.19), but the anonymous public asset URL currently returns 404. The live check now catches this instead of accepting local manifest agreement. | Restore or republish the release asset through the explicit release workflow, then rerun `scripts/check-landing-health.sh`; automation does not publish or sign it. |
+| `activation` | **pass locally / N/A centrally** | A privacy-safe first-local-activation signal is defined (`PaceTelemetryLog.recordFirstSuccessfulLocalActivation`) and emitted to local OSLog after the first non-empty spoken reply completes. There is no fleet-bound event path by design. | Foundry records the local contract and central N/A explicitly; it must not infer a centrally observed activation. |
 | `failure` | **pass (local)** | `PaceTelemetryLog.recordFailure` emits `FAIL kind=<class> ver=<version> build=<build>` to the local unified log; `CompanionManager+TrustSurfacesRuntime.speakPlainLanguageFailure` calls it for every documented `PaceFailureKind`. No user content (transcript, screen, action target) is included. | Covered by `PaceTelemetryLogFailureTests` and the privacy-boundary assertion in `PaceTelemetryLogPrivacyBoundaryTests`. |
-| `release-readiness` | **pass** | `scripts/release-readiness.sh` aggregates the layers above into `releases/readiness-receipt.json` without signing or publishing. The receipt ends with a `distributionApprovalRequired: true` flag — automation does not publish. | Receipt is a Foundry-readable artifact; Foundry may prepare diagnostics/PRs but distribution remains human-approved. |
+| `release-readiness` | **blocked until manual gates pass** | `scripts/release-readiness.sh` aggregates the layers above into `releases/readiness-receipt.json` without signing or publishing and exits `2` while signing, device, or other required evidence is blocked. | Receipt generation is not itself a readiness pass; Foundry preserves the blocked state and may prepare diagnostics or PRs only. |
 
 ## Privacy boundary (invariant)
 
@@ -65,9 +65,10 @@ or Foundry-bound payload:
 - `companion-observations.json` contents
 - `pace-tuned-turns.jsonl` contents (redacted export is opt-in and stays local)
 
-`PaceTelemetryLog.recordFailure` and `recordFirstSuccessfulLocalAction` only
-emit aggregate, `privacy: .public` fields: failure class enum case name, app
-version, build number, and counts. The privacy-boundary tests
+`PaceTelemetryLog.recordFailure` and `recordFirstSuccessfulLocalActivation`
+accept only closed telemetry enums and emit aggregate, `privacy: .public`
+fields: failure class, outcome, activation kind, app version, build number,
+and counts. The privacy-boundary tests
 (`PaceTelemetryLogPrivacyBoundaryTests`) assert this at compile time by
 calling every recording function with representative inputs and confirming
 the API surface accepts only public-annotated scalars.

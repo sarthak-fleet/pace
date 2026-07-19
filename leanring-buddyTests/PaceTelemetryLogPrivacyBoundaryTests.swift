@@ -21,9 +21,8 @@
 //       content (click target labels, MCP server names, cloud-bridge
 //       provider names).
 //
-//    3. The activation helper accepts only a coarse action-class
-//       string and a sanitized outcome — there is no overload that
-//       accepts a transcript or action target.
+//    3. Activation and failure dimensions are closed enums — there is
+//       no overload that accepts a transcript or action target.
 //
 //  These are compile-time + runtime contracts. If a future change
 //  adds a leaky overload, these tests will fail to compile or fail at
@@ -38,11 +37,8 @@ struct PaceTelemetryLogPrivacyBoundaryTests {
 
     // MARK: - No transcript-accepting overload exists
 
-    /// The recordFailure function accepts a `failureClass` string that
-    /// is documented as a stable enum-case identifier, NOT a
-    /// free-form error message. This test verifies the call site
-    /// shape: the caller passes a fixed identifier, not a transcript
-    /// snippet or an error body.
+    /// The recordFailure function accepts the source enum and a closed
+    /// outcome enum, not a free-form error message.
     ///
     /// If someone adds an overload that accepts an `Error` or a
     /// `String` transcript, this test will need to be updated — which
@@ -51,13 +47,7 @@ struct PaceTelemetryLogPrivacyBoundaryTests {
     @Test
     func recordFailureAcceptsOnlyStableIdentifierAndOutcome() {
         // Correct usage: stable identifier from PaceFailureKind.
-        PaceTelemetryLog.recordFailure(
-            failureClass: PaceFailureKind.plannerOffline.stableLogIdentifier,
-            outcome: "spoken"
-        )
-        // The function signature is (failureClass: String, outcome: String).
-        // There is no overload accepting Error, Data, or transcript.
-        // This test documents that contract.
+        PaceTelemetryLog.recordFailure(kind: .plannerOffline, outcome: .spoken)
         #expect(true)
     }
 
@@ -103,20 +93,11 @@ struct PaceTelemetryLogPrivacyBoundaryTests {
 
     // MARK: - Activation helper accepts no user content
 
-    /// recordFirstSuccessfulLocalAction accepts a coarse action class
-    /// (one of a small set of fixed strings) and a sanitized outcome.
-    /// There is no overload that accepts a transcript, screen context,
-    /// or action target.
+    /// The activation helper accepts a closed enum and therefore cannot
+    /// receive transcript, screen-context, or action-target strings.
     @Test
     func activationHelperAcceptsNoUserContent() {
-        // Correct usage: fixed action class + sanitized outcome.
-        PaceTelemetryLog.recordFirstSuccessfulLocalAction(
-            actionClass: "voiceReply",
-            outcome: "spoken"
-        )
-        // The function signature is (actionClass: String, outcome: String).
-        // There is no overload accepting a transcript, screenshot, or
-        // AX label. This test documents that contract.
+        PaceTelemetryLog.recordFirstSuccessfulLocalActivation(.spokenReplyCompleted)
         #expect(true)
     }
 

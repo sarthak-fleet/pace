@@ -256,6 +256,10 @@ end-to-end acceptance stories.
 
 ### Blocked
 
+- **Public v0.3.19 ZIP is unavailable:** GitHub's release API and the local
+  appcast list `Pace-0.3.19.zip`, but its anonymous download URL returns 404.
+  Restore or republish the asset through the explicit release workflow before
+  treating distribution as green.
 - **Test baseline resolved (2026-07-19):** `bash scripts/test-pace.sh` now
   compiles and passes 1606/1606 tests under Xcode 27.0 Beta 3. The earlier
   `TestCompanionScreenAnalysisClient` actor-isolation compile block is gone.

@@ -31,10 +31,26 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 OUTPUT="$PROJECT_DIR/releases/readiness-receipt.json"
 SKIP_BUILD=0
-for arg in "$@"; do
-  case "$arg" in
-    --output) shift; OUTPUT="$1"; shift || true ;;
-    --no-build) SKIP_BUILD=1 ;;
+OFFLINE=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output)
+      [ "$#" -ge 2 ] || { echo "--output requires a path" >&2; exit 2; }
+      OUTPUT="$2"
+      shift 2
+      ;;
+    --no-build)
+      SKIP_BUILD=1
+      shift
+      ;;
+    --offline)
+      OFFLINE=1
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -42,16 +58,16 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 # Source revision (short SHA). Empty when git is unavailable.
 SOURCE_REVISION=""
-if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_DIR/.git" ]; then
+if command -v git >/dev/null 2>&1 && git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   SOURCE_REVISION="$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
 fi
 SOURCE_BRANCH=""
-if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_DIR/.git" ]; then
+if command -v git >/dev/null 2>&1 && git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   SOURCE_BRANCH="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 fi
 SOURCE_DIRTY=0
-if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_DIR/.git" ]; then
-  if ! git -C "$PROJECT_DIR" diff --quiet HEAD 2>/dev/null; then
+if command -v git >/dev/null 2>&1 && git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  if [ -n "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=normal 2>/dev/null)" ]; then
     SOURCE_DIRTY=1
   fi
 fi
@@ -79,7 +95,13 @@ fi
 # Layer status helpers. Each layer function echoes one of:
 #   pass | blocked | n/a | fail
 landing_status() {
-  if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/dev/null 2>&1; then
+  if [ "$OFFLINE" -eq 1 ]; then
+    if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/dev/null 2>&1; then
+      echo "blocked"
+    else
+      echo "fail"
+    fi
+  elif bash "$SCRIPT_DIR/check-landing-health.sh" >/dev/null 2>&1; then
     echo "pass"
   else
     echo "fail"
@@ -112,7 +134,7 @@ signing_status() {
     echo "blocked"
     return
   fi
-  if security find-identity -v -p codesigning login.keychain 2>/dev/null | grep -q "Developer ID Application"; then
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
     echo "pass"
   else
     echo "blocked"
@@ -125,7 +147,13 @@ device_status() {
 }
 
 distribution_status() {
-  if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/dev/null 2>&1; then
+  if [ "$OFFLINE" -eq 1 ]; then
+    if bash "$SCRIPT_DIR/check-landing-health.sh" --offline >/dev/null 2>&1; then
+      echo "blocked"
+    else
+      echo "fail"
+    fi
+  elif bash "$SCRIPT_DIR/check-landing-health.sh" >/dev/null 2>&1; then
     echo "pass"
   else
     echo "fail"
@@ -199,7 +227,7 @@ receipt = {
     },
     "notes": [
         "device proof is a manual hardware gate (docs/operations/release-smoke-checklist.md)",
-        "activation is intentionally N/A — the on-device moat forbids a fleet-bound return path",
+        "activation is local-only — the on-device moat forbids a fleet-bound return path",
         "failure evidence is covered by unit tests, not by automation runs",
         "automation never signs, publishes, enrolls a device, or deploys production"
     ]

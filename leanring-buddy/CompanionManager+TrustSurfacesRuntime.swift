@@ -90,18 +90,14 @@ extension CompanionManager {
         lastSpokenReplyAt = Date()
 
         // Privacy-safe activation evidence for the automation matrix.
-        // Emitted once per app launch the first time a voice turn
-        // completes (a spoken reply finishes). Records only a coarse
-        // action class and a sanitized outcome — never the transcript,
-        // screen context, or action target. See
-        // `PaceTelemetryLog.recordFirstSuccessfulLocalAction` and
+        // Emitted once per app launch after the first non-empty spoken
+        // reply finishes. The closed enum prevents transcript, screen
+        // context, and action-target data from entering the log. See
+        // `PaceTelemetryLog.recordFirstSuccessfulLocalActivation` and
         // `docs/operations/automation-evidence-matrix.md`.
-        if !hasRecordedFirstSuccessfulLocalAction {
-            hasRecordedFirstSuccessfulLocalAction = true
-            PaceTelemetryLog.recordFirstSuccessfulLocalAction(
-                actionClass: "voiceReply",
-                outcome: "spoken"
-            )
+        if !hasRecordedFirstSuccessfulLocalActivation {
+            hasRecordedFirstSuccessfulLocalActivation = true
+            PaceTelemetryLog.recordFirstSuccessfulLocalActivation(.spokenReplyCompleted)
         }
     }
 
@@ -154,15 +150,15 @@ extension CompanionManager {
         // screen context, action target, or provider error body. See
         // `PaceFailureKind.stableLogIdentifier` and
         // `docs/operations/automation-evidence-matrix.md`.
-        let outcomeBucket: String
+        let outcome: PaceFailureOutcome
         switch restraintDecision {
-        case .speak: outcomeBucket = "spoken"
-        case .stayQuiet: outcomeBucket = "suppressed"
-        case .queueUntilIdle: outcomeBucket = "queued"
+        case .speak: outcome = .spoken
+        case .stayQuiet: outcome = .suppressed
+        case .queueUntilIdle: outcome = .queued
         }
         PaceTelemetryLog.recordFailure(
-            failureClass: kind.stableLogIdentifier,
-            outcome: outcomeBucket
+            kind: kind,
+            outcome: outcome
         )
         switch restraintDecision {
         case .speak:

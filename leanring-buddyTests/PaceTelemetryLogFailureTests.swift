@@ -13,8 +13,7 @@
 //      every documented case and never includes associated values
 //      that could leak user content (click target labels, MCP server
 //      names, cloud-bridge provider names);
-//    - the activation helper accepts only a coarse action class and a
-//      sanitized outcome string.
+//    - activation and failure APIs accept only closed enum values.
 //
 //  See docs/operations/automation-evidence-matrix.md for the
 //  privacy-boundary contract these tests enforce.
@@ -32,63 +31,40 @@ struct PaceTelemetryLogFailureTests {
     /// does not crash for representative failure classes.
     @Test
     func recordFailureIsCallableForRepresentativeClasses() {
+        PaceTelemetryLog.recordFailure(kind: .plannerOffline, outcome: .spoken)
         PaceTelemetryLog.recordFailure(
-            failureClass: "plannerOffline",
-            outcome: "spoken"
+            kind: .missingPermission(permission: .accessibility),
+            outcome: .suppressed
         )
         PaceTelemetryLog.recordFailure(
-            failureClass: "missingPermission.accessibility",
-            outcome: "suppressed"
+            kind: .clickMissed(targetLabel: "private target"),
+            outcome: .queued
+        )
+        PaceTelemetryLog.recordFailure(kind: .sidecarTTSOffline, outcome: .spoken)
+        PaceTelemetryLog.recordFailure(
+            kind: .mcpServerNotConfigured(name: "private server"),
+            outcome: .spoken
         )
         PaceTelemetryLog.recordFailure(
-            failureClass: "clickMissed",
-            outcome: "queued"
-        )
-        PaceTelemetryLog.recordFailure(
-            failureClass: "sidecarTTSOffline",
-            outcome: "spoken"
-        )
-        PaceTelemetryLog.recordFailure(
-            failureClass: "mcpServerNotConfigured",
-            outcome: "spoken"
-        )
-        PaceTelemetryLog.recordFailure(
-            failureClass: "cloudBridgeUpstreamError",
-            outcome: "spoken"
+            kind: .cloudBridgeUpstreamError(provider: "private provider"),
+            outcome: .spoken
         )
         #expect(true)
     }
 
-    /// Zero-length and unusual strings do not crash — the API is
-    /// a pass-through for the caller's stable identifier.
+    /// The public telemetry dimensions are finite closed sets.
     @Test
-    func recordFailureHandlesEmptyAndUnusualStrings() {
-        PaceTelemetryLog.recordFailure(failureClass: "", outcome: "")
-        PaceTelemetryLog.recordFailure(
-            failureClass: "unknownFailureClass",
-            outcome: "unknown"
-        )
-        #expect(true)
+    func telemetryDimensionsAreClosedEnums() {
+        #expect(PaceActivationKind.allCases == [.spokenReplyCompleted])
+        #expect(PaceFailureOutcome.allCases == [.spoken, .suppressed, .queued])
     }
 
     // MARK: - Activation evidence API surface
 
-    /// recordFirstSuccessfulLocalAction is callable with the
-    /// documented signature and does not crash.
+    /// The local activation API accepts only a fixed aggregate kind.
     @Test
-    func recordFirstSuccessfulLocalActionIsCallable() {
-        PaceTelemetryLog.recordFirstSuccessfulLocalAction(
-            actionClass: "voiceReply",
-            outcome: "spoken"
-        )
-        PaceTelemetryLog.recordFirstSuccessfulLocalAction(
-            actionClass: "actionExecutor",
-            outcome: "completed"
-        )
-        PaceTelemetryLog.recordFirstSuccessfulLocalAction(
-            actionClass: "meetingNoteCard",
-            outcome: "rendered"
-        )
+    func recordFirstSuccessfulLocalActivationIsCallable() {
+        PaceTelemetryLog.recordFirstSuccessfulLocalActivation(.spokenReplyCompleted)
         #expect(true)
     }
 
