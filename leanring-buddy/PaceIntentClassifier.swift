@@ -98,7 +98,7 @@ struct PaceIntentPrediction: Equatable {
         // check whether the classifier is sure enough to act on its
         // prediction. If not, escalate to the large model immediately
         // — do NOT execute the predicted action first.
-        if confidence < Self.confidenceEscalationThreshold {
+        if intent != .unknown && confidence < Self.confidenceEscalationThreshold {
             return .escalateToLargeModel
         }
         // Complexity gate: if the query is complex AND the intent
@@ -425,7 +425,7 @@ final class PaceIntentClassifier {
         // an action ("use"), and the answer lives in local history.
         for journalRecallHint in Self.journalRecallHints {
             if lowercaseTranscript.contains(journalRecallHint) {
-                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.85)
+                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.95)
             }
         }
 
@@ -435,27 +435,27 @@ final class PaceIntentClassifier {
         // miscategorise. Order matters here.
         for descriptionHint in Self.descriptionHints {
             if lowercaseTranscript.contains(descriptionHint) {
-                return PaceIntentPrediction(intent: .screenDescription, confidence: 0.85)
+                return PaceIntentPrediction(intent: .screenDescription, confidence: 0.95)
             }
         }
 
         // Action: any action verb in the transcript.
         for actionVerb in Self.actionVerbs {
             if lowercaseTranscript.contains(actionVerb) {
-                return PaceIntentPrediction(intent: .screenAction, confidence: 0.80)
+                return PaceIntentPrediction(intent: .screenAction, confidence: 0.94)
             }
         }
 
         for actionToolPhrase in Self.actionToolPhrases {
             if lowercaseTranscript.contains(actionToolPhrase) {
-                return PaceIntentPrediction(intent: .screenAction, confidence: 0.82)
+                return PaceIntentPrediction(intent: .screenAction, confidence: 0.95)
             }
         }
 
         // Pure-knowledge: starts with a "what is" / "explain" pattern.
         for knowledgePattern in Self.knowledgePatterns {
             if lowercaseTranscript.hasPrefix(knowledgePattern) {
-                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.75)
+                return PaceIntentPrediction(intent: .pureKnowledge, confidence: 0.95)
             }
         }
 

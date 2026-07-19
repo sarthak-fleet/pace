@@ -78,13 +78,13 @@ struct PaceFMIntentClassifierBenchmark {
     @Test
     func benchmarkFMClassifierAccuracy() async {
         guard #available(macOS 26.0, *) else {
-            Issue.record("Apple Foundation Models requires macOS 26.0+")
+            print("⏭️ Skipping Apple FM benchmark: requires macOS 26.0+")
             return
         }
 
         let systemModel = SystemLanguageModel.default
         guard case .available = systemModel.availability else {
-            Issue.record("Apple Intelligence is not available on this Mac")
+            print("⏭️ Skipping Apple FM benchmark: Apple Intelligence is not available on this Mac")
             return
         }
 
