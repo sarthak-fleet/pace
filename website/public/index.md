@@ -9,6 +9,7 @@ On-device Mac voice agent that reads your screen.
 
 ## Agent entrypoints
 
-- https://pace-6xg.pages.dev/llms.txt
-- https://pace-6xg.pages.dev/api/ai
-- https://pace-6xg.pages.dev/index.md
+- https://heypace.app/llms.txt
+- https://heypace.app/api/ai
+- https://heypace.app/index.md
+- https://heypace.app/docs/

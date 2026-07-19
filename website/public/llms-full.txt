@@ -15,22 +15,24 @@ On-device Mac voice agent that reads your screen.
 
 ## Agent entrypoints
 
-- https://pace-6xg.pages.dev/llms.txt
-- https://pace-6xg.pages.dev/api/ai
-- https://pace-6xg.pages.dev/index.md
+- https://heypace.app/llms.txt
+- https://heypace.app/api/ai
+- https://heypace.app/index.md
+- https://heypace.app/docs/
 
 ## Product links
 
-- Home: https://pace-6xg.pages.dev/ — Product landing
+- Home: https://heypace.app/ — Product landing
+- Docs: https://heypace.app/docs/ — Blume documentation
 
 ## Machine surfaces
 
-- https://pace-6xg.pages.dev/llms.txt
-- https://pace-6xg.pages.dev/llms-full.txt
-- https://pace-6xg.pages.dev/api/ai
-- https://pace-6xg.pages.dev/index.md
-- https://pace-6xg.pages.dev/sitemap.xml
-- https://pace-6xg.pages.dev/robots.txt
+- https://heypace.app/llms.txt
+- https://heypace.app/llms-full.txt
+- https://heypace.app/api/ai
+- https://heypace.app/index.md
+- https://heypace.app/sitemap.xml
+- https://heypace.app/robots.txt
 
 ## Contact / fleet
 

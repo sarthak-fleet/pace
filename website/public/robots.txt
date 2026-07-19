@@ -50,6 +50,7 @@ User-agent: cohere-ai
 Allow: /
 
 Sitemap: https://heypace.app/sitemap.xml
+Sitemap: https://heypace.app/docs/sitemap.xml
 # Agent indexing
 Allow: /llms.txt
 Allow: /index.md
